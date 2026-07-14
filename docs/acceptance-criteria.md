@@ -1,5 +1,7 @@
 # Acceptance criteria
 
+Implementation status: Milestones 0-2 pass. Milestone 3 passes in deterministic/mock and mocked-upstream form; a live real-provider smoke test remains credential-dependent. Local-MVP portions of Milestones 4-6 pass as recorded in `docs/mvp-verification-report.md`.
+
 ## Milestone 0
 
 - Repository and environment status is evidenced.

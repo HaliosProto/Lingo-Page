@@ -1,32 +1,46 @@
 # Ordered milestone plan
 
+Status as of 2026-07-15: Milestones 0-2 and the credential-independent local-MVP scope of Milestones 3-6 are implemented. Live-provider verification, production identity/quotas, public-release hardening, and expansion remain open.
+
 ## Milestone 0 — Discovery, specification, architecture
 
-Deliver the living documents, evaluations, contracts, risk models, roadmap, acceptance criteria, and verification matrix. No product feature code. Complete for this turn.
+Deliver the living documents, evaluations, contracts, risk models, roadmap, acceptance criteria, and verification matrix. Complete.
 
 ## Milestone 1 — Monorepo and extension shell
 
 Create the pnpm monorepo, WXT extension, Worker API shell, shared packages, manifest, popup/options shell, service worker, content-script registration, runtime-validated messaging, environment validation, scripts, tests, builds, and unpacked loading. No real provider key and no full DOM translation.
 
+Status: complete.
+
 ## Milestone 2 — Deterministic local translation prototype
 
 Implement DOM discovery, eligibility, segmentation, IDs, inline mapping, batching, visible mock provider transformation, in-place text replacement, originals, restore, progress, cancellation, tab/navigation state, fixtures, and browser tests. No real provider.
+
+Status: complete.
 
 ## Milestone 3 — Secure backend and real provider
 
 Implement validated translation/detection routes, development auth, server-side secret, first provider adapter, limits, rate limiting, timeout/retry, usage/cost guardrails, secret scans, and end-to-end real translation.
 
+Status: implementation complete except live credential smoke test and production identity. Mock mode is the supported local extension path.
+
 ## Milestone 4 — Dynamic pages and resilience
 
 Add mutation observer, SPA route handling, dynamic content, loop prevention, caches, partial failure, retries, large-page processing, performance measurements, restart recovery, and leak testing.
+
+Status: local MVP subset complete (dynamic insertion, loop prevention, cache, partial states, navigation identity); large-page profiling, durable restart recovery, and leak testing remain release work.
 
 ## Milestone 5 — Production UI and settings
 
 Polish design system, themes, preferences, exclusions, privacy mode, sensitive warnings, cache controls, glossary UI, accessibility, RTL, reduced motion, and complete state coverage.
 
+Status: local MVP UI complete; formal accessibility/RTL certification remains release work.
+
 ## Milestone 6 — Selected text
 
 Add explicit selected-text translation, result/copy/replace flow, keyboard accessibility, and browser tests.
+
+Status: translate/result/copy and browser test complete; replacing the original selection is intentionally not enabled because it is a higher-risk page mutation.
 
 ## Milestone 7 — Accounts, quotas, abuse protection
 

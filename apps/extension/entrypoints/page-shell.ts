@@ -370,9 +370,14 @@ export default defineUnlistedScript(() => {
     copy.className = 'primary';
     copy.textContent = 'Copy translation';
     copy.addEventListener('click', () => {
-      void navigator.clipboard.writeText(payload.translatedText).then(() => {
-        copy.textContent = 'Copied';
-      });
+      void navigator.clipboard
+        .writeText(payload.translatedText)
+        .then(() => {
+          copy.textContent = 'Copied';
+        })
+        .catch(() => {
+          copy.textContent = 'Copy unavailable';
+        });
     });
     actions.append(copy);
     card.append(top, source, translated, actions);

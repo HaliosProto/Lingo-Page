@@ -4,6 +4,8 @@
 
 Chrome/Chromium Manifest V3 is the only release target for the MVP. The extension must handle normal HTTP(S) pages and clearly reject browser-internal pages, Web Store pages, settings, inaccessible frames, unsupported viewers, and other restricted contexts.
 
+Managed Playwright Chromium passes the local MVP workflow. Installed branded Chrome 150 is available for manual unpacked loading, but its command-line behavior did not load the unpacked extension during automation; this is documented as a manual release check rather than represented as automated evidence.
+
 ## Compatibility layers
 
 - Use WXT/browser-polyfill conventions for APIs.

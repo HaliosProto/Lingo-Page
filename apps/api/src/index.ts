@@ -1,11 +1,10 @@
 import { Hono } from 'hono';
+import { DEFAULT_MAX_BODY_BYTES, developmentLanguages } from '@translation/shared-config';
 import {
-  DEFAULT_MAX_BODY_BYTES,
-  developmentLanguages,
   isAllowedExtensionOrigin,
   parseApiEnvironment,
   type ApiEnvironment,
-} from '@translation/shared-config';
+} from '@translation/shared-config/api';
 import type {
   ApiErrorCode,
   HealthResponse,
@@ -43,6 +42,7 @@ type RateBucket = { windowStartedAt: number; requests: number };
 
 const usageByClient = new Map<string, UsageCounter>();
 const rateByClient = new Map<string, RateBucket>();
+const maxTrackedClients = 1_000;
 
 const app = new Hono<{
   Bindings: EnvironmentBindings;
@@ -77,6 +77,10 @@ function checkRateLimit(key: string, environment: ApiEnvironment): boolean {
   const now = Date.now();
   const current = rateByClient.get(key);
   if (!current || now - current.windowStartedAt >= 60_000) {
+    if (!rateByClient.has(key) && rateByClient.size >= maxTrackedClients) {
+      const oldestKey = rateByClient.keys().next().value;
+      if (oldestKey !== undefined) rateByClient.delete(oldestKey);
+    }
     rateByClient.set(key, { windowStartedAt: now, requests: 1 });
     return true;
   }
@@ -87,7 +91,9 @@ function checkRateLimit(key: string, environment: ApiEnvironment): boolean {
 
 function createProvider(environment: ApiEnvironment): TranslationProvider | undefined {
   if (!environment.TRANSLATION_ENABLED) return undefined;
-  if (environment.TRANSLATION_PROVIDER === 'mock') return createMockProvider();
+  if (environment.TRANSLATION_PROVIDER === 'mock') {
+    return createMockProvider({ delayMs: environment.MOCK_TRANSLATION_DELAY_MS });
+  }
   if (!environment.DEEPL_API_KEY) return undefined;
   return createDeepLProvider({ apiKey: environment.DEEPL_API_KEY });
 }
@@ -285,6 +291,10 @@ app.post('/v1/translate', async (context) => {
     }
     usage.inputCharacters += inputCharacters;
     usage.requests += 1;
+    if (!usageByClient.has(key) && usageByClient.size >= maxTrackedClients) {
+      const oldestKey = usageByClient.keys().next().value;
+      if (oldestKey !== undefined) usageByClient.delete(oldestKey);
+    }
     usageByClient.set(key, usage);
     return context.json(response);
   } catch (error) {

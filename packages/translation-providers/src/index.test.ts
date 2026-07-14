@@ -17,6 +17,15 @@ describe('mock provider', () => {
       { id: 'segment-1', translatedText: '[fa] Hello https://example.com' },
     ]);
   });
+
+  it('stops a delayed request when its signal is cancelled', async () => {
+    const controller = new AbortController();
+    const action = createMockProvider({ delayMs: 50 }).translate(request, {
+      signal: controller.signal,
+    });
+    controller.abort();
+    await expect(action).rejects.toMatchObject({ code: 'cancelled' });
+  });
 });
 
 describe('DeepL provider', () => {

@@ -200,7 +200,20 @@ async function loadPersistentCache(settings: AppSettings): Promise<CacheStore> {
   const stored = await browser.storage.local.get(CACHE_STORAGE_KEY);
   const value = stored[CACHE_STORAGE_KEY];
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
-  return value as CacheStore;
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      (entry): entry is [string, CacheEntry] =>
+        typeof entry[1] === 'object' &&
+        entry[1] !== null &&
+        'translatedText' in entry[1] &&
+        typeof entry[1].translatedText === 'string' &&
+        entry[1].translatedText.length > 0 &&
+        entry[1].translatedText.length <= 16_000 &&
+        'createdAt' in entry[1] &&
+        typeof entry[1].createdAt === 'number' &&
+        Number.isFinite(entry[1].createdAt),
+    ),
+  );
 }
 
 async function persistCache(cache: CacheStore, settings: AppSettings): Promise<void> {
@@ -280,7 +293,11 @@ async function translateRequest(request: TranslationRequest): Promise<ExtensionR
   if (uncached.length > 0) {
     const controller = new AbortController();
     const unregister = registerController(request.sessionId, controller);
-    const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, requestTimeoutMs);
     try {
       const response = await fetch(`${getApiBaseUrl()}/v1/translate`, {
         method: 'POST',
@@ -323,10 +340,12 @@ async function translateRequest(request: TranslationRequest): Promise<ExtensionR
       const cancelled = controllersBySession.get(request.sessionId) === undefined;
       return createErrorResponse(
         request.requestId,
-        cancelled ? 'CANCELLED' : 'BACKEND_UNAVAILABLE',
+        cancelled ? 'CANCELLED' : timedOut ? 'REQUEST_TIMEOUT' : 'BACKEND_UNAVAILABLE',
         cancelled
           ? 'The translation was cancelled.'
-          : 'The local translation service is unavailable.',
+          : timedOut
+            ? 'The translation request timed out.'
+            : 'The local translation service is unavailable.',
         !cancelled,
       );
     } finally {
@@ -406,6 +425,7 @@ export default defineBackground(() => {
       return;
     void getSettings().then(async (settings) => {
       if (!settings.selectedTextEnabled) return;
+      if (!isInjectable(classifyPageSupport(tab.url, settings).status)) return;
       try {
         await translateSelection(tab.id!, info.selectionText!.slice(0, 10_000));
         await browser.action.setBadgeText({ tabId: tab.id, text: '' });
@@ -518,7 +538,11 @@ export default defineBackground(() => {
             },
           });
         case 'TRANSLATE_SEGMENTS':
-          if (sender.tab?.id === undefined) {
+          if (
+            sender.id !== browser.runtime.id ||
+            sender.tab?.id === undefined ||
+            sender.frameId !== 0
+          ) {
             return createErrorResponse(
               requestId,
               'INVALID_MESSAGE',

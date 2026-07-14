@@ -1,6 +1,6 @@
 # API contracts
 
-Status: contract design; implementation begins in Milestone 1/3.
+Status: version 1 implemented and runtime-validated.
 
 ## Envelope conventions
 
@@ -22,7 +22,7 @@ Messages are validated with shared runtime schemas. Unknown fields are rejected 
 ## Domain types
 
 ```ts
-type TranslationMode = 'page' | 'selection' | 'composer';
+type TranslationMode = 'page' | 'selection';
 
 type TranslationSegment = {
   id: string; // opaque, bounded, unique per request
@@ -34,6 +34,7 @@ type TranslationSegment = {
 
 type TranslationRequest = {
   requestId: string;
+  sessionId: string;
   sourceLanguage?: string;
   targetLanguage: string;
   mode: TranslationMode;
@@ -45,6 +46,7 @@ type TranslationRequest = {
 
 type TranslationResponse = {
   requestId: string;
+  sessionId: string;
   detectedSourceLanguage?: string;
   translations: Array<{ id: string; translatedText: string }>;
   usage?: { inputCharacters?: number; outputCharacters?: number };
@@ -56,11 +58,11 @@ type TranslationResponse = {
 
 ### `POST /v1/translate`
 
-Requires authenticated application session in production, development token only in local mode. Accepts `TranslationRequest`; returns `TranslationResponse` or normalized error. Initial defaults: at most 500 segments, 2,000 characters per segment, 20,000 input characters, 60,000 output characters, and a bounded JSON body. Values are configuration, not client-controlled.
+Mock mode is unauthenticated only in local development/test. Non-mock and production use requires backend authentication. The route accepts `TranslationRequest`; returns `TranslationResponse` or a normalized error. Defaults: at most 500 segments, 2,000 characters per segment, 20,000 input characters, 60,000 output characters, and a 256 KB JSON body.
 
 ### `POST /v1/detect-language`
 
-Accepts a bounded list of text samples or a bounded combined sample; returns a validated language code, confidence category, and request ID. Do not send an entire page only for detection.
+Accepts one bounded text sample; returns a validated language code, confidence category, and request ID. The local implementation is a deterministic script heuristic.
 
 ### `GET /v1/languages`
 
@@ -76,7 +78,7 @@ Unauthenticated liveness/readiness response with version and provider availabili
 
 ## Extension message contracts
 
-Message types include `GET_TAB_STATE`, `START_TRANSLATION`, `CANCEL_TRANSLATION`, `RESTORE_ORIGINAL`, `CONTENT_READY`, `DISCOVER_SEGMENTS`, `APPLY_TRANSLATIONS`, `PROGRESS`, `TRANSLATION_COMPLETE`, and `TRANSLATION_ERROR`. Each message carries a version, request/session ID where relevant, tab/frame identity, and a discriminated payload. Sender checks are as important as schema checks.
+Implemented message types include settings/health/status operations plus `START_PAGE_TRANSLATION`, `TRANSLATE_SEGMENTS`, `GET_TRANSLATION_PROGRESS`, `CANCEL_PAGE_TRANSLATION`, `RESTORE_PAGE`, `TRANSLATE_SELECTION`, and `SHOW_SELECTION_RESULT`. Every message carries contract version and request ID; translation work is bound to a session ID and tab.
 
 ## Error categories
 

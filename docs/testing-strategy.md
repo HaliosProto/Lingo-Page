@@ -26,6 +26,6 @@ Fixtures use synthetic text. Sensitive-looking fixture labels are synthetic and 
 
 Inject malformed JSON, duplicate/missing/unknown IDs, empty/truncated/expanded output, slow provider responses, aborts, rate limits, 401/403/429/5xx, tab close, navigation, DOM replacement, storage corruption, and observer storms.
 
-## Required quality commands after implementation
+## Implemented quality commands
 
-The exact scripts are established in Milestone 1, but every milestone must provide formatter, lint, strict typecheck, unit/integration tests, E2E tests, production build, secret scan, and runtime/browser verification evidence.
+`pnpm verify` runs format checking, lint, strict typecheck, unit/integration tests, and production builds. `pnpm test:e2e` builds a fixture-only manifest variant and runs managed Chromium. Secret and permission scans are documented in `docs/mvp-verification-report.md`; manual branded-Chrome checks are in `docs/local-development.md`.

@@ -16,7 +16,7 @@ export default defineConfig({
   manifest: ({ mode }) => ({
     name: 'Lingo Page',
     version: '0.1.0',
-    description: 'A privacy-first in-page translation foundation.',
+    description: 'Translate eligible webpage text in place with privacy-first controls.',
     default_locale: 'en',
     permissions: ['activeTab', 'contextMenus', 'scripting', 'storage'],
     host_permissions: [

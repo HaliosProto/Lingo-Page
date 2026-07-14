@@ -6,14 +6,14 @@ Translation is an explicit user action. The extension does not silently translat
 
 ## Data categories
 
-| Data                | Default handling                                                    | Retention intent                                                                             |
-| ------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Page text segments  | Sent only for an active request; held in memory for mapping/restore | Discard after session/request unless the user opts into a future translation-memory feature. |
-| Page hostname/title | Used for popup context and policy checks; minimize storage          | Do not retain as browsing history.                                                           |
-| Settings            | Local extension storage                                             | Until user clears or uninstalls.                                                             |
-| Auth session        | Short-lived/revocable app session                                   | Until logout, expiry, revocation, or deletion.                                               |
-| Usage metadata      | Character/segment counts, status, duration, categories              | Account/billing retention policy to be defined before accounts.                              |
-| Diagnostics         | User-generated, redacted export                                     | Local only unless user explicitly shares it.                                                 |
+| Data                | Default handling                                                    | Retention intent                                                                                                    |
+| ------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Page text segments  | Sent only for an active request; held in memory for mapping/restore | Memory cache for the worker lifetime; optional local cache is off by default, capped at 200 entries, and clearable. |
+| Page hostname/title | Used for popup context and policy checks; minimize storage          | Do not retain as browsing history.                                                                                  |
+| Settings            | Local extension storage                                             | Until user clears or uninstalls.                                                                                    |
+| Auth session        | Short-lived/revocable app session                                   | Until logout, expiry, revocation, or deletion.                                                                      |
+| Usage metadata      | Character/segment counts, status, duration, categories              | Account/billing retention policy to be defined before accounts.                                                     |
+| Diagnostics         | User-generated, redacted export                                     | Local only unless user explicitly shares it.                                                                        |
 
 ## Sensitive-page protection
 
@@ -21,10 +21,10 @@ Use a warning/blocking layer based on conservative hostname/path signals and pag
 
 ## Privacy controls
 
-- Remote translation notice before first use and accessible status thereafter.
-- Privacy mode: block remote translation on warning-class pages.
+- Translation status and backend/provider category in the popup before use.
+- Privacy mode: block translation on warning-class pages and disable persistent translated-text caching.
 - Domain exclusions with clear precedence and an undo path.
-- Clear in-session data and settings controls.
+- Clear translated-text cache control; browser storage can be fully removed by uninstalling the extension.
 - No persistent raw-text cache by default.
 - Future cache modes explicitly labeled: none, local-only, account-synced, organization-managed.
 - Diagnostic export deliberately redacts text, tokens, cookies, form contents, query parameters, and authorization headers.

@@ -100,6 +100,31 @@ test('translates, updates dynamic content, restores exactly, and supports select
 
     await commandForFixture(popup, fixtureTabId, {
       version: 1,
+      requestId: 'req_e2e_cancel_start_12345',
+      type: 'START_PAGE_TRANSLATION',
+      payload: {
+        sessionId: 'session_e2e_cancel_12345',
+        sourceLanguage: 'auto',
+        targetLanguage: 'de',
+        glossaryVersion: 0,
+        glossary: [],
+        autoTranslateDynamicContent: false,
+      },
+    });
+    const cancelResponse = await commandForFixture(popup, fixtureTabId, {
+      version: 1,
+      requestId: 'req_e2e_cancel_12345',
+      type: 'CANCEL_PAGE_TRANSLATION',
+      payload: { sessionId: 'session_e2e_cancel_12345' },
+    });
+    expect(cancelResponse).toMatchObject({
+      type: 'TRANSLATION_PROGRESS',
+      payload: { progress: { status: 'cancelled' } },
+    });
+    await expect(fixture.locator('#heading')).toHaveText(original.heading!);
+
+    await commandForFixture(popup, fixtureTabId, {
+      version: 1,
       requestId: 'req_e2e_selection_12345',
       type: 'TRANSLATE_SELECTION',
       payload: { text: 'Selected sentence' },

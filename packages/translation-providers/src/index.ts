@@ -36,12 +36,25 @@ export interface TranslationProvider {
   translate(request: TranslationRequest, context: ProviderContext): Promise<TranslationResponse>;
 }
 
-export function createMockProvider(): TranslationProvider {
+export function createMockProvider(options: { delayMs?: number } = {}): TranslationProvider {
   return {
     name: 'mock',
     async translate(request, context) {
       if (context.signal?.aborted) {
         throw new ProviderError('cancelled', 'The mock translation was cancelled.', false);
+      }
+      if ((options.delayMs ?? 0) > 0) {
+        await new Promise<void>((resolve, reject) => {
+          const onAbort = () => {
+            clearTimeout(timer);
+            reject(new ProviderError('cancelled', 'The mock translation was cancelled.', false));
+          };
+          const timer = setTimeout(() => {
+            context.signal?.removeEventListener('abort', onAbort);
+            resolve();
+          }, options.delayMs);
+          context.signal?.addEventListener('abort', onAbort, { once: true });
+        });
       }
 
       const response: TranslationResponse = {

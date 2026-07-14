@@ -1,4 +1,3 @@
-import { z } from 'zod';
 import type { AppSettings, PageSupport, SupportedLanguage } from '@translation/shared-types';
 
 export const CONTRACT_VERSION = 1 as const;
@@ -38,44 +37,6 @@ export const defaultSettings: AppSettings = {
   glossary: [],
 };
 
-export const apiEnvironmentSchema = z.object({
-  ENVIRONMENT: z.enum(['development', 'test', 'staging', 'production']).default('development'),
-  APP_VERSION: z.string().min(1).max(64).default(DEFAULT_APP_VERSION),
-  ALLOWED_EXTENSION_IDS: z.string().default(''),
-  TRANSLATION_ENABLED: z
-    .union([z.literal('true'), z.literal('false')])
-    .default('true')
-    .transform((value) => value === 'true'),
-  TRANSLATION_PROVIDER: z.enum(['mock', 'deepl']).default('mock'),
-  DEV_AUTH_TOKEN: z.string().max(500).optional(),
-  DEEPL_API_KEY: z.string().max(500).optional(),
-  OPENAI_API_KEY: z.string().max(500).optional(),
-  GOOGLE_TRANSLATE_API_KEY: z.string().max(500).optional(),
-  AZURE_TRANSLATOR_KEY: z.string().max(500).optional(),
-  AZURE_TRANSLATOR_REGION: z.string().max(100).optional(),
-  MAX_SEGMENTS_PER_REQUEST: z.coerce.number().int().positive().max(5_000).default(500),
-  MAX_INPUT_CHARACTERS_PER_REQUEST: z.coerce
-    .number()
-    .int()
-    .positive()
-    .max(1_000_000)
-    .default(20_000),
-  MAX_OUTPUT_CHARACTERS_PER_REQUEST: z.coerce
-    .number()
-    .int()
-    .positive()
-    .max(2_000_000)
-    .default(60_000),
-  REQUESTS_PER_MINUTE: z.coerce.number().int().positive().max(1_000).default(30),
-  CHARACTERS_PER_SESSION: z.coerce.number().int().positive().max(10_000_000).default(200_000),
-});
-
-export type ApiEnvironment = z.infer<typeof apiEnvironmentSchema>;
-
-export function parseApiEnvironment(input: Record<string, unknown>): ApiEnvironment {
-  return apiEnvironmentSchema.parse(input);
-}
-
 function isExcludedHostname(hostname: string, exclusions: string[]): boolean {
   return exclusions.some((entry) => {
     const normalized = entry.trim().toLowerCase().replace(/^\*\./, '');
@@ -94,7 +55,10 @@ export function isLikelySensitivePage(url: URL): boolean {
 
 export function classifyPageSupport(
   url: string | undefined,
-  settings: Pick<AppSettings, 'domainExclusions' | 'sensitivePageProtection'> = defaultSettings,
+  settings: Pick<
+    AppSettings,
+    'domainExclusions' | 'privacyMode' | 'sensitivePageProtection'
+  > = defaultSettings,
 ): PageSupport {
   if (!url) {
     return { status: 'unknown', reason: 'missing-url' };
@@ -121,7 +85,7 @@ export function classifyPageSupport(
       return { status: 'unsupported', reason: 'domain-excluded' };
     }
     if (settings.sensitivePageProtection && isLikelySensitivePage(parsed)) {
-      return { status: 'warning', reason: 'sensitive-page' };
+      return { status: settings.privacyMode ? 'unsupported' : 'warning', reason: 'sensitive-page' };
     }
     return { status: 'supported', reason: 'ordinary-web-page' };
   }
@@ -135,22 +99,4 @@ export function createRequestId(random: () => string = () => crypto.randomUUID()
 
 export function createSessionId(random: () => string = () => crypto.randomUUID()): string {
   return `session_${random().replaceAll('-', '')}`;
-}
-
-export function isAllowedExtensionOrigin(origin: string, environment: ApiEnvironment): boolean {
-  if (!origin) {
-    return false;
-  }
-
-  if (environment.ENVIRONMENT === 'development' || environment.ENVIRONMENT === 'test') {
-    return (
-      origin.startsWith('chrome-extension://') ||
-      /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
-    );
-  }
-
-  const allowedIds = environment.ALLOWED_EXTENSION_IDS.split(',')
-    .map((id) => id.trim())
-    .filter(Boolean);
-  return allowedIds.some((id) => origin === `chrome-extension://${id}`);
 }

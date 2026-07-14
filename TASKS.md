@@ -1,40 +1,26 @@
-# TASKS.md
+# Tasks
 
-## Current milestone
+## Completed local MVP
 
-- [x] Milestone 0 — discovery, specification, and architecture.
-- [ ] Milestone 1 — monorepo and extension shell.
+- [x] Milestone 0: product specification, architecture, security/privacy models, ADRs, and verification plan.
+- [x] Milestone 1: pnpm monorepo, WXT MV3 extension, Hono Worker, shared contracts, strict tooling, production builds, and browser loading.
+- [x] Milestone 2: DOM discovery, deterministic mock translation, batching, progress, cancellation, stale-session safety, and exact restore.
+- [x] Milestone 3 (credential-independent scope): validated API routes, provider isolation, DeepL adapter with mocked upstream tests, timeouts, limits, rate/quota controls, and safe errors.
+- [x] Milestone 4 (MVP scope): dynamic-content observer, loop prevention, partial-failure state, bounded memory/persistent cache, and navigation identity.
+- [x] Milestone 5 (MVP scope): production popup/options states, preferences, domain exclusions, privacy mode, sensitive-page behavior, cache controls, glossary, reduced motion, and accessible labels.
+- [x] Milestone 6: selected-text context menu, isolated result UI, copy, and browser verification.
 
-## Milestone 0 completed artifacts
+## Required before a public release
 
-- [x] Repository and environment assessment.
-- [x] `AGENTS.md` and living project documents.
-- [x] Product specification.
-- [x] Architecture, boundaries, API contracts, and data flow.
-- [x] Security, privacy, and threat models.
-- [x] Provider, extension framework, and backend evaluations.
-- [x] Translation pipeline design.
-- [x] Testing strategy and verification matrix.
-- [x] Performance targets and browser compatibility plan.
-- [x] Future platform roadmap.
-- [x] Ordered milestones and acceptance criteria.
-- [x] Initial task breakdown.
+- [ ] Run a live DeepL smoke test only after the owner supplies a backend credential and local development auth token.
+- [ ] Replace development authentication and in-memory usage counters with production identity, revocation, durable quotas, and abuse controls.
+- [ ] Complete medium/large fixture profiling, service-worker restart tests, SPA route fixtures, accessibility audit, and branded-Chrome manual console/network inspection.
+- [ ] Review provider processing/retention terms and finalize the public privacy policy and store disclosures.
+- [ ] Add store listing assets, support process, release signing, deployment configuration, and incident rollback procedure.
+- [ ] Decide the public product name, API hostname, supported language matrix, and production provider contract.
 
-## Milestone 1 scope
+## Explicitly out of scope until authorized
 
-- [ ] Create the pnpm workspace and TypeScript project references.
-- [ ] Scaffold the WXT extension with popup, options, service worker, and content-script entrypoints.
-- [ ] Scaffold the Cloudflare Worker API with health and language routes only.
-- [ ] Add shared types, runtime schemas, configuration validation, and typed message envelopes.
-- [ ] Add translation-core and provider interfaces without a real provider key.
-- [ ] Add the initial UI shell and locale message catalog.
-- [ ] Add formatter, linter, typecheck, unit-test, build, and unpacked-extension loading scripts.
-- [ ] Keep the product feature behavior behind clear placeholders; do not silently begin Milestone 2.
-
-## Open decisions to revisit
-
-- [ ] Confirm product name and public API hostname.
-- [ ] Benchmark DeepL against Google Cloud Translation and Azure Translator using representative fixtures before Milestone 3 provider lock.
-- [ ] Choose the production identity/session provider before Milestone 7.
-- [ ] Confirm supported language list and initial default target language.
-- [ ] Decide whether to request `storage` at install time or defer it until settings are used.
+- [ ] Deploy the Worker or publish the extension.
+- [ ] Add accounts, payments, subscriptions, analytics, or remote translation-memory storage.
+- [ ] Add Firefox, Safari, desktop, mobile, OCR, document, or screen-translation implementations.
