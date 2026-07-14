@@ -1,0 +1,29 @@
+# Dependencies and package-manager state
+node_modules/
+.pnpm-store/
+
+# Build, test, coverage, and local tooling output
+dist/
+build/
+.output/
+coverage/
+playwright-report/
+test-results/
+.wrangler/
+.wxt/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
