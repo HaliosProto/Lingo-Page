@@ -16,6 +16,8 @@ test-results/
 tmp/
 temp/
 *.tmp
+*.tsbuildinfo
+*.d.ts.map
 
 # Local environment and secrets
 .env
