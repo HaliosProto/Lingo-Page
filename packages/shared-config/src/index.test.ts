@@ -6,7 +6,8 @@ describe('shared configuration', () => {
     const environment = parseApiEnvironment({});
 
     expect(environment.ENVIRONMENT).toBe('development');
-    expect(environment.TRANSLATION_ENABLED).toBe(false);
+    expect(environment.TRANSLATION_ENABLED).toBe(true);
+    expect(environment.TRANSLATION_PROVIDER).toBe('mock');
     expect(environment.MAX_SEGMENTS_PER_REQUEST).toBe(500);
   });
 

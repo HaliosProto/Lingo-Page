@@ -44,6 +44,9 @@ importers:
       '@translation/shared-validation':
         specifier: workspace:*
         version: link:../../packages/shared-validation
+      '@translation/translation-providers':
+        specifier: workspace:*
+        version: link:../../packages/translation-providers
       hono:
         specifier: 4.12.30
         version: 4.12.30
@@ -122,6 +125,9 @@ importers:
       '@translation/shared-types':
         specifier: workspace:*
         version: link:../shared-types
+      '@translation/translation-core':
+        specifier: workspace:*
+        version: link:../translation-core
 
   packages/ui: {}
 

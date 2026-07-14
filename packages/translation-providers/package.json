@@ -10,7 +10,8 @@
     }
   },
   "dependencies": {
-    "@translation/shared-types": "workspace:*"
+    "@translation/shared-types": "workspace:*",
+    "@translation/translation-core": "workspace:*"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",

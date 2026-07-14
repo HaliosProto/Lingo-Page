@@ -3,12 +3,36 @@
   <head>
     <meta charset="utf-8" />
     <title>Translation Extension Fixture</title>
+    <style>
+      body {
+        font:
+          16px/1.5 system-ui,
+          sans-serif;
+        margin: 32px;
+      }
+      main {
+        max-width: 700px;
+      }
+    </style>
   </head>
   <body>
     <main>
-      <h1>Stable fixture heading</h1>
-      <p>This page is intentionally unchanged during Milestone 1.</p>
+      <h1 id="heading">Stable fixture heading</h1>
+      <p id="paragraph">This page changes only after an explicit translation request.</p>
+      <p id="whitespace">Whitespace must survive restoration.</p>
+      <p translate="no" id="notranslate">ProductName must stay unchanged.</p>
+      <code id="code">const doNotTranslate = true;</code>
+      <label>Account number <input id="account" value="1234 5678 9012" /></label>
       <button type="button">A page control</button>
+      <div id="dynamic"></div>
     </main>
+    <script>
+      window.addDynamicText = () => {
+        const paragraph = document.createElement('p');
+        paragraph.id = 'dynamic-paragraph';
+        paragraph.textContent = 'New content arrived after initial translation.';
+        document.querySelector('#dynamic').append(paragraph);
+      };
+    </script>
   </body>
 </html>

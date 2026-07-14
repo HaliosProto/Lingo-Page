@@ -13,15 +13,24 @@ function getApiOrigin(): string {
 
 export default defineConfig({
   modules: ['@wxt-dev/module-react'],
-  manifest: () => ({
+  manifest: ({ mode }) => ({
     name: 'Lingo Page',
     version: '0.1.0',
     description: 'A privacy-first in-page translation foundation.',
     default_locale: 'en',
-    permissions: ['activeTab', 'scripting', 'storage'],
-    host_permissions: [`${getApiOrigin()}/*`],
+    permissions: ['activeTab', 'contextMenus', 'scripting', 'storage'],
+    host_permissions: [
+      `${getApiOrigin()}/*`,
+      ...(mode === 'e2e' ? ['http://127.0.0.1:4173/*'] : []),
+    ],
     action: {
       default_title: 'Lingo Page',
+    },
+    commands: {
+      _execute_action: {
+        suggested_key: { default: 'Alt+Shift+L' },
+        description: 'Open Lingo Page for the current tab',
+      },
     },
     content_security_policy: {
       extension_pages: "script-src 'self'; object-src 'self';",
