@@ -6,14 +6,14 @@ Translation is an explicit user action. The extension does not silently translat
 
 ## Data categories
 
-| Data | Default handling | Retention intent |
-| --- | --- | --- |
-| Page text segments | Sent only for an active request; held in memory for mapping/restore | Discard after session/request unless the user opts into a future translation-memory feature. |
-| Page hostname/title | Used for popup context and policy checks; minimize storage | Do not retain as browsing history. |
-| Settings | Local extension storage | Until user clears or uninstalls. |
-| Auth session | Short-lived/revocable app session | Until logout, expiry, revocation, or deletion. |
-| Usage metadata | Character/segment counts, status, duration, categories | Account/billing retention policy to be defined before accounts. |
-| Diagnostics | User-generated, redacted export | Local only unless user explicitly shares it. |
+| Data                | Default handling                                                    | Retention intent                                                                             |
+| ------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Page text segments  | Sent only for an active request; held in memory for mapping/restore | Discard after session/request unless the user opts into a future translation-memory feature. |
+| Page hostname/title | Used for popup context and policy checks; minimize storage          | Do not retain as browsing history.                                                           |
+| Settings            | Local extension storage                                             | Until user clears or uninstalls.                                                             |
+| Auth session        | Short-lived/revocable app session                                   | Until logout, expiry, revocation, or deletion.                                               |
+| Usage metadata      | Character/segment counts, status, duration, categories              | Account/billing retention policy to be defined before accounts.                              |
+| Diagnostics         | User-generated, redacted export                                     | Local only unless user explicitly shares it.                                                 |
 
 ## Sensitive-page protection
 

@@ -1,0 +1,26 @@
+{
+  "extends": "./.wxt/tsconfig.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "baseUrl": "../..",
+    "paths": {
+      "@translation/shared-types": ["packages/shared-types/src/index.ts"],
+      "@translation/shared-validation": ["packages/shared-validation/src/index.ts"],
+      "@translation/shared-config": ["packages/shared-config/src/index.ts"],
+      "@translation/translation-core": ["packages/translation-core/src/index.ts"],
+      "@translation/ui": ["packages/ui/src/index.ts"]
+    },
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitReturns": true,
+    "noEmit": true
+  },
+  "include": [
+    "env.d.ts",
+    ".wxt/types/**/*.d.ts",
+    "entrypoints/**/*.ts",
+    "entrypoints/**/*.tsx",
+    "src/**/*.ts",
+    "src/**/*.tsx"
+  ]
+}

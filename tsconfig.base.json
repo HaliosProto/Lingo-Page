@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@translation/shared-types": ["packages/shared-types/src/index.ts"],
+      "@translation/shared-validation": ["packages/shared-validation/src/index.ts"],
+      "@translation/shared-config": ["packages/shared-config/src/index.ts"],
+      "@translation/translation-core": ["packages/translation-core/src/index.ts"],
+      "@translation/translation-providers": ["packages/translation-providers/src/index.ts"],
+      "@translation/ui": ["packages/ui/src/index.ts"]
+    },
+    "strict": true,
+    "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "useDefineForClassFields": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": false,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "jsx": "react-jsx",
+    "noEmit": true
+  }
+}

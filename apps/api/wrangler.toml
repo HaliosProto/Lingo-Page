@@ -1,0 +1,8 @@
+name = "translation-api"
+main = "src/index.ts"
+compatibility_date = "2026-07-14"
+
+[vars]
+ENVIRONMENT = "development"
+APP_VERSION = "0.1.0"
+TRANSLATION_ENABLED = "false"

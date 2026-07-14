@@ -1,0 +1,10 @@
+.git/
+.output/
+.wxt/
+dist/
+coverage/
+playwright-report/
+test-results/
+.wrangler/
+node_modules/
+pnpm-lock.yaml

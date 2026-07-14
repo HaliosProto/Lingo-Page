@@ -1,0 +1,36 @@
+{
+  "productName": { "message": "Lingo Page" },
+  "productCategory": { "message": "In-page translation" },
+  "shellLabel": { "message": "Shell" },
+  "loading": { "message": "Checking page…" },
+  "supportedPage": { "message": "Ready for this page" },
+  "unsupportedPage": { "message": "This page is not supported" },
+  "unknownPage": { "message": "Page status is unknown" },
+  "noActiveTab": { "message": "No active tab is available." },
+  "unexpectedError": { "message": "Something unexpected happened." },
+  "checkingCurrentTab": { "message": "Checking current tab" },
+  "translationSettings": { "message": "Translation settings" },
+  "sourceLanguage": { "message": "Source language" },
+  "targetLanguage": { "message": "Target language" },
+  "detectedLanguagePlaceholder": { "message": "Detection arrives in Milestone 2" },
+  "targetLanguagePlaceholder": { "message": "Choose a default in Settings" },
+  "translatePage": { "message": "Translate Page" },
+  "milestoneTwoTooltip": { "message": "Page translation becomes available in Milestone 2." },
+  "milestoneTwoMessage": {
+    "message": "The shell is ready. Page translation is intentionally disabled until Milestone 2."
+  },
+  "backendConnected": { "message": "Backend connected" },
+  "backendUnavailable": { "message": "Backend unavailable" },
+  "checking": { "message": "Checking…" },
+  "privacyStatus": { "message": "Privacy-first shell" },
+  "settings": { "message": "Settings" },
+  "settingsUnavailable": { "message": "Settings could not be opened." },
+  "settingsIntro": { "message": "Manage local preferences for the translation shell." },
+  "languagePreferences": { "message": "Language preferences" },
+  "defaultTargetLanguage": { "message": "Default target language" },
+  "saveSettings": { "message": "Save settings" },
+  "settingsSaved": { "message": "Settings saved locally." },
+  "privacyDescription": {
+    "message": "No page text is collected or sent in Milestone 1. Translation is not active yet."
+  }
+}

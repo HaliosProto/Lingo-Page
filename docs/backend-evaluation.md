@@ -1,11 +1,11 @@
 # Backend platform evaluation
 
-| Option | Strengths | Costs/risks | Decision |
-| --- | --- | --- | --- |
-| Cloudflare Workers + Hono | Web-standard fetch runtime, TypeScript support, encrypted secrets, edge deployment, clear request/resource limits, small API surface | Worker runtime constraints; stateful quotas need a separate data store; provider SDK compatibility varies | Choose for API shell. |
-| Node.js API (Fastify/Hono) | Broad SDK compatibility, easy local debugging, mature ecosystem | Hosting/patching/egress/scale choices; larger operational surface | Keep as a portable fallback if provider SDK/runtime blocks Workers. |
-| Supabase Edge Functions | Natural future fit for auth, Postgres, usage, and subscriptions | Runtime and deployment coupling; account/auth work is out of scope now | Defer to Milestone 7 evaluation. |
-| Serverless platform functions | Simple deployment and autoscaling | Vendor-specific limits and less direct control over edge/secret behavior | No advantage over Workers for this first API. |
+| Option                        | Strengths                                                                                                                            | Costs/risks                                                                                               | Decision                                                            |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Cloudflare Workers + Hono     | Web-standard fetch runtime, TypeScript support, encrypted secrets, edge deployment, clear request/resource limits, small API surface | Worker runtime constraints; stateful quotas need a separate data store; provider SDK compatibility varies | Choose for API shell.                                               |
+| Node.js API (Fastify/Hono)    | Broad SDK compatibility, easy local debugging, mature ecosystem                                                                      | Hosting/patching/egress/scale choices; larger operational surface                                         | Keep as a portable fallback if provider SDK/runtime blocks Workers. |
+| Supabase Edge Functions       | Natural future fit for auth, Postgres, usage, and subscriptions                                                                      | Runtime and deployment coupling; account/auth work is out of scope now                                    | Defer to Milestone 7 evaluation.                                    |
+| Serverless platform functions | Simple deployment and autoscaling                                                                                                    | Vendor-specific limits and less direct control over edge/secret behavior                                  | No advantage over Workers for this first API.                       |
 
 ## Decision
 

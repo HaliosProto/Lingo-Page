@@ -11,15 +11,15 @@
 
 ## Trust boundaries
 
-| Boundary | Untrusted input | Required controls |
-| --- | --- | --- |
-| Page DOM → content script | Text, attributes, node shape, mutation events | Eligibility checks, size bounds, no HTML interpretation, loop guards. |
-| Popup → service worker | User-controlled UI messages | Runtime schema, allowed message types, active-tab identity check. |
-| Content script → service worker | Segment data and progress | Runtime schema, sender/frame/tab checks, request/navigation binding, limits. |
-| Extension → API | Structured translation payload | HTTPS, auth, schema, timeout, abort, request ID, no provider options from page. |
-| API → provider | Provider-specific payload | Allowlisted endpoint/model, server secret, timeout, safe retry, response validation. |
-| Provider → API | External response | Strict schema, exact ID reconciliation, plain-text constraints, expansion checks. |
-| API logs/metrics | Operational events | Redaction, aggregation, no raw text/URLs/tokens. |
+| Boundary                        | Untrusted input                               | Required controls                                                                    |
+| ------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Page DOM → content script       | Text, attributes, node shape, mutation events | Eligibility checks, size bounds, no HTML interpretation, loop guards.                |
+| Popup → service worker          | User-controlled UI messages                   | Runtime schema, allowed message types, active-tab identity check.                    |
+| Content script → service worker | Segment data and progress                     | Runtime schema, sender/frame/tab checks, request/navigation binding, limits.         |
+| Extension → API                 | Structured translation payload                | HTTPS, auth, schema, timeout, abort, request ID, no provider options from page.      |
+| API → provider                  | Provider-specific payload                     | Allowlisted endpoint/model, server secret, timeout, safe retry, response validation. |
+| Provider → API                  | External response                             | Strict schema, exact ID reconciliation, plain-text constraints, expansion checks.    |
+| API logs/metrics                | Operational events                            | Redaction, aggregation, no raw text/URLs/tokens.                                     |
 
 ## Extension controls
 

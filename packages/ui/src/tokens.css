@@ -1,0 +1,31 @@
+:root {
+  color-scheme: light dark;
+  --translation-ink: #18212b;
+  --translation-muted: #627181;
+  --translation-accent: #2764d8;
+  --translation-surface: #f7f9fc;
+  --translation-border: #d7dee8;
+  --translation-danger: #b42318;
+  --translation-success: #087443;
+  --translation-radius-small: 8px;
+  --translation-radius-medium: 14px;
+  --translation-motion-fast: 120ms;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --translation-ink: #eef3f8;
+    --translation-muted: #a9b7c6;
+    --translation-accent: #8fb2ff;
+    --translation-surface: #18212b;
+    --translation-border: #354352;
+    --translation-danger: #ff9f94;
+    --translation-success: #7ee2b8;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --translation-motion-fast: 0ms;
+  }
+}

@@ -22,14 +22,14 @@ Messages are validated with shared runtime schemas. Unknown fields are rejected 
 ## Domain types
 
 ```ts
-type TranslationMode = "page" | "selection" | "composer";
+type TranslationMode = 'page' | 'selection' | 'composer';
 
 type TranslationSegment = {
-  id: string;                 // opaque, bounded, unique per request
-  text: string;               // plain text, bounded
-  context?: string;           // bounded, privacy-minimized
-  elementRole?: string;       // allowlisted semantic role
-  preserveTokens?: string[];  // bounded opaque placeholders
+  id: string; // opaque, bounded, unique per request
+  text: string; // plain text, bounded
+  context?: string; // bounded, privacy-minimized
+  elementRole?: string; // allowlisted semantic role
+  preserveTokens?: string[]; // bounded opaque placeholders
 };
 
 type TranslationRequest = {
@@ -39,8 +39,8 @@ type TranslationRequest = {
   mode: TranslationMode;
   segments: TranslationSegment[];
   glossaryVersion?: string;
-  tone?: "neutral" | "formal" | "informal";
-  formality?: "default" | "more" | "less";
+  tone?: 'neutral' | 'formal' | 'informal';
+  formality?: 'default' | 'more' | 'less';
 };
 
 type TranslationResponse = {

@@ -11,6 +11,11 @@ playwright-report/
 test-results/
 .wrangler/
 .wxt/
+.dev.vars
+.dev.vars.*
+tmp/
+temp/
+*.tmp
 
 # Local environment and secrets
 .env

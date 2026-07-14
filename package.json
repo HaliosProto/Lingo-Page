@@ -1,0 +1,41 @@
+{
+  "name": "translation-extension-app",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": ">=24.14.0",
+    "pnpm": ">=11.7.0 <12"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @translation/api --filter @translation/extension dev",
+    "dev:extension": "pnpm --filter @translation/extension dev",
+    "dev:api": "pnpm --filter @translation/api dev",
+    "build": "pnpm run build:packages && pnpm run build:extension && pnpm run build:api",
+    "build:packages": "pnpm --workspace-concurrency=1 --filter @translation/shared-types --filter @translation/shared-validation --filter @translation/shared-config --filter @translation/translation-core --filter @translation/translation-providers --filter @translation/ui --filter @translation/testing build",
+    "build:extension": "pnpm --filter @translation/extension build",
+    "build:api": "pnpm --filter @translation/api build",
+    "typecheck": "pnpm run typecheck:packages && pnpm run typecheck:api && pnpm run typecheck:extension",
+    "typecheck:packages": "pnpm --workspace-concurrency=1 --filter @translation/shared-types --filter @translation/shared-validation --filter @translation/shared-config --filter @translation/translation-core --filter @translation/translation-providers --filter @translation/ui --filter @translation/testing typecheck",
+    "typecheck:api": "pnpm --filter @translation/api typecheck",
+    "typecheck:extension": "pnpm --filter @translation/extension typecheck",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "pnpm run test:unit && pnpm run test:integration",
+    "test:unit": "vitest run --passWithNoTests",
+    "test:integration": "vitest run apps/api/src/index.test.ts",
+    "test:e2e": "pnpm run build:packages && pnpm run build:extension && playwright test",
+    "verify": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.61.1",
+    "@types/node": "26.1.1",
+    "eslint": "10.7.0",
+    "prettier": "3.9.5",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.64.0",
+    "vitest": "4.1.10"
+  }
+}

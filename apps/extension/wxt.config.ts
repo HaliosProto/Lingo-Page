@@ -1,0 +1,30 @@
+import { defineConfig } from 'wxt';
+
+const defaultApiBaseUrl = 'http://localhost:8787';
+
+function getApiOrigin(): string {
+  const configured = import.meta.env.WXT_API_BASE_URL ?? defaultApiBaseUrl;
+  try {
+    return new URL(configured).origin;
+  } catch {
+    return new URL(defaultApiBaseUrl).origin;
+  }
+}
+
+export default defineConfig({
+  modules: ['@wxt-dev/module-react'],
+  manifest: () => ({
+    name: 'Lingo Page',
+    version: '0.1.0',
+    description: 'A privacy-first in-page translation foundation.',
+    default_locale: 'en',
+    permissions: ['activeTab', 'scripting', 'storage'],
+    host_permissions: [`${getApiOrigin()}/*`],
+    action: {
+      default_title: 'Lingo Page',
+    },
+    content_security_policy: {
+      extension_pages: "script-src 'self'; object-src 'self';",
+    },
+  }),
+});

@@ -1,0 +1,22 @@
+{
+  "name": "@translation/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --local --port 8787",
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --config ../../vitest.config.ts ../../apps/api/src/index.test.ts"
+  },
+  "dependencies": {
+    "@translation/shared-config": "workspace:*",
+    "@translation/shared-types": "workspace:*",
+    "@translation/shared-validation": "workspace:*",
+    "hono": "4.12.30"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260714.1",
+    "wrangler": "4.110.0"
+  }
+}

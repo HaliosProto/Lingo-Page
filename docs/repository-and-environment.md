@@ -8,15 +8,15 @@ The workspace directory existed but was empty. Inspection found no source files,
 
 ## Available development environment
 
-| Capability | Finding | Impact |
-| --- | --- | --- |
-| Node.js | 24.18.0 | Suitable for TypeScript tooling; pin a supported project version during Milestone 1. |
-| pnpm | 11.7.0 | Use pnpm workspaces. |
-| npm | Installed but PowerShell shim is blocked by execution policy | Use pnpm or `npm.cmd` if needed. |
-| Git | 2.53.0 | Available, but repository initialization is outside Milestone 0 scope. |
-| ripgrep | Available | Use for fast source and documentation search. |
-| Chrome | `C:\Program Files\Google\Chrome\Application\chrome.exe` | Real Chromium verification is possible after the extension shell exists. |
-| Playwright/WXT/Wrangler | Not found globally | Install as project-local dev dependencies in Milestone 1. |
+| Capability              | Finding                                                      | Impact                                                                               |
+| ----------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| Node.js                 | 24.18.0                                                      | Suitable for TypeScript tooling; pin a supported project version during Milestone 1. |
+| pnpm                    | 11.7.0                                                       | Use pnpm workspaces.                                                                 |
+| npm                     | Installed but PowerShell shim is blocked by execution policy | Use pnpm or `npm.cmd` if needed.                                                     |
+| Git                     | 2.53.0                                                       | Available, but repository initialization is outside Milestone 0 scope.               |
+| ripgrep                 | Available                                                    | Use for fast source and documentation search.                                        |
+| Chrome                  | `C:\Program Files\Google\Chrome\Application\chrome.exe`      | Real Chromium verification is possible after the extension shell exists.             |
+| Playwright/WXT/Wrangler | Not found globally                                           | Install as project-local dev dependencies in Milestone 1.                            |
 
 ## Consequences
 
