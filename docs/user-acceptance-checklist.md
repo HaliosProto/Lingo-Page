@@ -1,0 +1,24 @@
+# Local owner acceptance checklist
+
+Run `pnpm local:test`, load `artifacts/translation-extension-local-rc/extension` as an unpacked extension, and keep the API at `http://127.0.0.1:8787` running.
+
+- [ ] Popup shows `LOCAL`, a version, and `Mock mode - local backend`.
+- [ ] An ordinary HTTP(S) page reports ready and translates only eligible visible text.
+- [ ] Links, images, controls, forms, layout, and page behavior remain intact.
+- [ ] Restore returns the original text exactly.
+- [ ] Cancel stops work without applying stale or partial unsafe replacements.
+- [ ] Progress reports discovery and translation state; failure shows a retry action.
+- [ ] Dynamic content is translated when enabled and remains untouched when disabled.
+- [ ] Selected text produces an isolated copyable result card.
+- [ ] Persian/RTL output preserves readable direction and layout.
+- [ ] Sensitive-page protection, domain exclusions, and privacy mode block or warn as documented.
+- [ ] Password, payment, security, editable, code, script, style, hidden, and extension-owned content is excluded.
+- [ ] Glossary terms are applied; clearing cache removes local translated-text entries.
+- [ ] Light, dark, system, reduced-motion, and keyboard workflows behave as expected.
+- [ ] Options shows backend/provider status and downloads privacy-safe diagnostics.
+- [ ] Diagnostics contain no page text, URLs, tokens, cookies, or authorization headers.
+- [ ] Stopping the backend produces a clear unavailable state; restarting permits retry.
+- [ ] `pnpm verify` and `pnpm test:e2e` pass; managed Chromium and branded Chrome results are recorded separately.
+- [ ] Source, Git history, production bundle, source maps, logs, env files, and staged RC contain no provider key.
+
+Record any failure with the exact step, expected result, actual result, browser/channel, extension version, and the diagnostics file if safe to share. Do not attach page text, full URLs, cookies, form values, or secrets.

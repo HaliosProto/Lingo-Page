@@ -37,7 +37,7 @@
 ## API controls
 
 - Production HTTPS only; strict CORS allowlist for the extension origin(s).
-- Development auth is disabled outside local development and visibly labeled.
+- Development auth is disabled only for the explicitly loopback-bound local helper; the UI labels the local build and provider mode. Staging and production require server-side authentication.
 - Bearer tokens are short-lived/revocable in production; no admin token is issued to the extension.
 - Validate content type, body size, segment count, segment length, total characters, language codes, mode, and supported options.
 - Enforce per-user, per-IP, daily, monthly, and emergency global limits.
@@ -46,6 +46,7 @@
 - Retry only idempotent safe transient failures with bounded backoff.
 - Return normalized error codes plus request IDs, not upstream secrets or raw provider payloads.
 - Redact authorization headers, secrets, page content, full URLs, and provider responses from logs.
+- Diagnostics export contains only extension version, backend/provider status, boolean settings, and cache/glossary counts; it never includes page text, URLs, tokens, or secrets.
 
 ## Output validation
 

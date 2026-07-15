@@ -28,6 +28,7 @@ Use a warning/blocking layer based on conservative hostname/path signals and pag
 - No persistent raw-text cache by default.
 - Future cache modes explicitly labeled: none, local-only, account-synced, organization-managed.
 - Diagnostic export deliberately redacts text, tokens, cookies, form contents, query parameters, and authorization headers.
+- The local diagnostics export is metadata-only: provider category, availability, settings booleans, and cache/glossary counts.
 
 ## Provider disclosure
 

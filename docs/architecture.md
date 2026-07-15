@@ -10,7 +10,7 @@ Status: provisional baseline from Milestone 0
 - Validation: shared Zod-style runtime schemas; types are inferred from schemas where practical.
 - Testing: Vitest and Playwright with local fixtures.
 - Provider boundary: `TranslationProvider` interface. DeepL is the first real adapter candidate; the mock provider is required first.
-- Authentication: development-only local token initially; short-lived revocable application sessions before public release.
+- Authentication: loopback-only local development path initially; staging/production require short-lived revocable application sessions before public release.
 
 Detailed rationale is in `docs/decisions/`.
 
@@ -65,6 +65,8 @@ Hono provides small route composition and Web-standard request/response handling
 ## Storage model
 
 Milestone 1 stores only settings needed by the shell. MVP translation content remains memory-only by default. Future account data is separate from local settings. Any persistent translation memory must have explicit opt-in, size limits, clear action, and cache-key versioning.
+
+The local release-candidate workflow builds an unpacked production extension, starts the API on `127.0.0.1`, and keeps provider selection in the backend environment. The extension can export metadata-only diagnostics without page text or URLs.
 
 ## Data-flow sequence
 

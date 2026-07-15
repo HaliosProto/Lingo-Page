@@ -4,7 +4,7 @@ Audit date: 2026-07-15
 
 ## Result
 
-The repository now contains a complete local translation MVP. The extension, local API, deterministic provider, secure real-provider adapter, settings, selected-text flow, tests, and documentation are implemented. Production deployment and public distribution were not authorized and were not performed.
+The repository now contains a complete local translation MVP and a reproducible local release-candidate workflow. The extension, local API, deterministic provider, secure real-provider adapter, settings, selected-text flow, diagnostics UX, tests, and owner documentation are implemented. Production deployment and public distribution were not authorized and were not performed.
 
 ## Verified implementation
 
@@ -31,3 +31,4 @@ The repository now contains a complete local translation MVP. The extension, loc
 - No real provider credential was available, so a live DeepL request is unverified. The adapter is covered with mocked upstream responses.
 - Installed branded Chrome 150 did not honor command-line unpacked-extension loading during automation; managed Playwright Chromium passed. Manual branded-Chrome steps are in `docs/local-development.md`.
 - Production identity, durable usage accounting, deployment, public privacy terms, store assets/review, broad performance profiling, and non-Chrome platforms remain future milestones.
+- Owner acceptance of `docs/user-acceptance-checklist.md` is still pending. The local RC artifact is ignored and must not be uploaded or published.

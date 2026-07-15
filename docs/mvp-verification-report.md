@@ -18,7 +18,7 @@ Date: 2026-07-15
 ## Security and privacy evidence
 
 - Production manifest permissions: `activeTab`, `contextMenus`, `scripting`, `storage`.
-- Production host permission: `http://localhost:8787/*` only.
+- Production host permission: `http://127.0.0.1:8787/*` only.
 - No `<all_urls>`, remote executable code, provider hostname, or provider credential in the extension manifest.
 - API errors do not echo invalid request content; logs record request ID and error category only.
 - DeepL tests verify the key is placed only in the server-side Authorization header and protected page tokens are not sent verbatim.
@@ -39,3 +39,4 @@ Date: 2026-07-15
 - Live DeepL smoke test: blocked only by absent external credential; no credential was requested or invented.
 - Branded Chrome manual console/network pass: manual steps provided; managed Playwright Chromium passed.
 - Store publication, deployment, production accounts/quotas, accessibility certification, and broad performance profiling are outside the local MVP.
+- The local RC start/stop workflow, diagnostics export, and acceptance runbook are implemented for owner review; their final manual acceptance remains pending.

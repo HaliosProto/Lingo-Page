@@ -31,11 +31,10 @@ Requirements: Node.js 24.14+, pnpm 11.7.x, and Chrome/Chromium.
 
 ```text
 pnpm install
-pnpm dev:api
-pnpm dev:extension
+pnpm local:test
 ```
 
-The API runs at `http://localhost:8787` with the visible deterministic mock provider. See `docs/local-development.md` for production-build loading, environment variables, DeepL adapter testing, and troubleshooting.
+This builds the local release candidate and starts the loopback API at `http://127.0.0.1:8787` with the visible deterministic mock provider. Load `artifacts/translation-extension-local-rc/extension` from `chrome://extensions`. See `docs/local-development.md` and `docs/user-acceptance-testing.md` for the complete owner workflow.
 
 ## Quality commands
 
@@ -47,6 +46,7 @@ pnpm test
 pnpm test:e2e
 pnpm build
 pnpm verify
+pnpm local:stop
 ```
 
 `pnpm test:e2e` builds a test-only extension variant with access to the single local fixture origin. `pnpm build` produces the production manifest without that fixture permission.

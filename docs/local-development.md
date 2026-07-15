@@ -6,36 +6,47 @@
 - pnpm 11.7.x.
 - Chrome or Chromium.
 
-## Install and run
+## Local release-candidate workflow
 
 ```text
 pnpm install
-pnpm dev:api
-pnpm dev:extension
+pnpm local:test
 ```
 
-The API defaults to `http://localhost:8787`, `TRANSLATION_PROVIDER=mock`, and translation enabled. The mock prefixes each result with the target language code so DOM behavior is visible and deterministic.
+`pnpm local:test` verifies and builds the production extension, starts a hidden loopback-only API at `http://127.0.0.1:8787`, and reports the unpacked extension directory. The default provider is mock; the popup and Options page label this explicitly. Stop it with `pnpm local:stop`.
+
+Shortcuts:
+
+```text
+pnpm local:start     # start mock backend without rebuilding
+pnpm local:mock      # same as local:start
+pnpm local:deepl     # optional backend-only DeepL mode
+pnpm build:release-candidate
+pnpm local:stop
+```
+
+The mock prefixes each result with the target language code so DOM behavior is visible and deterministic. Backend stdout/stderr are written to ignored `.local/api.stdout.log` and `.local/api.stderr.log`; secrets and page text must not be added to those files.
 
 To build production artifacts:
 
 ```text
-pnpm build
+pnpm build:release-candidate
 ```
 
-Load `apps/extension/.output/chrome-mv3` from `chrome://extensions` using **Load unpacked**. Keep the local API running. Pin the extension, open an ordinary HTTP(S) page, open Lingo Page (or press Alt+Shift+L), choose a target, and select **Translate page**.
+Load `artifacts/translation-extension-local-rc/extension` from `chrome://extensions` using **Load unpacked**. Keep the local API running. Pin the extension, open an ordinary HTTP(S) page, open Lingo Page, choose a target, and select **Translate page**. The artifact also contains `version.json` and checksums.
 
 ## Environment
 
 `.env.example` lists client-safe and backend-only values. Wrangler local secrets belong in ignored `apps/api/.dev.vars` or the platform secret store, never in WXT-prefixed variables.
 
-For a direct authenticated DeepL API smoke test:
+For optional local DeepL testing:
 
-1. Set `TRANSLATION_PROVIDER=deepl`, `DEEPL_API_KEY`, and a random `DEV_AUTH_TOKEN` in backend-only local secrets.
-2. Start the API.
-3. Send a bounded `POST /v1/translate` request with `Authorization: Bearer <DEV_AUTH_TOKEN>`.
-4. Confirm the response IDs/session match and inspect logs for request metadata only, never text or credentials.
+1. Copy `apps/api/.dev.vars.example` to `apps/api/.dev.vars`.
+2. Put the key only in the `DEEPL_API_KEY` value in that ignored file; do not paste it into chat, the extension, or a command line.
+3. Run `pnpm local:deepl`. The helper binds Wrangler to `127.0.0.1` and does not print the key.
+4. Confirm the Options page says `DeepL via local backend`. This path is unverified until an owner supplies and tests a key locally.
 
-The extension intentionally does not embed a development bearer token. A real provider becomes an extension end-to-end path only after production identity/session work.
+The loopback-only development path does not need an extension bearer token. Staging and production still require server-side authentication. The extension never embeds a development bearer token.
 
 ## Verification
 
@@ -44,7 +55,7 @@ pnpm verify
 pnpm test:e2e
 ```
 
-`pnpm verify` runs formatting, lint, strict types, unit/integration tests, and production builds. `pnpm test:e2e` creates `.output/chrome-mv3-e2e`, whose extra host permission is limited to `http://127.0.0.1:4173/*`. Run `pnpm build` afterward when inspecting the production manifest.
+`pnpm verify` runs formatting, lint, strict types, unit/integration tests, and production builds. `pnpm test:e2e` creates `.output/chrome-mv3-e2e`, whose extra host permission is limited to `http://127.0.0.1:4173/*`. Managed Chromium coverage and branded Chrome coverage are reported separately.
 
 ## Manual Chrome checklist
 

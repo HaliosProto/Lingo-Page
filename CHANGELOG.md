@@ -17,3 +17,8 @@
 
 - Added repository operating rules and the product, architecture, security, privacy, threat, pipeline, testing, compatibility, performance, roadmap, milestone, acceptance, and verification documents.
 - Selected WXT + React, Cloudflare Workers + Hono, a provider-neutral translation core, and DeepL as the provisional first real provider.
+
+### Local release-candidate workflow - 2026-07-15
+
+- Added loopback-only local mock/DeepL start-stop scripts and ignored release-candidate packaging with checksums.
+- Added explicit local provider/version status, retry UX, metadata-only diagnostics export, and owner acceptance runbooks.

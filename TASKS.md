@@ -12,12 +12,17 @@
 
 ## Required before a public release
 
-- [ ] Run a live DeepL smoke test only after the owner supplies a backend credential and local development auth token.
+- [ ] Run a live DeepL smoke test only after the owner supplies a backend credential and explicitly approves the local test; the credential remains in ignored `apps/api/.dev.vars`.
 - [ ] Replace development authentication and in-memory usage counters with production identity, revocation, durable quotas, and abuse controls.
 - [ ] Complete medium/large fixture profiling, service-worker restart tests, SPA route fixtures, accessibility audit, and branded-Chrome manual console/network inspection.
 - [ ] Review provider processing/retention terms and finalize the public privacy policy and store disclosures.
 - [ ] Add store listing assets, support process, release signing, deployment configuration, and incident rollback procedure.
 - [ ] Decide the public product name, API hostname, supported language matrix, and production provider contract.
+
+## Current local release-candidate handoff
+
+- [ ] Owner runs `docs/user-acceptance-testing.md` against `pnpm local:test`.
+- [ ] Owner approves the checklist and the exact next milestone before any deployment or publication work.
 
 ## Explicitly out of scope until authorized
 
