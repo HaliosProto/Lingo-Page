@@ -13,11 +13,14 @@ test-results/
 .wxt/
 .dev.vars
 .dev.vars.*
+!apps/api/.dev.vars.example
 tmp/
 temp/
 *.tmp
 *.tsbuildinfo
 *.d.ts.map
+artifacts/
+.local/
 
 # Local environment and secrets
 .env

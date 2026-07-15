@@ -98,7 +98,13 @@ describe('translation API', () => {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(requestBody),
       },
-      { ...environment, TRANSLATION_PROVIDER: 'deepl', DEEPL_API_KEY: 'server-secret' },
+      {
+        ...environment,
+        ENVIRONMENT: 'production',
+        TRANSLATION_PROVIDER: 'deepl',
+        DEEPL_API_KEY: 'server-secret',
+        DEV_AUTH_TOKEN: 'test-token',
+      },
     );
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toMatchObject({ error: { code: 'AUTH_REQUIRED' } });

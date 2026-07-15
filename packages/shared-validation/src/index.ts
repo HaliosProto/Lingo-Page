@@ -144,6 +144,28 @@ export const usageResponseSchema = z.object({
   characterLimit: z.number().int().positive(),
 });
 
+export const diagnosticReportSchema = z.object({
+  generatedAt: z.string().max(64),
+  extensionVersion: z.string().min(1).max(64),
+  backend: z.object({
+    status: z.enum(['available', 'unavailable']),
+    translationEnabled: z.boolean(),
+    provider: z.enum(['none', 'mock', 'deepl']),
+  }),
+  settings: z.object({
+    privacyMode: z.boolean(),
+    persistentCache: z.boolean(),
+    autoTranslateDynamicContent: z.boolean(),
+    selectedTextEnabled: z.boolean(),
+    domainExclusionCount: z.number().int().nonnegative(),
+    glossaryEntryCount: z.number().int().nonnegative(),
+  }),
+  cache: z.object({
+    memoryEntries: z.number().int().nonnegative(),
+    persistentEntries: z.number().int().nonnegative(),
+  }),
+});
+
 export const translationProgressSchema = z.object({
   sessionId: sessionIdSchema.optional(),
   status: z.enum([
@@ -221,6 +243,7 @@ export const extensionRequestSchema = z.discriminatedUnion('type', [
     }),
   }),
   messageBaseSchema.extend({ type: z.literal('CLEAR_LOCAL_DATA'), payload: z.object({}) }),
+  messageBaseSchema.extend({ type: z.literal('EXPORT_DIAGNOSTICS'), payload: z.object({}) }),
 ]);
 
 export const contentRequestSchema = z.discriminatedUnion('type', [
@@ -300,6 +323,10 @@ export const extensionResponseSchema = z.discriminatedUnion('type', [
   messageBaseSchema.extend({
     type: z.literal('LOCAL_DATA_CLEARED'),
     payload: z.object({ cleared: z.literal(true) }),
+  }),
+  messageBaseSchema.extend({
+    type: z.literal('DIAGNOSTICS'),
+    payload: z.object({ report: diagnosticReportSchema }),
   }),
   messageBaseSchema.extend({
     type: z.literal('MESSAGE_ERROR'),

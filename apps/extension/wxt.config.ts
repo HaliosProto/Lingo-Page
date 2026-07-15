@@ -1,6 +1,6 @@
 import { defineConfig } from 'wxt';
 
-const defaultApiBaseUrl = 'http://localhost:8787';
+const defaultApiBaseUrl = 'http://127.0.0.1:8787';
 
 function getApiOrigin(): string {
   const configured = import.meta.env.WXT_API_BASE_URL ?? defaultApiBaseUrl;

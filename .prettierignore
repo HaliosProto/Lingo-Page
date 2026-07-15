@@ -8,3 +8,5 @@ test-results/
 .wrangler/
 node_modules/
 pnpm-lock.yaml
+artifacts/
+.local/

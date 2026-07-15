@@ -2,7 +2,7 @@ import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { browser } from 'wxt/browser';
 import { createRequestId, defaultSettings, developmentLanguages } from '@translation/shared-config';
-import type { AppSettings, GlossaryEntry } from '@translation/shared-types';
+import type { AppSettings, GlossaryEntry, HealthResponse } from '@translation/shared-types';
 import { extensionResponseSchema, type ExtensionResponse } from '@translation/shared-validation';
 import { ErrorBoundary } from '../../src/ui/ErrorBoundary';
 import '../../src/ui/global.css';
@@ -39,21 +39,38 @@ function OptionsApp() {
   const [exclusions, setExclusions] = useState('');
   const [saved, setSaved] = useState(false);
   const [message, setMessage] = useState<string>();
+  const [health, setHealth] = useState<HealthResponse | null>(null);
 
   useEffect(() => {
-    void sendMessage({
-      version: 1,
-      requestId: createRequestId(),
-      type: 'GET_SETTINGS',
-      payload: {},
-    })
-      .then((response) => {
-        if (response.type !== 'SETTINGS') return;
-        setSettings(response.payload.settings);
-        setExclusions(response.payload.settings.domainExclusions.join('\n'));
+    void Promise.all([
+      sendMessage({
+        version: 1,
+        requestId: createRequestId(),
+        type: 'GET_SETTINGS',
+        payload: {},
+      }),
+      sendMessage({
+        version: 1,
+        requestId: createRequestId(),
+        type: 'GET_API_HEALTH',
+        payload: {},
+      }),
+    ])
+      .then(([settingsResponse, healthResponse]) => {
+        if (settingsResponse.type === 'SETTINGS') {
+          setSettings(settingsResponse.payload.settings);
+          setExclusions(settingsResponse.payload.settings.domainExclusions.join('\n'));
+        }
+        if (healthResponse.type === 'API_HEALTH') setHealth(healthResponse.payload.health);
+        if (healthResponse.type === 'MESSAGE_ERROR') setMessage(healthResponse.payload.message);
       })
       .catch(() => setMessage('Settings could not be loaded.'));
   }, []);
+
+  useEffect(() => {
+    if (settings.theme === 'system') delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = settings.theme;
+  }, [settings.theme]);
 
   function update<K extends keyof AppSettings>(key: K, value: AppSettings[K]): void {
     setSaved(false);
@@ -83,6 +100,31 @@ function OptionsApp() {
     } else if (response.type === 'MESSAGE_ERROR') setMessage(response.payload.message);
   }
 
+  async function exportDiagnostics(): Promise<void> {
+    const response = await sendMessage({
+      version: 1,
+      requestId: createRequestId(),
+      type: 'EXPORT_DIAGNOSTICS',
+      payload: {},
+    });
+    if (response.type !== 'DIAGNOSTICS') {
+      setMessage(
+        response.type === 'MESSAGE_ERROR' ? response.payload.message : 'Diagnostics unavailable.',
+      );
+      return;
+    }
+    const blob = new Blob([JSON.stringify(response.payload.report, null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'lingo-page-diagnostics.json';
+    anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    setMessage('Privacy-safe diagnostics downloaded. It contains no page text or URLs.');
+  }
+
   function addGlossaryEntry(): void {
     const entry: GlossaryEntry = {
       id: `glossary_${crypto.randomUUID().replaceAll('-', '')}`,
@@ -109,7 +151,24 @@ function OptionsApp() {
         <p className="eyebrow">Lingo Page</p>
         <h1>Translation settings</h1>
         <p>Control what is translated, what stays local, and how page changes are handled.</p>
+        <span className="version-pill">LOCAL · v{browser.runtime.getManifest().version}</span>
       </header>
+
+      <section className="settings-card">
+        <h2>Local backend</h2>
+        <p
+          className={
+            health?.translationEnabled && health.provider.configured ? 'success-copy' : undefined
+          }
+        >
+          {health?.translationEnabled && health.provider.configured
+            ? health.provider.name === 'mock'
+              ? 'Mock mode - deterministic local output'
+              : 'DeepL via local backend'
+            : 'Backend unavailable'}
+        </p>
+        <small>Provider keys stay in the backend environment and never enter the extension.</small>
+      </section>
 
       <section className="settings-card">
         <h2>Languages and appearance</h2>
@@ -284,6 +343,9 @@ function OptionsApp() {
           }
         >
           Clear translation cache
+        </button>
+        <button className="secondary-button" type="button" onClick={() => void exportDiagnostics()}>
+          Download privacy-safe diagnostics
         </button>
       </div>
       {saved && (

@@ -172,3 +172,25 @@ export type SelectionResult = {
   sourceLanguage?: string;
   targetLanguage: string;
 };
+
+export type DiagnosticReport = {
+  generatedAt: string;
+  extensionVersion: string;
+  backend: {
+    status: 'available' | 'unavailable';
+    translationEnabled: boolean;
+    provider: 'none' | 'mock' | 'deepl';
+  };
+  settings: {
+    privacyMode: boolean;
+    persistentCache: boolean;
+    autoTranslateDynamicContent: boolean;
+    selectedTextEnabled: boolean;
+    domainExclusionCount: number;
+    glossaryEntryCount: number;
+  };
+  cache: {
+    memoryEntries: number;
+    persistentEntries: number;
+  };
+};

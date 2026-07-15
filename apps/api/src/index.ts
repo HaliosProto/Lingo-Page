@@ -64,10 +64,12 @@ function clientKey(context: { req: { header(name: string): string | undefined } 
 }
 
 function isAuthorized(authorization: string | undefined, environment: ApiEnvironment): boolean {
+  // Local development is loopback-only and can exercise a real provider without
+  // placing a bearer token in the extension bundle. Staging and production require auth.
   const requiresAuthentication =
     environment.ENVIRONMENT === 'staging' ||
     environment.ENVIRONMENT === 'production' ||
-    environment.TRANSLATION_PROVIDER !== 'mock';
+    Boolean(environment.DEV_AUTH_TOKEN);
   if (!requiresAuthentication) return true;
   if (!environment.DEV_AUTH_TOKEN) return false;
   return authorization === `Bearer ${environment.DEV_AUTH_TOKEN}`;

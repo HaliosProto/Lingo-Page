@@ -1,0 +1,9 @@
+# Copy this file to apps/api/.dev.vars for optional local DeepL testing.
+# Keep the copied file private and never commit it.
+ENVIRONMENT=development
+TRANSLATION_ENABLED=true
+TRANSLATION_PROVIDER=deepl
+DEEPL_API_KEY=
+
+# Optional: leave blank for the loopback-only extension workflow.
+DEV_AUTH_TOKEN=

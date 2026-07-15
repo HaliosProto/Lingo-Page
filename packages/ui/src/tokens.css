@@ -1,5 +1,6 @@
-:root {
-  color-scheme: light dark;
+:root,
+:root[data-theme='light'] {
+  color-scheme: light;
   --translation-ink: #18212b;
   --translation-muted: #627181;
   --translation-accent: #2764d8;
@@ -13,7 +14,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']):not([data-theme='dark']) {
     --translation-ink: #eef3f8;
     --translation-muted: #a9b7c6;
     --translation-accent: #8fb2ff;
@@ -22,6 +23,17 @@
     --translation-danger: #ff9f94;
     --translation-success: #7ee2b8;
   }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --translation-ink: #eef3f8;
+  --translation-muted: #a9b7c6;
+  --translation-accent: #8fb2ff;
+  --translation-surface: #18212b;
+  --translation-border: #354352;
+  --translation-danger: #ff9f94;
+  --translation-success: #7ee2b8;
 }
 
 @media (prefers-reduced-motion: reduce) {

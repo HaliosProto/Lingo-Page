@@ -132,7 +132,7 @@ test('translates, updates dynamic content, restores exactly, and supports select
     await expect(fixture.locator('#lingo-page-selection-result')).toBeAttached();
 
     await expect(popup.getByRole('heading', { name: 'Lingo Page' })).toBeVisible();
-    await expect(popup.getByText(/Connected · mock/u)).toBeVisible();
+    await expect(popup.getByText(/Mock mode - local backend/u)).toBeVisible();
 
     const options = await context.newPage();
     await options.goto(`chrome-extension://${extensionId}/options.html`);

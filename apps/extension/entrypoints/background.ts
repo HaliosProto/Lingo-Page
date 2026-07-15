@@ -195,6 +195,45 @@ async function getApiHealth(requestId: string): Promise<ExtensionResponse> {
   }
 }
 
+async function getDiagnostics(requestId: string): Promise<ExtensionResponse> {
+  const settings = await getSettings();
+  const healthResponse = await getApiHealth(createRequestId());
+  const health = healthResponse.type === 'API_HEALTH' ? healthResponse.payload.health : null;
+  let persistentEntries = 0;
+  if (settings.persistentCache && !settings.privacyMode) {
+    const stored = await browser.storage.local.get(CACHE_STORAGE_KEY);
+    const cache = stored[CACHE_STORAGE_KEY];
+    if (typeof cache === 'object' && cache !== null && !Array.isArray(cache)) {
+      persistentEntries = Object.keys(cache).length;
+    }
+  }
+  return extensionResponseSchema.parse({
+    version: CONTRACT_VERSION,
+    requestId,
+    type: 'DIAGNOSTICS',
+    payload: {
+      report: {
+        generatedAt: new Date().toISOString(),
+        extensionVersion: browser.runtime.getManifest().version,
+        backend: {
+          status: health ? 'available' : 'unavailable',
+          translationEnabled: health?.translationEnabled ?? false,
+          provider: health?.provider.name ?? 'none',
+        },
+        settings: {
+          privacyMode: settings.privacyMode,
+          persistentCache: settings.persistentCache,
+          autoTranslateDynamicContent: settings.autoTranslateDynamicContent,
+          selectedTextEnabled: settings.selectedTextEnabled,
+          domainExclusionCount: settings.domainExclusions.length,
+          glossaryEntryCount: settings.glossary.length,
+        },
+        cache: { memoryEntries: memoryCache.size, persistentEntries },
+      },
+    },
+  });
+}
+
 async function loadPersistentCache(settings: AppSettings): Promise<CacheStore> {
   if (!settings.persistentCache || settings.privacyMode) return {};
   const stored = await browser.storage.local.get(CACHE_STORAGE_KEY);
@@ -570,6 +609,8 @@ export default defineBackground(() => {
             type: 'LOCAL_DATA_CLEARED',
             payload: { cleared: true },
           });
+        case 'EXPORT_DIAGNOSTICS':
+          return await getDiagnostics(requestId);
       }
     } catch (cause) {
       return createErrorResponse(

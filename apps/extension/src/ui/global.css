@@ -57,6 +57,12 @@ textarea:focus-visible {
   gap: 12px;
 }
 
+.header-actions {
+  display: grid;
+  justify-items: end;
+  gap: 7px;
+}
+
 .eyebrow {
   margin: 0 0 4px;
   color: var(--translation-muted);
@@ -222,6 +228,10 @@ h2 {
 }
 
 .error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   margin-bottom: 0;
   padding: 10px;
   border: 1px solid color-mix(in srgb, var(--translation-danger) 40%, transparent);

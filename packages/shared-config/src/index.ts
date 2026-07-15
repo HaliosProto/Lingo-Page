@@ -2,7 +2,7 @@ import type { AppSettings, PageSupport, SupportedLanguage } from '@translation/s
 
 export const CONTRACT_VERSION = 1 as const;
 export const DEFAULT_APP_VERSION = '0.1.0';
-export const DEFAULT_API_BASE_URL = 'http://localhost:8787';
+export const DEFAULT_API_BASE_URL = 'http://127.0.0.1:8787';
 export const DEFAULT_MAX_BODY_BYTES = 256_000;
 export const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
 export const SETTINGS_STORAGE_KEY = 'appSettings';

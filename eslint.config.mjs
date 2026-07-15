@@ -12,6 +12,8 @@ export default tseslint.config(
       '**/test-results/**',
       '**/.wrangler/**',
       '**/node_modules/**',
+      '**/artifacts/**',
+      '**/.local/**',
     ],
   },
   eslint.configs.recommended,

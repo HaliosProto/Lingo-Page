@@ -69,6 +69,11 @@ function PopupApp() {
   }, []);
 
   useEffect(() => {
+    if (settings.theme === 'system') delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = settings.theme;
+  }, [settings.theme]);
+
+  useEffect(() => {
     let active = true;
     void (async () => {
       try {
@@ -186,6 +191,12 @@ function PopupApp() {
     tabStatus?.support.status === 'supported' || tabStatus?.support.status === 'warning';
   const busy = progress.status === 'discovering' || progress.status === 'translating';
   const backendReady = health?.translationEnabled && health.provider.configured;
+  const providerLabel =
+    backendReady && health?.provider.name === 'mock'
+      ? 'Mock mode - local backend'
+      : backendReady && health?.provider.name === 'deepl'
+        ? 'DeepL via local backend'
+        : 'Local service unavailable';
   const percent = progress.discoveredSegments
     ? Math.round((progress.translatedSegments / progress.discoveredSegments) * 100)
     : 0;
@@ -197,13 +208,16 @@ function PopupApp() {
           <p className="eyebrow">Private page translation</p>
           <h1>Lingo Page</h1>
         </div>
-        <button
-          className="text-button"
-          type="button"
-          onClick={() => void browser.runtime.openOptionsPage()}
-        >
-          Settings
-        </button>
+        <div className="header-actions">
+          <span className="version-pill">LOCAL · v{browser.runtime.getManifest().version}</span>
+          <button
+            className="text-button"
+            type="button"
+            onClick={() => void browser.runtime.openOptionsPage()}
+          >
+            Settings
+          </button>
+        </div>
       </header>
 
       <section className="status-panel" aria-live="polite">
@@ -294,15 +308,16 @@ function PopupApp() {
           className={`status-dot ${backendReady ? 'is-online' : 'is-offline'}`}
           aria-hidden="true"
         />
-        <span>
-          {backendReady ? `Connected · ${health?.provider.name}` : 'Local service unavailable'}
-        </span>
+        <span>{providerLabel}</span>
       </section>
 
       {error && (
-        <p className="error-banner" role="alert">
-          {error}
-        </p>
+        <div className="error-banner" role="alert">
+          <span>{error}</span>
+          <button className="text-button" type="button" onClick={() => window.location.reload()}>
+            Retry
+          </button>
+        </div>
       )}
       <footer className="footer-row">
         <span>
