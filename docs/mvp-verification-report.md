@@ -4,16 +4,21 @@ Date: 2026-07-15
 
 ## Automated evidence
 
-| Check           | Result | Evidence                                                                                                                           |
-| --------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Formatting      | Pass   | `pnpm format:check`                                                                                                                |
-| Lint            | Pass   | `pnpm lint`                                                                                                                        |
-| Strict types    | Pass   | `pnpm typecheck` across shared packages, API, and extension                                                                        |
-| Unit tests      | Pass   | 28 tests across configuration, validation, translation core, and provider adapters                                                 |
-| API integration | Pass   | 8 tests for health, languages, translation, malformed input, detection, auth, errors, and CORS                                     |
-| Browser E2E     | Pass   | Managed Chromium: page translation, exclusions, form safety, dynamic text, cancellation, restore, selection result, popup, options |
-| Extension build | Pass   | WXT Chrome MV3 production build                                                                                                    |
-| API build       | Pass   | Wrangler deploy dry-run                                                                                                            |
+| Check                   | Result | Evidence                                                                                                                           |
+| ----------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Formatting              | Pass   | `pnpm format:check`                                                                                                                |
+| Lint                    | Pass   | `pnpm lint`                                                                                                                        |
+| Strict types            | Pass   | `pnpm typecheck` across shared packages, API, and extension                                                                        |
+| Unit tests              | Pass   | 69 tests across configuration, validation, translation core, provider adapters, and provider-test classification                   |
+| API integration         | Pass   | 16 tests including Gemini-only health/registry, blank templates, malformed environment diagnostics, and existing API behavior      |
+| Direct Wrangler runtime | Pass   | Existing ignored Gemini configuration: `/v1/health` and `/v1/providers` returned HTTP 200 with request IDs                         |
+| Local launcher runtime  | Pass   | `pnpm local:start` returned Gemini health HTTP 200; `pnpm local:mock` returned mock health HTTP 200                                |
+| Live Gemini smoke       | Pass   | Explicit controlled `pnpm provider:test -- gemini` reached the real adapter and returned normalized success                        |
+| Browser E2E             | Pass   | Managed Chromium: page translation, exclusions, form safety, dynamic text, cancellation, restore, selection result, popup, options |
+| Extension build         | Pass   | WXT Chrome MV3 production build                                                                                                    |
+| API build               | Pass   | Wrangler deploy dry-run                                                                                                            |
+| Dependency audit        | Pass   | No known production dependency vulnerabilities                                                                                     |
+| Secret/bundle scan      | Pass   | Two extension roots scanned; one configured secret checked by value without display                                                |
 
 ## Security and privacy evidence
 
@@ -33,10 +38,13 @@ Date: 2026-07-15
 - Privacy mode originally disabled persistence but did not block warning-class pages; support classification now blocks them.
 - Headless Chrome cannot synthesize an `activeTab` toolbar grant reliably; E2E uses a separate build mode limited to the local fixture origin, while the production manifest stays minimal.
 - A shared top-level backend environment schema initially left backend config symbol names in the extension bundle; backend configuration now has a server-only package export and the repeated bundle scan is clean.
+- A blank optional `CUSTOM_OPENAI_BASE_URL` from the checked-in template was represented by Wrangler as an empty string, while `apiEnvironmentSchema` accepted only a valid URL or `undefined`. Environment parsing failed before request context was set, so every route returned an unstructured 500 and logs lacked a request ID. Blank optional entries now normalize to unset values, malformed non-blank entries produce value-redacted schema diagnostics, and request IDs are assigned before parsing.
+- The provider-test CLI parsed JSON inside its transport-error catch, so a non-JSON HTTP 500 was mislabeled `BACKEND_UNAVAILABLE`. HTTP responses now retain structured backend codes or receive a `BACKEND_HTTP_<status>` classification; only connection failures use `BACKEND_UNAVAILABLE`.
 
 ## Unverified/deferred
 
 - Live DeepL smoke test: blocked only by absent external credential; no credential was requested or invented.
+- Other real providers remain unverified unless separately configured and explicitly tested. Gemini alone was live-tested for this report using the owner's ignored local configuration.
 - Branded Chrome manual console/network pass: manual steps provided; managed Playwright Chromium passed.
 - Store publication, deployment, production accounts/quotas, accessibility certification, and broad performance profiling are outside the local MVP.
 - The local RC start/stop workflow, diagnostics export, and acceptance runbook are implemented for owner review; their final manual acceptance remains pending.

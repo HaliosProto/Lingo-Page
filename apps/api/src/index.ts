@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { DEFAULT_MAX_BODY_BYTES, developmentLanguages } from '@translation/shared-config';
 import {
   isAllowedExtensionOrigin,
-  parseApiEnvironment,
+  safeParseApiEnvironment,
   type ApiEnvironment,
 } from '@translation/shared-config/api';
 import type {
@@ -216,15 +216,31 @@ async function executeTranslation(
 
 app.use('*', async (context, next) => {
   const requestId = createRequestId();
-  const environment = parseApiEnvironment(context.env ?? {});
   context.set('requestId', requestId);
-  context.set('environment', environment);
   context.header('X-Content-Type-Options', 'nosniff');
   context.header('X-Frame-Options', 'DENY');
   context.header('Referrer-Policy', 'no-referrer');
   context.header('Cache-Control', 'no-store');
   context.header('X-Request-ID', requestId);
   context.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  const environmentResult = safeParseApiEnvironment(context.env ?? {});
+  if (!environmentResult.success) {
+    console.error('api_environment_validation_failed', {
+      requestId,
+      schemaName: environmentResult.schemaName,
+      issues: environmentResult.issues,
+    });
+    return context.json(
+      createError(
+        'INTERNAL_ERROR',
+        'The backend environment configuration failed validation.',
+        requestId,
+      ),
+      500,
+    );
+  }
+  const environment = environmentResult.data;
+  context.set('environment', environment);
   const origin = context.req.header('origin');
   if (origin && isAllowedExtensionOrigin(origin, environment)) {
     context.header('Access-Control-Allow-Origin', origin);
@@ -577,17 +593,14 @@ app.notFound((context) =>
 );
 
 app.onError((error, context) => {
+  const requestId = context.get('requestId') || createRequestId();
+  context.header('X-Request-ID', requestId);
   console.error('api_request_failed', {
-    requestId: context.get('requestId'),
+    requestId,
     error: error instanceof Error ? error.name : 'unknown',
   });
   return context.json(
-    createError(
-      'INTERNAL_ERROR',
-      'The API could not complete the request.',
-      context.get('requestId'),
-      true,
-    ),
+    createError('INTERNAL_ERROR', 'The API could not complete the request.', requestId, true),
     500,
   );
 });

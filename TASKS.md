@@ -23,6 +23,7 @@
 
 - [x] Universal backend provider registry, native/compatible adapters, safe model catalogs, provider/model settings, controlled test route, benchmark harness, and mocked contract tests.
 - [x] Full static/test/build gate, clean dependency audit, managed-Chromium mock regression, secret/bundle scan, and rebuilt local release candidate.
+- [x] Gemini-only local environment regression: blank optional template values, health/provider registry runtime, request-ID diagnostics, and provider-test HTTP error classification.
 - [ ] Owner optionally configures and smoke-tests each desired real provider locally; no real provider has been called by automated verification.
 - [ ] Owner runs `docs/user-acceptance-testing.md` against `pnpm local:test`.
 - [ ] Owner approves the checklist and the exact next milestone before any deployment or publication work.

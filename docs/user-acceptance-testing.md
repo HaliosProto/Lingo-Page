@@ -47,10 +47,16 @@ If the backend does not become ready, stop and inspect `.local/api.stdout.log` a
 
 25. If the owner has approved a local key test, copy `apps/api/.dev.vars.example` to `apps/api/.dev.vars` and enter only the chosen provider's key, default model, and model allowlist. Never paste the key into chat, the extension, source, Git, a command line, screenshot, or diagnostic export.
 26. Run `pnpm local:providers`. Expected: the helper reports the same loopback URL without printing any key. Options lists Mock plus only safely configured/enabled providers; every unconfigured provider is absent from selection and reported as unconfigured by `GET /v1/providers`.
+
+- Request `GET http://127.0.0.1:8787/v1/health`. Expected: HTTP 200, the chosen provider is configured, and both the JSON body and `X-Request-ID` header contain a request ID.
+- Request `GET http://127.0.0.1:8787/v1/providers`. Expected: HTTP 200 and the chosen provider is enabled/ready with only its allowlisted model metadata. No key or private custom endpoint is present.
+
 27. Select the provider/model in Options and save. Verify its data recipient and privacy notice. Choose **Test selected provider**. Expected: the controlled tiny test reports normalized success/latency or a safe authentication/rate/quota/unavailable error without an upstream body.
 28. Translate one non-sensitive test sentence. Record only success/failure, latency, provider/model IDs, normalized response category, and diagnostics metadata. No real provider is considered live-verified until the owner performs this step.
 29. Stop the backend, remove the key/default/allowlist from `.dev.vars`, restart, and confirm the provider is no longer selectable. Run `pnpm local:mock` and confirm Mock remains visibly labeled.
 30. Confirm `git status --short`, source, Git history, production bundle/source maps, ignored logs, diagnostics, and release-candidate artifacts contain no provider secret, authorization header, raw page content, upstream error body, or private custom endpoint.
+
+- Confirm `.dev.vars.example` still contains blank placeholders only; real values belong exclusively in ignored `.dev.vars`.
 
 ## 7. Provider failure and routing safety
 

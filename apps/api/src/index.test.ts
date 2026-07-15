@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { app } from './index';
 
 const environment = {
@@ -17,6 +17,16 @@ const requestBody = {
   segments: [{ id: 'segment-1', text: 'Hello' }],
 };
 
+const geminiEnvironment = {
+  ...environment,
+  TRANSLATION_DEFAULT_PROVIDER: 'gemini',
+  ENABLED_PROVIDERS: 'gemini',
+  GEMINI_API_KEY: 'synthetic-gemini-test-key',
+  GEMINI_DEFAULT_MODEL: 'gemini-test-model',
+  GEMINI_ALLOWED_MODELS: 'gemini-test-model, gemini-test-model-2',
+  CUSTOM_OPENAI_BASE_URL: '',
+};
+
 describe('translation API', () => {
   it('returns validated health data without exposing configuration values', async () => {
     const response = await app.request('http://localhost/v1/health', {}, environment);
@@ -32,6 +42,18 @@ describe('translation API', () => {
     });
     expect(response.headers.get('x-request-id')).toMatch(/^req_/);
     expect(JSON.stringify(body)).not.toContain('DEV_AUTH_TOKEN');
+  });
+
+  it('returns healthy Gemini configuration data with blank optional templates', async () => {
+    const response = await app.request('http://localhost/v1/health', {}, geminiEnvironment);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      status: 'ok',
+      provider: { configured: true, id: 'gemini', modelId: 'gemini-test-model' },
+    });
+    expect(response.headers.get('x-request-id')).toMatch(/^req_/);
   });
 
   it('returns the development language list', async () => {
@@ -61,6 +83,59 @@ describe('translation API', () => {
     const serialized = JSON.stringify(body);
     expect(serialized).not.toContain('API_KEY');
     expect(serialized).not.toContain('api.openai.com');
+  });
+
+  it('returns configured Gemini registry data and parses a comma-separated model allowlist', async () => {
+    const response = await app.request('http://localhost/v1/providers', {}, geminiEnvironment);
+    const body = (await response.json()) as {
+      providers: Array<{
+        id: string;
+        configured: boolean;
+        status: string;
+        availableModels: Array<{ id: string }>;
+      }>;
+    };
+
+    expect(response.status).toBe(200);
+    const gemini = body.providers.find((provider) => provider.id === 'gemini');
+    expect(gemini).toMatchObject({ configured: true, status: 'ready' });
+    expect(gemini?.availableModels.map((model) => model.id)).toEqual([
+      'gemini-test-model',
+      'gemini-test-model-2',
+    ]);
+    expect(JSON.stringify(body)).not.toContain('synthetic-gemini-test-key');
+  });
+
+  it('returns a structured request-ID error and safe diagnostics for malformed environment values', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const malformedValue = 'not-a-valid-url';
+    const response = await app.request(
+      'http://localhost/v1/health',
+      {},
+      { ...environment, CUSTOM_OPENAI_BASE_URL: malformedValue },
+    );
+    const body = (await response.json()) as { error: { code: string; requestId: string } };
+
+    expect(response.status).toBe(500);
+    expect(body.error).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(body.error.requestId).toMatch(/^req_/);
+    expect(response.headers.get('x-request-id')).toBe(body.error.requestId);
+    expect(error).toHaveBeenCalledWith(
+      'api_environment_validation_failed',
+      expect.objectContaining({
+        requestId: body.error.requestId,
+        schemaName: 'apiEnvironmentSchema',
+        issues: [
+          expect.objectContaining({
+            path: 'CUSTOM_OPENAI_BASE_URL',
+            expected: 'url',
+            receivedCategory: 'string',
+            message: 'Invalid URL',
+          }),
+        ],
+      }),
+    );
+    expect(JSON.stringify(error.mock.calls)).not.toContain(malformedValue);
   });
 
   it('returns only configured allowlisted model metadata', async () => {

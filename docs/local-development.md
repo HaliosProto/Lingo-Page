@@ -45,12 +45,24 @@ Load `artifacts/translation-extension-local-rc/extension` from `chrome://extensi
 Each real provider requires its own API account and key. Configure only providers you want to use:
 
 1. Copy `apps/api/.dev.vars.example` to ignored `apps/api/.dev.vars`.
-2. Enter each key and that provider's default model/allowed-model list in this file only. Never paste a key into chat, source, a command line, extension settings, screenshots, or diagnostics.
+2. Enter each key and that provider's default model/allowed-model list in this file only. Never put a real value in `.dev.vars.example`, and never paste a key into chat, source, a command line, extension settings, screenshots, or diagnostics.
 3. Keep `TRANSLATION_DEFAULT_PROVIDER=mock` until you intentionally choose another default. `ENABLED_PROVIDERS=auto` enables mock and safely configured providers; `DISABLED_PROVIDERS` is the emergency off switch.
 4. Run `pnpm local:providers`. Open Options, choose one of the backend-enabled providers and one allowlisted model, save, then optionally choose **Test selected provider**. The test sends only the fixed text `Hello.`.
 5. To test from the terminal, run `pnpm provider:test -- gemini` (substitute any provider ID). Missing keys fail without displaying them.
 6. Run `pnpm local:mock` and select Mock to return to deterministic local behavior.
 7. To remove a provider, stop the backend, remove its key/default model from `.dev.vars`, restart, and confirm it is no longer selectable. Delete `.dev.vars` if no real providers should remain.
+
+A Gemini-only configuration uses this shape; replace angle-bracket placeholders locally and do not commit the file:
+
+```text
+TRANSLATION_DEFAULT_PROVIDER=gemini
+ENABLED_PROVIDERS=gemini
+GEMINI_API_KEY=<local-secret>
+GEMINI_DEFAULT_MODEL=<allowlisted-model-id>
+GEMINI_ALLOWED_MODELS=<allowlisted-model-id>[,<second-allowlisted-model-id>]
+```
+
+Comma-separated model IDs are trimmed and deduplicated. Optional template entries may remain blank; blank optional secrets, model fields, model lists, `DEV_AUTH_TOKEN`, `CUSTOM_OPENAI_BASE_URL`, and `QWEN_BASE_URL` are treated as unset, with documented defaults applied where relevant.
 
 The custom compatible provider additionally requires `CUSTOM_OPENAI_BASE_URL`, a default model, and an explicit model allowlist. The URL remains backend-only and is restricted to HTTPS public origins or loopback. Qwen's regional base URL must be one of the documented values in the example file.
 
@@ -89,6 +101,8 @@ pnpm test:e2e
 ## Troubleshooting
 
 - **Local service unavailable:** verify `/v1/health` at port 8787 and `WXT_API_BASE_URL`.
+- **Backend configuration error:** `/v1/health` returns a structured `INTERNAL_ERROR` with an `X-Request-ID`. Local API logs identify only the schema, issue path, expected format/type, received value category, and validation message; they do not print the rejected value. Correct the named entry in ignored `.dev.vars` and restart.
+- **Provider-test failure:** `BACKEND_UNAVAILABLE` means no HTTP response was received. An HTTP backend failure retains its structured backend code, while a non-JSON failure is reported as `BACKEND_HTTP_<status>`.
 - **Page cannot be translated:** browser-internal/Web Store pages, excluded domains, and privacy-mode sensitive pages are deliberately blocked.
 - **No text changes:** code, form fields, hidden nodes, numeric-only text, URLs, identifiers, and `translate=no` regions are intentionally excluded.
 - **Settings rejected:** glossary source terms cannot be blank and language/domain values are bounded by runtime schemas.

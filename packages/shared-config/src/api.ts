@@ -18,9 +18,13 @@ const providerIdValues = [
   'custom-openai-compatible',
 ] as const;
 
-const optionalSecret = z.string().max(1_000).optional();
-const optionalModel = z.string().max(200).optional();
-const optionalModelList = z.string().max(10_000).optional();
+function blankStringToUndefined(value: unknown): unknown {
+  return typeof value === 'string' && value.trim() === '' ? undefined : value;
+}
+
+const optionalSecret = z.preprocess(blankStringToUndefined, z.string().max(1_000).optional());
+const optionalModel = z.preprocess(blankStringToUndefined, z.string().max(200).optional());
+const optionalModelList = z.preprocess(blankStringToUndefined, z.string().max(10_000).optional());
 
 export const apiEnvironmentSchema = z.object({
   ENVIRONMENT: z.enum(['development', 'test', 'staging', 'production']).default('development'),
@@ -35,7 +39,7 @@ export const apiEnvironmentSchema = z.object({
   ENABLED_PROVIDERS: z.string().max(2_000).default('auto'),
   DISABLED_PROVIDERS: z.string().max(2_000).default(''),
   MOCK_TRANSLATION_DELAY_MS: z.coerce.number().int().nonnegative().max(2_000).default(0),
-  DEV_AUTH_TOKEN: z.string().max(500).optional(),
+  DEV_AUTH_TOKEN: z.preprocess(blankStringToUndefined, z.string().max(500).optional()),
   GEMINI_API_KEY: optionalSecret,
   GEMINI_DEFAULT_MODEL: optionalModel,
   GEMINI_ALLOWED_MODELS: optionalModelList,
@@ -58,13 +62,16 @@ export const apiEnvironmentSchema = z.object({
   DASHSCOPE_API_KEY: optionalSecret,
   QWEN_DEFAULT_MODEL: optionalModel,
   QWEN_ALLOWED_MODELS: optionalModelList,
-  QWEN_BASE_URL: z
-    .enum([
-      'https://dashscope.aliyuncs.com/compatible-mode/v1',
-      'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
-      'https://dashscope-us.aliyuncs.com/compatible-mode/v1',
-    ])
-    .default('https://dashscope-intl.aliyuncs.com/compatible-mode/v1'),
+  QWEN_BASE_URL: z.preprocess(
+    blankStringToUndefined,
+    z
+      .enum([
+        'https://dashscope.aliyuncs.com/compatible-mode/v1',
+        'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+        'https://dashscope-us.aliyuncs.com/compatible-mode/v1',
+      ])
+      .default('https://dashscope-intl.aliyuncs.com/compatible-mode/v1'),
+  ),
   XAI_API_KEY: optionalSecret,
   XAI_DEFAULT_MODEL: optionalModel,
   XAI_ALLOWED_MODELS: optionalModelList,
@@ -78,10 +85,16 @@ export const apiEnvironmentSchema = z.object({
   COHERE_DEFAULT_MODEL: optionalModel,
   COHERE_ALLOWED_MODELS: optionalModelList,
   CUSTOM_OPENAI_API_KEY: optionalSecret,
-  CUSTOM_OPENAI_BASE_URL: z.string().url().max(500).optional(),
+  CUSTOM_OPENAI_BASE_URL: z.preprocess(
+    blankStringToUndefined,
+    z.string().url().max(500).optional(),
+  ),
   CUSTOM_OPENAI_DEFAULT_MODEL: optionalModel,
   CUSTOM_OPENAI_ALLOWED_MODELS: optionalModelList,
-  CUSTOM_OPENAI_CAPABILITIES: z.string().max(1_000).default('json-object,cancellation,usage'),
+  CUSTOM_OPENAI_CAPABILITIES: z.preprocess(
+    blankStringToUndefined,
+    z.string().max(1_000).default('json-object,cancellation,usage'),
+  ),
   MAX_SEGMENTS_PER_REQUEST: z.coerce.number().int().positive().max(5_000).default(500),
   MAX_INPUT_CHARACTERS_PER_REQUEST: z.coerce
     .number()
@@ -107,8 +120,75 @@ export const apiEnvironmentSchema = z.object({
 
 export type ApiEnvironment = z.infer<typeof apiEnvironmentSchema>;
 
-export function parseApiEnvironment(input: Record<string, unknown>): ApiEnvironment {
-  const parsed = apiEnvironmentSchema.parse(input);
+export type ApiEnvironmentValidationDiagnostic = {
+  path: string;
+  expected: string;
+  receivedCategory: string;
+  message: string;
+};
+
+export type ApiEnvironmentValidationFailure = {
+  success: false;
+  schemaName: 'apiEnvironmentSchema';
+  issues: ApiEnvironmentValidationDiagnostic[];
+};
+
+function expectedForIssue(issue: z.core.$ZodIssue): string {
+  switch (issue.code) {
+    case 'invalid_type':
+      return String(issue.expected);
+    case 'invalid_format':
+      return String(issue.format);
+    case 'invalid_value':
+      return `one of ${issue.values.length} allowed values`;
+    case 'too_big':
+      return `value at most ${String(issue.maximum)}`;
+    case 'too_small':
+      return `value at least ${String(issue.minimum)}`;
+    case 'not_multiple_of':
+      return `multiple of ${String(issue.divisor)}`;
+    case 'invalid_union':
+      return 'valid union member';
+    case 'unrecognized_keys':
+      return 'recognized object keys';
+    case 'invalid_key':
+      return 'valid object key';
+    case 'invalid_element':
+      return 'valid collection element';
+    case 'custom':
+      return 'custom schema constraint';
+  }
+}
+
+function valueAtPath(input: unknown, path: PropertyKey[]): unknown {
+  let current = input;
+  for (const part of path) {
+    if (typeof current !== 'object' || current === null || !(part in current)) return undefined;
+    current = (current as Record<PropertyKey, unknown>)[part];
+  }
+  return current;
+}
+
+function valueCategory(value: unknown): string {
+  if (value === undefined) return 'undefined';
+  if (value === null) return 'null';
+  if (Array.isArray(value)) return 'array';
+  if (typeof value === 'string') return value.trim() === '' ? 'empty-string' : 'string';
+  return typeof value;
+}
+
+function privacySafeMessage(message: string, received: unknown): string {
+  const redacted =
+    typeof received === 'string' && received.length > 0
+      ? message.replaceAll(received, '[redacted]')
+      : message;
+  return redacted.slice(0, 300);
+}
+
+function applyLegacyProviderDefault(
+  input: Record<string, unknown>,
+  parsed: ApiEnvironment,
+): ApiEnvironment {
   return {
     ...parsed,
     TRANSLATION_DEFAULT_PROVIDER:
@@ -116,6 +196,32 @@ export function parseApiEnvironment(input: Record<string, unknown>): ApiEnvironm
         ? parsed.TRANSLATION_PROVIDER
         : parsed.TRANSLATION_DEFAULT_PROVIDER,
   };
+}
+
+export function safeParseApiEnvironment(
+  input: Record<string, unknown>,
+): { success: true; data: ApiEnvironment } | ApiEnvironmentValidationFailure {
+  const result = apiEnvironmentSchema.safeParse(input);
+  if (result.success) {
+    return { success: true, data: applyLegacyProviderDefault(input, result.data) };
+  }
+  return {
+    success: false,
+    schemaName: 'apiEnvironmentSchema',
+    issues: result.error.issues.map((issue) => {
+      const received = valueAtPath(input, issue.path);
+      return {
+        path: issue.path.length > 0 ? issue.path.map(String).join('.') : '<root>',
+        expected: expectedForIssue(issue),
+        receivedCategory: valueCategory(received),
+        message: privacySafeMessage(issue.message, received),
+      };
+    }),
+  };
+}
+
+export function parseApiEnvironment(input: Record<string, unknown>): ApiEnvironment {
+  return applyLegacyProviderDefault(input, apiEnvironmentSchema.parse(input));
 }
 
 export function isAllowedExtensionOrigin(origin: string, environment: ApiEnvironment): boolean {

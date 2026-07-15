@@ -47,9 +47,12 @@
 - Abort provider calls on timeout or user cancellation where supported.
 - Retry only idempotent safe transient failures with bounded backoff.
 - Return normalized error codes plus request IDs, not upstream secrets or raw provider payloads.
+- Create a request ID before parsing backend environment configuration so configuration failures still return a correlated structured error and `X-Request-ID` header.
+- Normalize blank optional `.dev.vars` template entries to unset values. Malformed non-blank values fail closed; privacy-safe diagnostics include only schema name, issue path, expected format/type, received value category, and a value-redacted message.
 - Redact authorization headers, secrets, page content, full URLs, and provider responses from logs.
 - Diagnostics export contains only extension version, backend/provider status, boolean settings, and cache/glossary counts; it never includes page text, URLs, tokens, or secrets.
 - Provider connection tests use one fixed tiny sentence and accept no caller-supplied text, URL, headers, model, or upstream parameters.
+- Provider-test tooling distinguishes transport unavailability from received HTTP failures and never prints backend-configured model values on success.
 
 ## Multi-provider controls
 
