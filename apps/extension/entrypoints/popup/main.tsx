@@ -10,6 +10,7 @@ import {
 import type {
   AppSettings,
   HealthResponse,
+  ProviderDefinition,
   TabStatus,
   TranslationProgress,
 } from '@translation/shared-types';
@@ -48,6 +49,7 @@ function PopupApp() {
   const [tabId, setTabId] = useState<number>();
   const [tabStatus, setTabStatus] = useState<TabStatus | null>(null);
   const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [providers, setProviders] = useState<ProviderDefinition[]>([]);
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [progress, setProgress] = useState<TranslationProgress>({
     status: 'idle',
@@ -81,26 +83,33 @@ function PopupApp() {
         if (activeTab?.id === undefined) throw new Error('No active browser tab is available.');
         const activeTabId = activeTab.id;
         setTabId(activeTabId);
-        const [statusResponse, healthResponse, settingsResponse] = await Promise.all([
-          sendMessage({
-            version: 1,
-            requestId: createRequestId(),
-            type: 'GET_TAB_STATUS',
-            payload: { tabId: activeTabId },
-          }),
-          sendMessage({
-            version: 1,
-            requestId: createRequestId(),
-            type: 'GET_API_HEALTH',
-            payload: {},
-          }),
-          sendMessage({
-            version: 1,
-            requestId: createRequestId(),
-            type: 'GET_SETTINGS',
-            payload: {},
-          }),
-        ]);
+        const [statusResponse, healthResponse, settingsResponse, providersResponse] =
+          await Promise.all([
+            sendMessage({
+              version: 1,
+              requestId: createRequestId(),
+              type: 'GET_TAB_STATUS',
+              payload: { tabId: activeTabId },
+            }),
+            sendMessage({
+              version: 1,
+              requestId: createRequestId(),
+              type: 'GET_API_HEALTH',
+              payload: {},
+            }),
+            sendMessage({
+              version: 1,
+              requestId: createRequestId(),
+              type: 'GET_SETTINGS',
+              payload: {},
+            }),
+            sendMessage({
+              version: 1,
+              requestId: createRequestId(),
+              type: 'GET_PROVIDERS',
+              payload: {},
+            }),
+          ]);
         if (!active) return;
         if (statusResponse.type === 'TAB_STATUS') {
           setTabStatus(statusResponse.payload);
@@ -108,6 +117,8 @@ function PopupApp() {
         }
         if (healthResponse.type === 'API_HEALTH') setHealth(healthResponse.payload.health);
         if (settingsResponse.type === 'SETTINGS') setSettings(settingsResponse.payload.settings);
+        if (providersResponse.type === 'PROVIDERS')
+          setProviders(providersResponse.payload.providers);
         if (healthResponse.type === 'MESSAGE_ERROR') setError(healthResponse.payload.message);
       } catch (cause) {
         if (active)
@@ -149,6 +160,8 @@ function PopupApp() {
         payload: {
           tabId,
           sessionId,
+          providerId: settings.providerId,
+          modelId: settings.modelId,
           sourceLanguage: settings.sourceLanguage,
           targetLanguage: settings.defaultTargetLanguage,
           glossaryVersion: settings.glossaryVersion,
@@ -190,13 +203,21 @@ function PopupApp() {
   const supported =
     tabStatus?.support.status === 'supported' || tabStatus?.support.status === 'warning';
   const busy = progress.status === 'discovering' || progress.status === 'translating';
-  const backendReady = health?.translationEnabled && health.provider.configured;
-  const providerLabel =
-    backendReady && health?.provider.name === 'mock'
-      ? 'Mock mode - local backend'
-      : backendReady && health?.provider.name === 'deepl'
-        ? 'DeepL via local backend'
-        : 'Local service unavailable';
+  const selectableProviders = providers.filter(
+    (provider) => provider.enabled && provider.configured,
+  );
+  const activeProvider = providers.find((provider) => provider.id === settings.providerId);
+  const backendReady = Boolean(
+    health?.translationEnabled &&
+    activeProvider?.enabled &&
+    activeProvider.configured &&
+    activeProvider.availableModels.some((model) => model.id === settings.modelId && model.enabled),
+  );
+  const providerLabel = backendReady
+    ? `${activeProvider?.displayName ?? settings.providerId} - local backend`
+    : activeProvider?.status === 'unconfigured'
+      ? `${activeProvider.displayName} is not configured`
+      : 'Local service or selected provider unavailable';
   const percent = progress.discoveredSegments
     ? Math.round((progress.translatedSegments / progress.discoveredSegments) * 100)
     : 0;
@@ -233,6 +254,50 @@ function PopupApp() {
       </section>
 
       <section className="language-grid" aria-label="Translation languages">
+        <label>
+          Provider
+          <select
+            value={
+              selectableProviders.some((provider) => provider.id === settings.providerId)
+                ? settings.providerId
+                : ''
+            }
+            disabled={busy}
+            onChange={(event) => {
+              const provider = selectableProviders.find((item) => item.id === event.target.value);
+              const modelId =
+                provider?.defaultModel ??
+                provider?.availableModels.find((model) => model.enabled)?.id;
+              if (provider && modelId)
+                void updateSettings({ ...settings, providerId: provider.id, modelId });
+            }}
+          >
+            {!selectableProviders.some((provider) => provider.id === settings.providerId) && (
+              <option value="">Select a configured provider</option>
+            )}
+            {selectableProviders.map((provider) => (
+              <option key={provider.id} value={provider.id}>
+                {provider.displayName}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Model
+          <select
+            value={settings.modelId}
+            disabled={busy || !activeProvider}
+            onChange={(event) => void updateSettings({ ...settings, modelId: event.target.value })}
+          >
+            {(activeProvider?.availableModels ?? [])
+              .filter((model) => model.enabled)
+              .map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.displayName}
+                </option>
+              ))}
+          </select>
+        </label>
         <label>
           Source
           <select
@@ -310,6 +375,7 @@ function PopupApp() {
         />
         <span>{providerLabel}</span>
       </section>
+      {activeProvider && <p className="privacy-copy">{activeProvider.privacyNotice}</p>}
 
       {error && (
         <div className="error-banner" role="alert">

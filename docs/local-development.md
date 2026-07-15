@@ -18,9 +18,10 @@ pnpm local:test
 Shortcuts:
 
 ```text
-pnpm local:start     # start mock backend without rebuilding
-pnpm local:mock      # same as local:start
-pnpm local:deepl     # optional backend-only DeepL mode
+pnpm local:start     # start one backend using apps/api/.dev.vars
+pnpm local:providers # same configured-provider backend
+pnpm local:mock      # force deterministic mock mode
+pnpm local:deepl     # force optional backend-only DeepL mode
 pnpm build:release-candidate
 pnpm local:stop
 ```
@@ -39,12 +40,29 @@ Load `artifacts/translation-extension-local-rc/extension` from `chrome://extensi
 
 `.env.example` lists client-safe and backend-only values. Wrangler local secrets belong in ignored `apps/api/.dev.vars` or the platform secret store, never in WXT-prefixed variables.
 
-For optional local DeepL testing:
+## Configure providers locally
 
-1. Copy `apps/api/.dev.vars.example` to `apps/api/.dev.vars`.
-2. Put the key only in the `DEEPL_API_KEY` value in that ignored file; do not paste it into chat, the extension, or a command line.
-3. Run `pnpm local:deepl`. The helper binds Wrangler to `127.0.0.1` and does not print the key.
-4. Confirm the Options page says `DeepL via local backend`. This path is unverified until an owner supplies and tests a key locally.
+Each real provider requires its own API account and key. Configure only providers you want to use:
+
+1. Copy `apps/api/.dev.vars.example` to ignored `apps/api/.dev.vars`.
+2. Enter each key and that provider's default model/allowed-model list in this file only. Never paste a key into chat, source, a command line, extension settings, screenshots, or diagnostics.
+3. Keep `TRANSLATION_DEFAULT_PROVIDER=mock` until you intentionally choose another default. `ENABLED_PROVIDERS=auto` enables mock and safely configured providers; `DISABLED_PROVIDERS` is the emergency off switch.
+4. Run `pnpm local:providers`. Open Options, choose one of the backend-enabled providers and one allowlisted model, save, then optionally choose **Test selected provider**. The test sends only the fixed text `Hello.`.
+5. To test from the terminal, run `pnpm provider:test -- gemini` (substitute any provider ID). Missing keys fail without displaying them.
+6. Run `pnpm local:mock` and select Mock to return to deterministic local behavior.
+7. To remove a provider, stop the backend, remove its key/default model from `.dev.vars`, restart, and confirm it is no longer selectable. Delete `.dev.vars` if no real providers should remain.
+
+The custom compatible provider additionally requires `CUSTOM_OPENAI_BASE_URL`, a default model, and an explicit model allowlist. The URL remains backend-only and is restricted to HTTPS public origins or loopback. Qwen's regional base URL must be one of the documented values in the example file.
+
+Live benchmarking is separate and explicit:
+
+```text
+pnpm provider:benchmark -- openai --confirm-live
+```
+
+This sends the non-sensitive benchmark corpus to the selected provider and may incur cost. Normal tests, builds, verification, and browser E2E never call paid APIs. Use `docs/provider-benchmark-human-review.md` for qualitative comparison.
+
+To confirm keys are not in the extension, build the candidate and search `artifacts/translation-extension-local-rc/extension` for the literal local key using a private local tool. Do not print matching content. Also verify the manifest contains only the loopback backend host and no provider origin.
 
 The loopback-only development path does not need an extension bearer token. Staging and production still require server-side authentication. The extension never embeds a development bearer token.
 

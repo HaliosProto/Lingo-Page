@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Universal provider local release candidate - 2026-07-15
+
+- Added a safe provider registry, capability metadata, backend allowlisted model catalogs, optional filtered discovery cache, and extension provider/model selection.
+- Added native Gemini Interactions, OpenAI Responses, Anthropic Messages, Cohere v2 Chat, DeepL, and deterministic mock adapters.
+- Added one hardened OpenAI-compatible adapter with profiles for DeepSeek, Kimi/Moonshot, GLM/Z.AI, Qwen/Alibaba Model Studio, xAI/Grok, Mistral, MiniMax, and a backend-controlled custom endpoint.
+- Added normalized provider/model and token-usage metadata, strict segment reconciliation, prompt-injection boundaries, protected-token checks, malformed-output retry limits, and safe error normalization.
+- Added controlled provider tests, explicit live benchmark tooling and human-review worksheet, per-provider concurrency/timeouts/disable/quota controls, and provider-specific privacy disclosures.
+
 ### Local MVP — 2026-07-15
 
 - Created the pnpm/TypeScript monorepo, WXT React MV3 extension, Cloudflare Worker/Hono API, shared runtime schemas, translation core, provider adapters, and test fixtures.

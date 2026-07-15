@@ -27,12 +27,16 @@
     "test:integration": "vitest run apps/api/src/index.test.ts",
     "test:e2e": "pnpm run build:packages && pnpm --filter @translation/extension build:e2e && playwright test",
     "verify": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build",
-    "local:start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-local-test.ps1 -Provider mock",
+    "local:start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-local-test.ps1",
     "local:test": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-local-test.ps1 -Provider mock -BuildReleaseCandidate",
     "local:mock": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-local-test.ps1 -Provider mock",
+    "local:providers": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-local-test.ps1",
     "local:deepl": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-local-test.ps1 -Provider deepl",
     "local:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop-local-test.ps1",
-    "build:release-candidate": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-release-candidate.ps1"
+    "build:release-candidate": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-release-candidate.ps1",
+    "provider:test": "node scripts/provider-test.mjs",
+    "provider:benchmark": "node scripts/provider-benchmark.mjs",
+    "security:scan": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/security-scan.ps1"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

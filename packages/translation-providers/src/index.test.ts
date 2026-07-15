@@ -18,6 +18,28 @@ describe('mock provider', () => {
     ]);
   });
 
+  it('preserves existing mock glossary behavior', async () => {
+    const response = await createMockProvider().translate(
+      {
+        ...request,
+        segments: [{ id: 'segment-1', text: 'Hello product' }],
+        glossary: [
+          {
+            id: 'product',
+            sourceTerm: 'product',
+            preferredTranslation: 'محصول',
+            preserve: false,
+            caseSensitive: false,
+            wholeWord: true,
+            enabled: true,
+          },
+        ],
+      },
+      {},
+    );
+    expect(response.translations[0]?.translatedText).toBe('[fa] Hello محصول');
+  });
+
   it('stops a delayed request when its signal is cancelled', async () => {
     const controller = new AbortController();
     const action = createMockProvider({ delayMs: 50 }).translate(request, {

@@ -2,7 +2,12 @@ import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { browser } from 'wxt/browser';
 import { createRequestId, defaultSettings, developmentLanguages } from '@translation/shared-config';
-import type { AppSettings, GlossaryEntry, HealthResponse } from '@translation/shared-types';
+import type {
+  AppSettings,
+  GlossaryEntry,
+  HealthResponse,
+  ProviderDefinition,
+} from '@translation/shared-types';
 import { extensionResponseSchema, type ExtensionResponse } from '@translation/shared-validation';
 import { ErrorBoundary } from '../../src/ui/ErrorBoundary';
 import '../../src/ui/global.css';
@@ -40,6 +45,8 @@ function OptionsApp() {
   const [saved, setSaved] = useState(false);
   const [message, setMessage] = useState<string>();
   const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [providers, setProviders] = useState<ProviderDefinition[]>([]);
+  const [testingProvider, setTestingProvider] = useState(false);
 
   useEffect(() => {
     void Promise.all([
@@ -55,13 +62,21 @@ function OptionsApp() {
         type: 'GET_API_HEALTH',
         payload: {},
       }),
+      sendMessage({
+        version: 1,
+        requestId: createRequestId(),
+        type: 'GET_PROVIDERS',
+        payload: {},
+      }),
     ])
-      .then(([settingsResponse, healthResponse]) => {
+      .then(([settingsResponse, healthResponse, providersResponse]) => {
         if (settingsResponse.type === 'SETTINGS') {
           setSettings(settingsResponse.payload.settings);
           setExclusions(settingsResponse.payload.settings.domainExclusions.join('\n'));
         }
         if (healthResponse.type === 'API_HEALTH') setHealth(healthResponse.payload.health);
+        if (providersResponse.type === 'PROVIDERS')
+          setProviders(providersResponse.payload.providers);
         if (healthResponse.type === 'MESSAGE_ERROR') setMessage(healthResponse.payload.message);
       })
       .catch(() => setMessage('Settings could not be loaded.'));
@@ -125,6 +140,24 @@ function OptionsApp() {
     setMessage('Privacy-safe diagnostics downloaded. It contains no page text or URLs.');
   }
 
+  async function testSelectedProvider(): Promise<void> {
+    setTestingProvider(true);
+    setMessage(undefined);
+    try {
+      const response = await sendMessage({
+        version: 1,
+        requestId: createRequestId(),
+        type: 'TEST_PROVIDER',
+        payload: { providerId: settings.providerId },
+      });
+      if (response.type === 'PROVIDER_TEST') {
+        setMessage(`Connection test passed in ${response.payload.latencyMs} ms.`);
+      } else if (response.type === 'MESSAGE_ERROR') setMessage(response.payload.message);
+    } finally {
+      setTestingProvider(false);
+    }
+  }
+
   function addGlossaryEntry(): void {
     const entry: GlossaryEntry = {
       id: `glossary_${crypto.randomUUID().replaceAll('-', '')}`,
@@ -145,6 +178,11 @@ function OptionsApp() {
     );
   }
 
+  const selectableProviders = providers.filter(
+    (provider) => provider.enabled && provider.configured,
+  );
+  const activeProvider = providers.find((provider) => provider.id === settings.providerId);
+
   return (
     <main className="settings-shell" dir="auto">
       <header className="settings-header">
@@ -155,19 +193,79 @@ function OptionsApp() {
       </header>
 
       <section className="settings-card">
-        <h2>Local backend</h2>
+        <h2>Provider and model</h2>
         <p
           className={
-            health?.translationEnabled && health.provider.configured ? 'success-copy' : undefined
+            health?.translationEnabled && activeProvider?.enabled ? 'success-copy' : undefined
           }
         >
-          {health?.translationEnabled && health.provider.configured
-            ? health.provider.name === 'mock'
-              ? 'Mock mode - deterministic local output'
-              : 'DeepL via local backend'
-            : 'Backend unavailable'}
+          {health?.translationEnabled && activeProvider?.enabled
+            ? `${activeProvider.displayName} - local backend`
+            : 'Backend or selected provider unavailable'}
         </p>
-        <small>Provider keys stay in the backend environment and never enter the extension.</small>
+        <div className="two-column-fields">
+          <label>
+            Provider
+            <select
+              value={
+                selectableProviders.some((provider) => provider.id === settings.providerId)
+                  ? settings.providerId
+                  : ''
+              }
+              onChange={(event) => {
+                const provider = selectableProviders.find((item) => item.id === event.target.value);
+                const modelId =
+                  provider?.defaultModel ??
+                  provider?.availableModels.find((model) => model.enabled)?.id;
+                if (provider && modelId)
+                  setSettings((current) => ({ ...current, providerId: provider.id, modelId }));
+              }}
+            >
+              {!selectableProviders.some((provider) => provider.id === settings.providerId) && (
+                <option value="">Select a configured provider</option>
+              )}
+              {selectableProviders.map((provider) => (
+                <option key={provider.id} value={provider.id}>
+                  {provider.displayName}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Model
+            <select
+              value={settings.modelId}
+              disabled={!activeProvider}
+              onChange={(event) => update('modelId', event.target.value)}
+            >
+              {(activeProvider?.availableModels ?? [])
+                .filter((model) => model.enabled)
+                .map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.displayName}
+                  </option>
+                ))}
+            </select>
+          </label>
+        </div>
+        {activeProvider && (
+          <p className="privacy-copy">
+            <strong>Data recipient:</strong> {activeProvider.dataRecipient}.{' '}
+            {activeProvider.privacyNotice}
+          </p>
+        )}
+        <button
+          className="secondary-button"
+          type="button"
+          disabled={!activeProvider?.enabled || testingProvider}
+          onClick={() => void testSelectedProvider()}
+        >
+          {testingProvider ? 'Testing connection...' : 'Test selected provider'}
+        </button>
+        <small>
+          Only backend-enabled, allowlisted providers and models are selectable. Keys never enter
+          the extension.
+        </small>
       </section>
 
       <section className="settings-card">

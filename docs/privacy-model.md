@@ -32,7 +32,11 @@ Use a warning/blocking layer based on conservative hostname/path signals and pag
 
 ## Provider disclosure
 
-The settings page must identify the application backend and the active translation provider category. Provider retention and processing terms must be reviewed and linked before a real provider is enabled. The extension must not imply that remote translation is local or end-to-end encrypted.
+The settings page identifies the active provider/model, application backend, data recipient, configuration state, and a concise provider-specific notice. Provider retention and processing terms must be reviewed before a real provider is enabled. The extension must not imply that remote translation is local or end-to-end encrypted.
+
+Provider recipients supported by this candidate are Google Gemini, OpenAI, Anthropic, DeepL, DeepSeek, Moonshot AI, Z.AI, Alibaba Cloud Model Studio, xAI, Mistral AI, MiniMax, Cohere, and an explicitly backend-configured compatible endpoint. The deterministic mock has no external recipient. Only configured providers selected by the user are sent page text; there is no silent cross-provider fallback.
+
+Gemini Interactions and OpenAI Responses requests explicitly disable provider-side response storage with `store=false`. Other adapters use independent single requests and the application does not create provider conversation state. These implementation choices are not claims about provider retention, abuse monitoring, legal obligations, training, or subprocessors. Qwen's configured official regional endpoint is disclosed by provider category without exposing the private backend configuration.
 
 ## Privacy review questions before public release
 

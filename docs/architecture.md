@@ -9,7 +9,7 @@ Status: provisional baseline from Milestone 0
 - Workspace: pnpm monorepo.
 - Validation: shared Zod-style runtime schemas; types are inferred from schemas where practical.
 - Testing: Vitest and Playwright with local fixtures.
-- Provider boundary: `TranslationProvider` interface. DeepL is the first real adapter candidate; the mock provider is required first.
+- Provider boundary: a registry-backed `TranslationProvider` interface with native and hardened OpenAI-compatible adapters. See `docs/provider-architecture.md`.
 - Authentication: loopback-only local development path initially; staging/production require short-lived revocable application sessions before public release.
 
 Detailed rationale is in `docs/decisions/`.
@@ -41,7 +41,7 @@ The page is untrusted. The content script may read and mutate only the DOM neede
     shared-types/          Public domain types and discriminated unions
     shared-validation/    Runtime schemas and safe parsers
     translation-core/     DOM-independent segmentation, batching, cache, response mapping
-    translation-providers/ Provider interface, mock, DeepL adapter, provider error mapping
+    translation-providers/ Registry, prompt/output boundary, native and compatible adapters
     shared-config/        Environment and feature-flag validation
     ui/                   Accessible design tokens and reusable React primitives
     testing/              Fixtures, factories, fake clocks, browser helpers
@@ -66,7 +66,7 @@ Hono provides small route composition and Web-standard request/response handling
 
 Milestone 1 stores only settings needed by the shell. MVP translation content remains memory-only by default. Future account data is separate from local settings. Any persistent translation memory must have explicit opt-in, size limits, clear action, and cache-key versioning.
 
-The local release-candidate workflow builds an unpacked production extension, starts the API on `127.0.0.1`, and keeps provider selection in the backend environment. The extension can export metadata-only diagnostics without page text or URLs.
+The local release-candidate workflow builds an unpacked production extension, starts the API on `127.0.0.1`, and lets the extension select only backend-enabled provider/model IDs. Credentials, endpoints, capability policy, and model allowlists remain backend-owned. The extension can export metadata-only diagnostics without page text or URLs.
 
 ## Data-flow sequence
 
@@ -93,4 +93,4 @@ sequenceDiagram
 
 ## API-key boundary
 
-The extension bundle may contain only `VITE_API_BASE_URL`. Provider keys and server administrator keys are backend secrets. The API must reject client-supplied provider/model/endpoint overrides except for explicitly allowlisted product configuration. Secret scanning covers source, history where practical, bundles, source maps, logs, and configuration.
+The extension bundle may contain only `WXT_API_BASE_URL`. Provider keys and server administrator keys are backend secrets. The API accepts stable provider/model IDs only after registry and allowlist validation; it never accepts an upstream endpoint. Secret scanning covers source, history where practical, bundles, source maps, logs, and configuration.

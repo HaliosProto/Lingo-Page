@@ -1,6 +1,66 @@
 export const CONTRACT_VERSION = 1 as const;
 
 export type TranslationMode = 'page' | 'selection';
+export type ProviderId =
+  | 'mock'
+  | 'gemini'
+  | 'openai'
+  | 'anthropic'
+  | 'deepl'
+  | 'deepseek'
+  | 'kimi'
+  | 'glm'
+  | 'qwen'
+  | 'xai'
+  | 'mistral'
+  | 'minimax'
+  | 'cohere'
+  | 'custom-openai-compatible';
+
+export type ProviderProtocol =
+  | 'mock'
+  | 'gemini-interactions'
+  | 'openai-responses'
+  | 'anthropic-messages'
+  | 'openai-chat-compatible'
+  | 'cohere-v2'
+  | 'deepl';
+
+export type ProviderCapabilities = {
+  structuredOutput: boolean;
+  strictJsonSchema: boolean;
+  streaming: boolean;
+  cancellation: boolean;
+  languageDetection: boolean;
+  glossary: boolean;
+  usageReporting: boolean;
+  modelDiscovery: boolean;
+  reasoningControls: boolean;
+};
+
+export type ModelDefinition = {
+  id: string;
+  displayName: string;
+  enabled: boolean;
+  suitableForTranslation: boolean;
+  supportsStructuredOutput: boolean;
+  contextWindow?: number;
+  deprecated?: boolean;
+};
+
+export type ProviderDefinition = {
+  id: ProviderId;
+  displayName: string;
+  protocol: ProviderProtocol;
+  configured: boolean;
+  enabled: boolean;
+  defaultModel?: string;
+  availableModels: ModelDefinition[];
+  capabilities: ProviderCapabilities;
+  status: 'ready' | 'unconfigured' | 'disabled';
+  dataRecipient: string;
+  privacyNotice: string;
+};
 export type LanguageDirection = 'ltr' | 'rtl';
 export type TranslationStatus =
   'idle' | 'discovering' | 'translating' | 'completed' | 'partial' | 'cancelled' | 'error';
@@ -26,6 +86,8 @@ export type GlossaryEntry = {
 };
 
 export type AppSettings = {
+  providerId: ProviderId;
+  modelId: string;
   defaultTargetLanguage: string;
   sourceLanguage: string;
   theme: 'system' | 'light' | 'dark';
@@ -52,6 +114,8 @@ export type TranslationSegment = {
 export type TranslationRequest = {
   requestId: string;
   sessionId: string;
+  providerId?: ProviderId;
+  modelId?: string;
   sourceLanguage?: string;
   targetLanguage: string;
   mode: TranslationMode;
@@ -65,6 +129,8 @@ export type TranslationRequest = {
 export type TranslationResponse = {
   requestId: string;
   sessionId: string;
+  providerId: ProviderId;
+  modelId: string;
   detectedSourceLanguage?: string;
   translations: Array<{
     id: string;
@@ -73,6 +139,8 @@ export type TranslationResponse = {
   usage?: {
     inputCharacters?: number;
     outputCharacters?: number;
+    inputTokens?: number;
+    outputTokens?: number;
   };
   partial?: boolean;
 };
@@ -133,8 +201,34 @@ export type HealthResponse = {
   translationEnabled: boolean;
   provider: {
     configured: boolean;
-    name: 'none' | 'mock' | 'deepl';
+    id: 'none' | ProviderId;
+    displayName: string;
+    modelId?: string;
   };
+  requestId: string;
+};
+
+export type ProvidersResponse = {
+  version: typeof CONTRACT_VERSION;
+  providers: ProviderDefinition[];
+  defaultProviderId: ProviderId;
+  requestId: string;
+};
+
+export type ProviderModelsResponse = {
+  version: typeof CONTRACT_VERSION;
+  providerId: ProviderId;
+  models: ModelDefinition[];
+  source: 'configured' | 'discovered-cache' | 'discovered-live';
+  requestId: string;
+};
+
+export type ProviderTestResponse = {
+  version: typeof CONTRACT_VERSION;
+  providerId: ProviderId;
+  modelId: string;
+  status: 'ok';
+  latencyMs: number;
   requestId: string;
 };
 
@@ -179,9 +273,12 @@ export type DiagnosticReport = {
   backend: {
     status: 'available' | 'unavailable';
     translationEnabled: boolean;
-    provider: 'none' | 'mock' | 'deepl';
+    provider: 'none' | ProviderId;
+    modelId?: string;
   };
   settings: {
+    providerId: ProviderId;
+    modelId: string;
     privacyMode: boolean;
     persistentCache: boolean;
     autoTranslateDynamicContent: boolean;

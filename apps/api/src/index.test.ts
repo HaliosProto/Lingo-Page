@@ -28,7 +28,7 @@ describe('translation API', () => {
       status: 'ok',
       environment: 'test',
       translationEnabled: true,
-      provider: { configured: true, name: 'mock' },
+      provider: { configured: true, id: 'mock', modelId: 'mock-deterministic' },
     });
     expect(response.headers.get('x-request-id')).toMatch(/^req_/);
     expect(JSON.stringify(body)).not.toContain('DEV_AUTH_TOKEN');
@@ -39,6 +39,59 @@ describe('translation API', () => {
     const body = (await response.json()) as { languages: Array<{ code: string }> };
     expect(response.status).toBe(200);
     expect(body.languages.map((language) => language.code)).toContain('fa');
+  });
+
+  it('returns a safe provider registry with honest unconfigured states', async () => {
+    const response = await app.request('http://localhost/v1/providers', {}, environment);
+    const body = (await response.json()) as {
+      providers: Array<{ id: string; configured: boolean; enabled: boolean; status: string }>;
+    };
+    expect(response.status).toBe(200);
+    expect(body.providers).toHaveLength(14);
+    expect(body.providers.find((provider) => provider.id === 'mock')).toMatchObject({
+      configured: true,
+      enabled: true,
+      status: 'ready',
+    });
+    expect(body.providers.find((provider) => provider.id === 'openai')).toMatchObject({
+      configured: false,
+      enabled: false,
+      status: 'unconfigured',
+    });
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('API_KEY');
+    expect(serialized).not.toContain('api.openai.com');
+  });
+
+  it('returns only configured allowlisted model metadata', async () => {
+    const response = await app.request(
+      'http://localhost/v1/providers/mock/models',
+      {},
+      environment,
+    );
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      providerId: 'mock',
+      source: 'configured',
+      models: [{ id: 'mock-deterministic', enabled: true }],
+    });
+  });
+
+  it('requires backend authentication before a live model-discovery refresh', async () => {
+    const response = await app.request(
+      'http://localhost/v1/providers/openai/models?refresh=true',
+      {},
+      {
+        ...environment,
+        ENVIRONMENT: 'production',
+        DEV_AUTH_TOKEN: 'test-token',
+        OPENAI_API_KEY: 'server-secret',
+        OPENAI_DEFAULT_MODEL: 'allowed-model',
+        OPENAI_ALLOWED_MODELS: 'allowed-model',
+      },
+    );
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({ error: { code: 'AUTH_REQUIRED' } });
   });
 
   it('translates a validated batch through the deterministic mock provider', async () => {
@@ -53,11 +106,52 @@ describe('translation API', () => {
     );
     const body = (await response.json()) as {
       sessionId: string;
+      providerId: string;
+      modelId: string;
       translations: Array<{ translatedText: string }>;
     };
     expect(response.status).toBe(200);
     expect(body.sessionId).toBe(requestBody.sessionId);
+    expect(body.providerId).toBe('mock');
+    expect(body.modelId).toBe('mock-deterministic');
     expect(body.translations[0]?.translatedText).toBe('[fa] Hello');
+  });
+
+  it('rejects extension-invented model identifiers', async () => {
+    const response = await app.request(
+      'http://localhost/v1/translate',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ...requestBody, providerId: 'mock', modelId: 'invented-model' }),
+      },
+      environment,
+    );
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'PROVIDER_UNAVAILABLE' },
+    });
+  });
+
+  it('runs provider tests with fixed backend-controlled input only', async () => {
+    const success = await app.request(
+      'http://localhost/v1/providers/mock/test',
+      { method: 'POST' },
+      environment,
+    );
+    expect(success.status).toBe(200);
+    await expect(success.json()).resolves.toMatchObject({
+      providerId: 'mock',
+      modelId: 'mock-deterministic',
+      status: 'ok',
+    });
+
+    const rejected = await app.request(
+      'http://localhost/v1/providers/mock/test',
+      { method: 'POST', body: JSON.stringify({ text: 'arbitrary page content' }) },
+      environment,
+    );
+    expect(rejected.status).toBe(400);
   });
 
   it('rejects malformed requests without echoing body content', async () => {

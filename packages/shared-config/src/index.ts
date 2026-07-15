@@ -23,6 +23,8 @@ export const developmentLanguages: readonly SupportedLanguage[] = [
 ];
 
 export const defaultSettings: AppSettings = {
+  providerId: 'mock',
+  modelId: 'mock-deterministic',
   defaultTargetLanguage: 'en',
   sourceLanguage: 'auto',
   theme: 'system',

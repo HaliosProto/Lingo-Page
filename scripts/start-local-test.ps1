@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
-  [ValidateSet('mock', 'deepl')]
-  [string]$Provider = 'mock',
+  [ValidateSet('', 'mock', 'gemini', 'openai', 'anthropic', 'deepl', 'deepseek', 'kimi', 'glm', 'qwen', 'xai', 'mistral', 'minimax', 'cohere', 'custom-openai-compatible')]
+  [string]$Provider = '',
   [switch]$BuildReleaseCandidate
 )
 
@@ -50,11 +50,14 @@ Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyCo
 $arguments = @(
   'exec', 'wrangler', 'dev', '--config', 'wrangler.toml', '--local',
   '--ip', '127.0.0.1', '--port', '8787',
-  '--var', "TRANSLATION_PROVIDER:$Provider",
   '--var', 'TRANSLATION_ENABLED:true'
 )
+if ($Provider) {
+  $arguments += @('--var', "TRANSLATION_DEFAULT_PROVIDER:$Provider")
+}
 
-Write-Host "Starting the local backend in $Provider mode on http://127.0.0.1:8787 ..."
+$mode = if ($Provider) { $Provider } else { 'configured providers' }
+Write-Host "Starting the local backend in $mode mode on http://127.0.0.1:8787 ..."
 $process = Start-Process -FilePath (Get-Command 'pnpm.cmd').Source `
   -ArgumentList $arguments `
   -WorkingDirectory $apiDirectory `
@@ -96,6 +99,6 @@ Write-Host 'Local backend is ready.'
 Write-Host 'Backend URL: http://127.0.0.1:8787'
 Write-Host "Health URL:  $healthUrl"
 Write-Host "Extension folder: $extensionPath"
-Write-Host "Provider mode: $Provider"
+Write-Host "Provider mode: $mode"
 Write-Host "Backend logs: $stdoutPath"
 Write-Host 'Run pnpm local:stop when your testing session is complete.'

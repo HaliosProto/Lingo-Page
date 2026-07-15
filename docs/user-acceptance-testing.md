@@ -1,6 +1,6 @@
 # Local release-candidate user acceptance testing
 
-This runbook is for the product owner. It tests the local mock workflow first and provides an optional, separately marked DeepL path. It does not deploy, publish, upload, or create public resources.
+This runbook is for the product owner. It tests the local mock workflow first and provides an optional, separately marked multi-provider path. It does not deploy, publish, upload, or create public resources.
 
 ## 1. Start and load the candidate
 
@@ -9,7 +9,7 @@ This runbook is for the product owner. It tests the local mock workflow first an
 3. Run `pnpm local:test`. Expected: verification/build output completes, then the hidden backend reports `http://127.0.0.1:8787`, the mock provider, and the extension artifact directory.
 4. Open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and select `artifacts/translation-extension-local-rc/extension`.
 5. Pin Lingo Page. Open an ordinary HTTP(S) page containing headings, paragraphs, links, lists, an image, buttons, and a form. Do not use a banking, health, mailbox, payment, password-manager, or private admin page.
-6. Open the popup. Expected: the header contains `LOCAL` and a version; the connection row says `Mock mode - local backend`; the page is ready or explains why it is unsupported.
+6. Open the popup. Expected: the header contains `LOCAL` and a version; Provider is `Mock`, Model is `mock-deterministic`, the connection row says `Mock - local backend`, and the page is ready or explains why it is unsupported.
 
 If the backend does not become ready, stop and inspect `.local/api.stdout.log` and `.local/api.stderr.log`. Do not paste those files into chat before checking that they contain no sensitive data.
 
@@ -40,15 +40,24 @@ If the backend does not become ready, stop and inspect `.local/api.stdout.log` a
 20. Use Options to switch light, dark, and system themes and toggle reduced motion. Expected: the setting is visible immediately or after save, with readable contrast and no required animation.
 21. Stop the backend with `pnpm local:stop`, reopen the popup, and click **Retry** after attempting a translation. Expected: an unavailable state is clear and no translation is applied.
 22. Run `pnpm local:mock` to restart the backend. Expected: the provider status returns to mock and a retry can translate again.
-23. Open Options and verify the Local backend card reports the provider category. Click **Download privacy-safe diagnostics**. Expected: a JSON file is downloaded with version, backend status/provider, boolean settings, and counts only.
+23. Open Options and verify the provider/model card reports Mock, its local data recipient, connection state, and privacy notice. Click **Download privacy-safe diagnostics**. Expected: a JSON file is downloaded with provider/model IDs, version, backend status, boolean settings, and counts only; it contains no endpoint, key, text, or URL.
 24. Use keyboard navigation through popup controls and Options. Expected: focus is visible, controls have labels, and no action requires a mouse.
 
-## 6. Optional DeepL path
+## 6. Optional real-provider path
 
-25. If the owner has approved a local key test, copy `apps/api/.dev.vars.example` to `apps/api/.dev.vars` and enter the key only in `DEEPL_API_KEY`. Never paste the key into chat, the extension, source, Git, or a command line.
-26. Run `pnpm local:deepl`. Expected: the helper reports the same loopback URL without printing the key; Options says `DeepL via local backend`.
-27. Translate one non-sensitive test sentence. Record only success/failure, latency, provider response category, and diagnostics metadata. This live-provider result remains unverified until the owner performs it.
-28. Remove the local key file after testing if it is no longer needed. Confirm `git status --short`, source/bundle searches, and logs show no secret.
+25. If the owner has approved a local key test, copy `apps/api/.dev.vars.example` to `apps/api/.dev.vars` and enter only the chosen provider's key, default model, and model allowlist. Never paste the key into chat, the extension, source, Git, a command line, screenshot, or diagnostic export.
+26. Run `pnpm local:providers`. Expected: the helper reports the same loopback URL without printing any key. Options lists Mock plus only safely configured/enabled providers; every unconfigured provider is absent from selection and reported as unconfigured by `GET /v1/providers`.
+27. Select the provider/model in Options and save. Verify its data recipient and privacy notice. Choose **Test selected provider**. Expected: the controlled tiny test reports normalized success/latency or a safe authentication/rate/quota/unavailable error without an upstream body.
+28. Translate one non-sensitive test sentence. Record only success/failure, latency, provider/model IDs, normalized response category, and diagnostics metadata. No real provider is considered live-verified until the owner performs this step.
+29. Stop the backend, remove the key/default/allowlist from `.dev.vars`, restart, and confirm the provider is no longer selectable. Run `pnpm local:mock` and confirm Mock remains visibly labeled.
+30. Confirm `git status --short`, source, Git history, production bundle/source maps, ignored logs, diagnostics, and release-candidate artifacts contain no provider secret, authorization header, raw page content, upstream error body, or private custom endpoint.
+
+## 7. Provider failure and routing safety
+
+31. Set a selected provider to disabled with `DISABLED_PROVIDERS`, restart, and confirm translation fails clearly or the provider is no longer selectable. It must not silently use another provider.
+32. Configure an invalid/non-allowlisted model in extension storage only through a synthetic test. Expected: the backend rejects it; it never forwards the invented model upstream.
+33. In mocked tests, verify malformed JSON, Markdown fences, missing/duplicate/unknown IDs, refusal/truncation, lost placeholders, markup insertion, excessive expansion, and partial batches fail safely.
+34. Run `pnpm provider:benchmark -- <provider-id> --confirm-live` only when the owner explicitly accepts external transmission and cost. Review qualitative output separately with `docs/provider-benchmark-human-review.md`; automated checks must not be described as objective quality.
 
 ## Evidence and issue reporting
 

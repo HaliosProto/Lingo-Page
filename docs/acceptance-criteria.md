@@ -39,3 +39,13 @@ Implementation status: Milestones 0-2 pass. Milestone 3 passes in deterministic/
 ## Milestone 4+
 
 Use the criteria in `docs/verification-matrix.md` as the gate. No milestone is complete with unresolved high-severity security, privacy, correctness, or data-loss failures.
+
+## Universal provider release-candidate extension
+
+- Every provider is registered by stable ID with honest configured/enabled state, safe capability metadata, and backend-only credentials/endpoints.
+- Native Gemini, OpenAI, Anthropic, Cohere, and DeepL requests and the generic compatible profiles pass mocked contract tests.
+- Extension selection contains only backend-enabled providers and allowlisted models; backend validation rejects invented values.
+- No selected-provider failure silently sends text to another provider.
+- Malformed, fenced, refused, truncated, partial, stale, duplicate, unknown, markup-injecting, token-changing, or excessively expanded output fails safely.
+- Normal automated tests and browser tests make no paid provider request. Live test and benchmark commands are explicit and documented.
+- Full verification, browser mock regression, secret/bundle scans, and a rebuilt local unpacked candidate pass before local commit.

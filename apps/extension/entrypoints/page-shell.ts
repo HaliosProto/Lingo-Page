@@ -7,6 +7,7 @@ import {
 } from '@translation/translation-core';
 import type {
   GlossaryEntry,
+  ProviderId,
   TranslationProgress,
   TranslationSegment,
 } from '@translation/shared-types';
@@ -29,6 +30,8 @@ type NodeRecord = {
 
 type Session = {
   id: string;
+  providerId: ProviderId;
+  modelId: string;
   sourceLanguage: string;
   targetLanguage: string;
   glossaryVersion: number;
@@ -173,6 +176,8 @@ export default defineUnlistedScript(() => {
         request: {
           requestId: `req_batch_${crypto.randomUUID().replaceAll('-', '')}`,
           sessionId: session.id,
+          providerId: session.providerId,
+          modelId: session.modelId,
           ...(session.sourceLanguage === 'auto' ? {} : { sourceLanguage: session.sourceLanguage }),
           targetLanguage: session.targetLanguage,
           mode: 'page',
@@ -291,6 +296,8 @@ export default defineUnlistedScript(() => {
 
   async function startTranslation(payload: {
     sessionId: string;
+    providerId: ProviderId;
+    modelId: string;
     sourceLanguage: string;
     targetLanguage: string;
     glossaryVersion: number;
@@ -300,6 +307,8 @@ export default defineUnlistedScript(() => {
     restorePage();
     const session: Session = {
       id: payload.sessionId,
+      providerId: payload.providerId,
+      modelId: payload.modelId,
       sourceLanguage: payload.sourceLanguage,
       targetLanguage: payload.targetLanguage,
       glossaryVersion: payload.glossaryVersion,

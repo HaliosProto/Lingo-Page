@@ -212,6 +212,13 @@ h2 {
   font-size: 12px;
 }
 
+.privacy-copy {
+  margin: 8px 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .status-dot {
   width: 8px;
   height: 8px;

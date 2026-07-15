@@ -13,9 +13,9 @@ The pipeline translates text nodes, not page markup. It is incremental, cancelab
 5. **Segmentation** — assign stable opaque IDs; retain node references and original text; capture bounded context/role metadata without sending full surrounding page content unless needed.
 6. **Normalization** — normalize only for grouping/deduplication. Store exact original text and leading/trailing whitespace separately so application can preserve it.
 7. **Protection** — replace URLs, emails, placeholders, numbers, and configured glossary-preserve tokens with opaque placeholders for provider transport; validate exact token preservation on return.
-8. **Deduplication** — group equal text by a cache key containing source/target, original text, context, provider/model config, glossary version, formality/tone. Map one translation to many segment IDs.
+8. **Deduplication** — group equal text by a cache key containing source/target, original text, context, selected provider and model, glossary version, formality/tone. Map one translation to many segment IDs.
 9. **Batching** — enforce local and backend limits; prioritize visible viewport content, then nearby content, then below-the-fold content. Bound concurrent batches.
-10. **Backend request** — send structured segments only through the service worker to the application API.
+10. **Backend request** — send structured segments plus stable provider/model IDs only through the service worker to the application API. The API revalidates both against its registry; no endpoint or credential crosses this boundary.
 11. **Response validation** — verify request ID, exact IDs, uniqueness, output type/length, token preservation, and suspicious markup. Permit explicit partial responses only with a typed status.
 12. **Apply** — write translated text with `Text.nodeValue`/equivalent text-node operations. Do not change element structure. Track applied state and original text.
 13. **Layout adaptation** — first allow natural wrapping; then update scoped `lang`/`dir` metadata when safe; detect clipping/overflow; avoid global styles; track and reverse every change.

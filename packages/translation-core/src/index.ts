@@ -8,6 +8,7 @@ import type {
 const urlPattern = /https?:\/\/\S+|www\.\S+/giu;
 const emailPattern = /[\w.+-]+@[\w.-]+\.[a-z]{2,}/giu;
 const placeholderPattern = /\{\{[^{}]+\}\}|\{[^{}]+\}|%[a-z]|\$\{[^{}]+\}/giu;
+const reservedTokenPattern = /__LINGO_TOKEN_\d+__/gu;
 const htmlPattern = /<\/?[a-z][^>]*>/iu;
 
 export function normalizeText(text: string): {
@@ -111,12 +112,17 @@ export function protectTokens(text: string): { text: string; tokens: Map<string,
   const tokens = new Map<string, string>();
   let ordinal = 0;
   const replace = (value: string) => {
-    const token = `__LINGO_TOKEN_${ordinal}__`;
+    let token = `__LINGO_TOKEN_${ordinal}__`;
+    while (text.includes(token) || tokens.has(token)) {
+      ordinal += 1;
+      token = `__LINGO_TOKEN_${ordinal}__`;
+    }
     ordinal += 1;
     tokens.set(token, value);
     return token;
   };
   const protectedText = text
+    .replace(reservedTokenPattern, replace)
     .replace(urlPattern, replace)
     .replace(emailPattern, replace)
     .replace(placeholderPattern, replace);

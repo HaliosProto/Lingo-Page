@@ -42,11 +42,22 @@
 - Validate content type, body size, segment count, segment length, total characters, language codes, mode, and supported options.
 - Enforce per-user, per-IP, daily, monthly, and emergency global limits.
 - Use an upstream allowlist and server-side provider configuration.
+- Resolve provider and model through the backend registry; reject unknown, disabled, unconfigured, or non-allowlisted values without fallback.
+- Keep custom compatible base URLs backend-only. Permit HTTPS public origins or explicit loopback only; reject credentials, query/fragment data, private/link-local IPv4, and `.local` destinations.
 - Abort provider calls on timeout or user cancellation where supported.
 - Retry only idempotent safe transient failures with bounded backoff.
 - Return normalized error codes plus request IDs, not upstream secrets or raw provider payloads.
 - Redact authorization headers, secrets, page content, full URLs, and provider responses from logs.
 - Diagnostics export contains only extension version, backend/provider status, boolean settings, and cache/glossary counts; it never includes page text, URLs, tokens, or secrets.
+- Provider connection tests use one fixed tiny sentence and accept no caller-supplied text, URL, headers, model, or upstream parameters.
+
+## Multi-provider controls
+
+- All page text remains untrusted data inside a fixed provider instruction. It cannot select providers/models, change IDs or output schema, reveal credentials, or initiate network requests.
+- Native OpenAI, Gemini, Anthropic, Cohere, and DeepL adapters construct provider-specific payloads. Compatible providers share one reviewed adapter and immutable backend profile.
+- Returned JSON is parsed and locally validated even when an upstream claims strict schema support. Markdown fences, refusals, truncation, partial batches, stale IDs, unknown/duplicate IDs, token loss, markup insertion, and excessive expansion are failures.
+- Automatic cross-provider fallback is absent. Development-only default resolution may choose the clearly labeled mock only when no provider was explicitly requested.
+- Emergency provider disable, allowlisted model catalogs, output-token limits, per-provider timeouts/concurrency, bounded malformed-output retry, and optional daily character quotas limit spend and blast radius.
 
 ## Output validation
 

@@ -55,6 +55,13 @@ describe('translation core', () => {
     );
   });
 
+  it('escapes page-authored strings that resemble internal placeholder tokens', () => {
+    const original = 'Literal __LINGO_TOKEN_0__ plus {{name}}';
+    const protectedValue = protectTokens(original);
+    expect(protectedValue.text).not.toContain('__LINGO_TOKEN_0__');
+    expect(restoreTokens(protectedValue.text, protectedValue.tokens)).toBe(original);
+  });
+
   it('applies glossary preserve and preferred-translation rules', () => {
     const output = applyGlossary('Use Lingo and colour.', [
       {
@@ -91,6 +98,8 @@ describe('translation core', () => {
       validateTranslationResponse(request, {
         requestId: request.requestId,
         sessionId: 'session_stale_123',
+        providerId: 'mock',
+        modelId: 'mock-deterministic',
         translations: [{ id: 'one', translatedText: 'سلام' }],
       }),
     ).toThrow(/active request/u);
@@ -98,6 +107,8 @@ describe('translation core', () => {
       validateTranslationResponse(request, {
         requestId: request.requestId,
         sessionId: request.sessionId,
+        providerId: 'mock',
+        modelId: 'mock-deterministic',
         translations: [],
       }),
     ).toThrow(/missing/u);
@@ -105,6 +116,8 @@ describe('translation core', () => {
       validateTranslationResponse(request, {
         requestId: request.requestId,
         sessionId: request.sessionId,
+        providerId: 'mock',
+        modelId: 'mock-deterministic',
         translations: [{ id: 'one', translatedText: '<img src=x>' }],
       }),
     ).toThrow(/markup/u);

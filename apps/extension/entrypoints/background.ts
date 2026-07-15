@@ -11,6 +11,7 @@ import {
 } from '@translation/shared-config';
 import type {
   AppSettings,
+  ProviderId,
   SelectionResult,
   TranslationProgress,
   TranslationRequest,
@@ -24,6 +25,8 @@ import {
   extensionRequestSchema,
   extensionResponseSchema,
   healthResponseSchema,
+  providersResponseSchema,
+  providerTestResponseSchema,
   translationResponseSchema,
   type ExtensionResponse,
 } from '@translation/shared-validation';
@@ -195,6 +198,59 @@ async function getApiHealth(requestId: string): Promise<ExtensionResponse> {
   }
 }
 
+async function getProviders(requestId: string): Promise<ExtensionResponse> {
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), requestTimeoutMs);
+  try {
+    const response = await fetch(`${getApiBaseUrl()}/v1/providers`, {
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error('BACKEND_UNAVAILABLE');
+    const providers = providersResponseSchema.parse(await response.json());
+    return extensionResponseSchema.parse({
+      version: CONTRACT_VERSION,
+      requestId,
+      type: 'PROVIDERS',
+      payload: providers,
+    });
+  } catch {
+    return createErrorResponse(
+      requestId,
+      'BACKEND_UNAVAILABLE',
+      'Provider configuration is unavailable.',
+      true,
+    );
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
+}
+
+async function testProvider(requestId: string, providerId: ProviderId): Promise<ExtensionResponse> {
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), requestTimeoutMs);
+  try {
+    const response = await fetch(`${getApiBaseUrl()}/v1/providers/${providerId}/test`, {
+      method: 'POST',
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    });
+    const body = (await response.json()) as unknown;
+    if (!response.ok) return mapApiError(requestId, body);
+    const result = providerTestResponseSchema.parse(body);
+    return extensionResponseSchema.parse({
+      version: CONTRACT_VERSION,
+      requestId,
+      type: 'PROVIDER_TEST',
+      payload: result,
+    });
+  } catch {
+    return createErrorResponse(requestId, 'BACKEND_UNAVAILABLE', 'Provider test failed.', true);
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
+}
+
 async function getDiagnostics(requestId: string): Promise<ExtensionResponse> {
   const settings = await getSettings();
   const healthResponse = await getApiHealth(createRequestId());
@@ -218,9 +274,12 @@ async function getDiagnostics(requestId: string): Promise<ExtensionResponse> {
         backend: {
           status: health ? 'available' : 'unavailable',
           translationEnabled: health?.translationEnabled ?? false,
-          provider: health?.provider.name ?? 'none',
+          provider: health?.provider.id ?? 'none',
+          modelId: health?.provider.modelId,
         },
         settings: {
+          providerId: settings.providerId,
+          modelId: settings.modelId,
           privacyMode: settings.privacyMode,
           persistentCache: settings.persistentCache,
           autoTranslateDynamicContent: settings.autoTranslateDynamicContent,
@@ -316,7 +375,7 @@ async function translateRequest(request: TranslationRequest): Promise<ExtensionR
       targetLanguage: request.targetLanguage,
       text: segment.text,
       context: segment.context,
-      provider: 'backend',
+      provider: `${request.providerId ?? settings.providerId}:${request.modelId ?? settings.modelId}`,
       glossaryVersion: request.glossaryVersion,
       tone: request.tone,
       formality: request.formality,
@@ -365,7 +424,7 @@ async function translateRequest(request: TranslationRequest): Promise<ExtensionR
           targetLanguage: request.targetLanguage,
           text: original.text,
           context: original.context,
-          provider: 'backend',
+          provider: `${request.providerId ?? settings.providerId}:${request.modelId ?? settings.modelId}`,
           glossaryVersion: request.glossaryVersion,
           tone: request.tone,
           formality: request.formality,
@@ -396,6 +455,8 @@ async function translateRequest(request: TranslationRequest): Promise<ExtensionR
   const response: TranslationResponse = translationResponseSchema.parse({
     requestId: request.requestId,
     sessionId: request.sessionId,
+    providerId: request.providerId ?? settings.providerId,
+    modelId: request.modelId ?? settings.modelId,
     detectedSourceLanguage,
     translations: request.segments.map((segment) => ({
       id: segment.id,
@@ -417,6 +478,8 @@ async function translateSelection(tabId: number, text: string): Promise<Selectio
   const response = await translateRequest({
     requestId,
     sessionId,
+    providerId: settings.providerId,
+    modelId: settings.modelId,
     ...(settings.sourceLanguage === 'auto' ? {} : { sourceLanguage: settings.sourceLanguage }),
     targetLanguage: settings.defaultTargetLanguage,
     mode: 'selection',
@@ -510,6 +573,10 @@ export default defineBackground(() => {
         }
         case 'GET_API_HEALTH':
           return await getApiHealth(requestId);
+        case 'GET_PROVIDERS':
+          return await getProviders(requestId);
+        case 'TEST_PROVIDER':
+          return await testProvider(requestId, parsed.data.payload.providerId);
         case 'OPEN_OPTIONS':
           await browser.runtime.openOptionsPage();
           return extensionResponseSchema.parse({

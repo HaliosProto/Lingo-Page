@@ -8,3 +8,8 @@ allowBuilds:
   workerd: true
 minimumReleaseAgeExclude:
   - '@cloudflare/workers-types@5.20260714.1'
+overrides:
+  'shell-quote@>=1.1.0 <=1.8.3': 1.8.4
+  'tmp@<0.2.7': 0.2.7
+  'uuid@<11.1.1': 11.1.1
+  'esbuild@>=0.27.3 <0.28.1': 0.28.1

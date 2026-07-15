@@ -4,6 +4,67 @@ import { CONTRACT_VERSION } from '@translation/shared-types';
 export const requestIdSchema = z.string().regex(/^req_[a-zA-Z0-9_-]{8,96}$/);
 export const sessionIdSchema = z.string().regex(/^session_[a-zA-Z0-9_-]{8,96}$/);
 export const languageCodeSchema = z.string().regex(/^[a-z]{2,3}(?:-[A-Z]{2})?$/);
+export const providerIdSchema = z.enum([
+  'mock',
+  'gemini',
+  'openai',
+  'anthropic',
+  'deepl',
+  'deepseek',
+  'kimi',
+  'glm',
+  'qwen',
+  'xai',
+  'mistral',
+  'minimax',
+  'cohere',
+  'custom-openai-compatible',
+]);
+export const modelIdSchema = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,199}$/);
+
+export const providerCapabilitiesSchema = z.object({
+  structuredOutput: z.boolean(),
+  strictJsonSchema: z.boolean(),
+  streaming: z.boolean(),
+  cancellation: z.boolean(),
+  languageDetection: z.boolean(),
+  glossary: z.boolean(),
+  usageReporting: z.boolean(),
+  modelDiscovery: z.boolean(),
+  reasoningControls: z.boolean(),
+});
+
+export const modelDefinitionSchema = z.object({
+  id: modelIdSchema,
+  displayName: z.string().min(1).max(200),
+  enabled: z.boolean(),
+  suitableForTranslation: z.boolean(),
+  supportsStructuredOutput: z.boolean(),
+  contextWindow: z.number().int().positive().optional(),
+  deprecated: z.boolean().optional(),
+});
+
+export const providerDefinitionSchema = z.object({
+  id: providerIdSchema,
+  displayName: z.string().min(1).max(100),
+  protocol: z.enum([
+    'mock',
+    'gemini-interactions',
+    'openai-responses',
+    'anthropic-messages',
+    'openai-chat-compatible',
+    'cohere-v2',
+    'deepl',
+  ]),
+  configured: z.boolean(),
+  enabled: z.boolean(),
+  defaultModel: modelIdSchema.optional(),
+  availableModels: z.array(modelDefinitionSchema).max(500),
+  capabilities: providerCapabilitiesSchema,
+  status: z.enum(['ready', 'unconfigured', 'disabled']),
+  dataRecipient: z.string().min(1).max(120),
+  privacyNotice: z.string().min(1).max(300),
+});
 
 export const apiErrorCodeSchema = z.enum([
   'AUTH_REQUIRED',
@@ -49,6 +110,8 @@ export const glossaryEntrySchema = z.object({
 });
 
 export const appSettingsSchema = z.object({
+  providerId: providerIdSchema.default('mock'),
+  modelId: modelIdSchema.default('mock-deterministic'),
   defaultTargetLanguage: languageCodeSchema.default('en'),
   sourceLanguage: z.union([z.literal('auto'), languageCodeSchema]).default('auto'),
   theme: z.enum(['system', 'light', 'dark']).default('system'),
@@ -72,8 +135,34 @@ export const healthResponseSchema = z.object({
   translationEnabled: z.boolean(),
   provider: z.object({
     configured: z.boolean(),
-    name: z.enum(['none', 'mock', 'deepl']),
+    id: z.union([z.literal('none'), providerIdSchema]),
+    displayName: z.string().min(1).max(100),
+    modelId: modelIdSchema.optional(),
   }),
+  requestId: requestIdSchema,
+});
+
+export const providersResponseSchema = z.object({
+  version: z.literal(CONTRACT_VERSION),
+  providers: z.array(providerDefinitionSchema).max(100),
+  defaultProviderId: providerIdSchema,
+  requestId: requestIdSchema,
+});
+
+export const providerModelsResponseSchema = z.object({
+  version: z.literal(CONTRACT_VERSION),
+  providerId: providerIdSchema,
+  models: z.array(modelDefinitionSchema).max(500),
+  source: z.enum(['configured', 'discovered-cache', 'discovered-live']),
+  requestId: requestIdSchema,
+});
+
+export const providerTestResponseSchema = z.object({
+  version: z.literal(CONTRACT_VERSION),
+  providerId: providerIdSchema,
+  modelId: modelIdSchema,
+  status: z.literal('ok'),
+  latencyMs: z.number().int().nonnegative(),
   requestId: requestIdSchema,
 });
 
@@ -95,6 +184,8 @@ export const translationSegmentSchema = z.object({
 export const translationRequestSchema = z.object({
   requestId: requestIdSchema,
   sessionId: sessionIdSchema,
+  providerId: providerIdSchema.optional(),
+  modelId: modelIdSchema.optional(),
   sourceLanguage: languageCodeSchema.optional(),
   targetLanguage: languageCodeSchema,
   mode: z.enum(['page', 'selection']),
@@ -108,6 +199,8 @@ export const translationRequestSchema = z.object({
 export const translationResponseSchema = z.object({
   requestId: requestIdSchema,
   sessionId: sessionIdSchema,
+  providerId: providerIdSchema,
+  modelId: modelIdSchema,
   detectedSourceLanguage: languageCodeSchema.optional(),
   translations: z.array(
     z.object({
@@ -119,6 +212,8 @@ export const translationResponseSchema = z.object({
     .object({
       inputCharacters: z.number().int().nonnegative().optional(),
       outputCharacters: z.number().int().nonnegative().optional(),
+      inputTokens: z.number().int().nonnegative().optional(),
+      outputTokens: z.number().int().nonnegative().optional(),
     })
     .optional(),
   partial: z.boolean().optional(),
@@ -150,9 +245,12 @@ export const diagnosticReportSchema = z.object({
   backend: z.object({
     status: z.enum(['available', 'unavailable']),
     translationEnabled: z.boolean(),
-    provider: z.enum(['none', 'mock', 'deepl']),
+    provider: z.union([z.literal('none'), providerIdSchema]),
+    modelId: modelIdSchema.optional(),
   }),
   settings: z.object({
+    providerId: providerIdSchema,
+    modelId: modelIdSchema,
     privacyMode: z.boolean(),
     persistentCache: z.boolean(),
     autoTranslateDynamicContent: z.boolean(),
@@ -193,6 +291,8 @@ const messageBaseSchema = z.object({
 
 const translateCommandPayloadSchema = z.object({
   sessionId: sessionIdSchema,
+  providerId: providerIdSchema,
+  modelId: modelIdSchema,
   sourceLanguage: z.union([z.literal('auto'), languageCodeSchema]),
   targetLanguage: languageCodeSchema,
   glossaryVersion: z.number().int().nonnegative(),
@@ -207,6 +307,11 @@ export const extensionRequestSchema = z.discriminatedUnion('type', [
   }),
   messageBaseSchema.extend({ type: z.literal('PING_CONTENT_SCRIPT'), payload: z.object({}) }),
   messageBaseSchema.extend({ type: z.literal('GET_API_HEALTH'), payload: z.object({}) }),
+  messageBaseSchema.extend({ type: z.literal('GET_PROVIDERS'), payload: z.object({}) }),
+  messageBaseSchema.extend({
+    type: z.literal('TEST_PROVIDER'),
+    payload: z.object({ providerId: providerIdSchema }),
+  }),
   messageBaseSchema.extend({ type: z.literal('OPEN_OPTIONS'), payload: z.object({}) }),
   messageBaseSchema.extend({ type: z.literal('GET_SETTINGS'), payload: z.object({}) }),
   messageBaseSchema.extend({
@@ -303,6 +408,14 @@ export const extensionResponseSchema = z.discriminatedUnion('type', [
       status: z.enum(['available', 'unavailable']),
       health: healthResponseSchema.nullable(),
     }),
+  }),
+  messageBaseSchema.extend({
+    type: z.literal('PROVIDERS'),
+    payload: providersResponseSchema,
+  }),
+  messageBaseSchema.extend({
+    type: z.literal('PROVIDER_TEST'),
+    payload: providerTestResponseSchema,
   }),
   messageBaseSchema.extend({
     type: z.literal('OPTIONS_OPENED'),

@@ -1,6 +1,6 @@
 # Lingo Page
 
-Lingo Page is a privacy-first Chrome extension and local application API for translating eligible webpage text in place. The local MVP is implemented and verified with a deterministic mock provider; a credential-gated DeepL adapter is included for backend integration testing.
+Lingo Page is a privacy-first Chrome extension and local application API for translating eligible webpage text in place. The local release candidate is verified with a deterministic mock provider and includes a backend-only universal provider registry for optional local testing.
 
 ## What works
 
@@ -10,6 +10,7 @@ Lingo Page is a privacy-first Chrome extension and local application API for tra
 - Selected-text translation from the Chrome context menu with an isolated copyable result card.
 - Local settings for privacy, caching, sensitive-page warnings, domain exclusions, dynamic content, reduced motion, theme preference, and glossary terms.
 - Validated extension messages and API contracts, bounded requests, rate/quota controls, safe errors, server-only provider credentials, and privacy-safe logs.
+- Backend-enabled provider/model selection with native Gemini, OpenAI, Anthropic, Cohere, and DeepL adapters plus compatible profiles for DeepSeek, Kimi, GLM, Qwen, xAI, Mistral, MiniMax, and a restricted custom endpoint.
 
 ## Architecture
 
@@ -17,7 +18,7 @@ Lingo Page is a privacy-first Chrome extension and local application API for tra
 Popup / options / context menu
               |
               v
-MV3 service worker -----> Hono API on Cloudflare Workers -----> mock or DeepL
+MV3 service worker -----> Hono API on Cloudflare Workers -----> provider registry/adapters
               |
               v
 Injected page engine (authoritative tab session and original text)
@@ -46,6 +47,7 @@ pnpm test
 pnpm test:e2e
 pnpm build
 pnpm verify
+pnpm security:scan
 pnpm local:stop
 ```
 

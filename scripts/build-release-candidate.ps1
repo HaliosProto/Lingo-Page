@@ -25,6 +25,10 @@ New-Item -ItemType Directory -Path $artifactRoot -Force | Out-Null
 Copy-Item -LiteralPath $extensionOutput -Destination (Join-Path $artifactRoot 'extension') -Recurse
 Copy-Item -LiteralPath $apiOutput -Destination (Join-Path $artifactRoot 'backend') -Recurse
 
+Write-Host 'Scanning extension boundaries and configured secret values...'
+& (Join-Path $PSScriptRoot 'security-scan.ps1')
+if ($LASTEXITCODE -ne 0) { throw 'Security scan failed; release-candidate packaging stopped.' }
+
 $manifestPath = Join-Path $artifactRoot 'extension/manifest.json'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 $allPermissions = @($manifest.permissions) + @($manifest.host_permissions)
