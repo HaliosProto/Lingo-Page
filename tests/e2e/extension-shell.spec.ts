@@ -20,7 +20,7 @@ async function commandForFixture(control: Page, tabId: number, command: RuntimeC
   );
 }
 
-test('translates, updates dynamic content, restores exactly, and supports selection', async () => {
+test('translates, explains exclusions and cancellation, continues pending work, restores, and supports selection', async () => {
   test.setTimeout(90_000);
   const extensionPath = resolve('apps/extension/.output/chrome-mv3-e2e');
   test.skip(!existsSync(extensionPath), 'The production extension bundle has not been built.');
@@ -54,6 +54,8 @@ test('translates, updates dynamic content, restores exactly, and supports select
     });
     const popup = await context.newPage();
     await popup.goto(`chrome-extension://${extensionId}/popup.html`);
+    await fixture.bringToFront();
+    await popup.reload();
 
     const original = {
       heading: await fixture.locator('#heading').textContent(),
@@ -84,6 +86,16 @@ test('translates, updates dynamic content, restores exactly, and supports select
     await expect(fixture.locator('#notranslate')).toHaveText('ProductName must stay unchanged.');
     await expect(fixture.locator('#code')).toHaveText('const doNotTranslate = true;');
     await expect(fixture.locator('#account')).toHaveValue('1234 5678 9012');
+    await expect(
+      popup.getByText(
+        'Some content could not be translated because it is inside protected frames, images, canvas elements, or browser-restricted areas.',
+      ),
+    ).toBeVisible();
+    await expect(
+      popup.getByText(
+        'Some content was skipped for privacy or safety, such as passwords, payment fields, editable inputs, hidden text, or excluded page regions.',
+      ),
+    ).toBeVisible();
 
     await fixture.evaluate(() => window.addDynamicText());
     await expect(fixture.locator('#dynamic-paragraph')).toHaveText(
@@ -100,12 +112,13 @@ test('translates, updates dynamic content, restores exactly, and supports select
     await expect(fixture.locator('#paragraph')).toHaveText(original.paragraph!);
     expect(await fixture.locator('#whitespace').textContent()).toBe(original.whitespace);
 
+    await fixture.evaluate(() => window.addBulkText(1_000));
     await commandForFixture(popup, fixtureTabId, {
       version: 1,
-      requestId: 'req_e2e_cancel_start_12345',
+      requestId: 'req_e2e_partial_start_12345',
       type: 'START_PAGE_TRANSLATION',
       payload: {
-        sessionId: 'session_e2e_cancel_12345',
+        sessionId: 'session_e2e_partial_12345',
         providerId: 'mock',
         modelId: 'mock-deterministic',
         sourceLanguage: 'auto',
@@ -115,17 +128,57 @@ test('translates, updates dynamic content, restores exactly, and supports select
         autoTranslateDynamicContent: false,
       },
     });
+    await expect(fixture.locator('#bulk-0')).toHaveText('[de] Bulk section 0 remains stable.');
     const cancelResponse = await commandForFixture(popup, fixtureTabId, {
       version: 1,
-      requestId: 'req_e2e_cancel_12345',
+      requestId: 'req_e2e_partial_cancel_12345',
       type: 'CANCEL_PAGE_TRANSLATION',
-      payload: { sessionId: 'session_e2e_cancel_12345' },
+      payload: { sessionId: 'session_e2e_partial_12345' },
     });
     expect(cancelResponse).toMatchObject({
       type: 'TRANSLATION_PROGRESS',
       payload: { progress: { status: 'cancelled' } },
     });
-    await expect(fixture.locator('#heading')).toHaveText(original.heading!);
+    const partialProgress = (await commandForFixture(popup, fixtureTabId, {
+      version: 1,
+      requestId: 'req_e2e_partial_progress_12345',
+      type: 'GET_TRANSLATION_PROGRESS',
+      payload: {},
+    })) as {
+      payload: { progress: { translatedSegments: number; discoveredSegments: number } };
+    };
+    expect(partialProgress.payload.progress.translatedSegments).toBeGreaterThan(0);
+    expect(partialProgress.payload.progress.translatedSegments).toBeLessThan(
+      partialProgress.payload.progress.discoveredSegments,
+    );
+    await expect(fixture.locator('#bulk-0')).toHaveText('[de] Bulk section 0 remains stable.');
+    await expect(
+      popup.getByText(/^Translation was cancelled\. \d+ of \d+ sections/u),
+    ).toBeVisible();
+
+    await commandForFixture(popup, fixtureTabId, {
+      version: 1,
+      requestId: 'req_e2e_continue_12345',
+      type: 'CONTINUE_PAGE_TRANSLATION',
+      payload: {
+        sessionId: 'session_e2e_partial_12345',
+        providerId: 'mock',
+        modelId: 'mock-deterministic',
+        useSmallerBatches: false,
+      },
+    });
+    await expect(fixture.locator('#bulk-999')).toHaveText('[de] Bulk section 999 remains stable.');
+    await expect(fixture.locator('#bulk-0')).toHaveText('[de] Bulk section 0 remains stable.');
+    const completedProgress = (await commandForFixture(popup, fixtureTabId, {
+      version: 1,
+      requestId: 'req_e2e_completed_progress_12345',
+      type: 'GET_TRANSLATION_PROGRESS',
+      payload: {},
+    })) as { payload: { progress: { status: string; failedSegments: number } } };
+    expect(completedProgress.payload.progress).toMatchObject({
+      status: 'completed',
+      failedSegments: 0,
+    });
 
     await commandForFixture(popup, fixtureTabId, {
       version: 1,
@@ -150,5 +203,6 @@ test('translates, updates dynamic content, restores exactly, and supports select
 declare global {
   interface Window {
     addDynamicText(): void;
+    addBulkText(count: number): void;
   }
 }

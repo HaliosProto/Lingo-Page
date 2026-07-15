@@ -4,17 +4,17 @@
 
 ### Unit tests
 
-Pure tests cover eligibility, traversal, whitespace normalization, segmentation, inline grouping, batching, deduplication, placeholder protection, cache keys, glossary rules, overflow decisions, response validation, message schemas, error normalization, navigation identity, and privacy exclusions.
+Pure tests cover eligibility, traversal, whitespace normalization, segmentation, inline grouping, batching, deduplication, placeholder protection, cache keys, glossary rules, overflow decisions, response validation, message schemas, error normalization, exact user-facing failure explanations/actions, privacy-safe diagnostic projection, navigation identity, and privacy exclusions.
 
 Provider contract tests additionally cover registration/configuration state, immutable request construction, model allowlists, native and compatible response normalization, malformed/fenced JSON, ID reconciliation, placeholders/glossary/prompt-injection data, authentication/rate/quota/outage errors, timeout/cancellation, retry bounds, usage normalization, discovery filtering, custom endpoint restrictions, and secret-safe errors. Every upstream boundary is mocked.
 
 ### Integration tests
 
-Exercise popup/worker/content messaging with fake Chrome APIs; worker/API request validation; API/provider adapter boundaries; cancellation; partial failure; restore; dynamic content; service-worker restart recovery; cache reuse; authentication/usage-limit errors; and invalid provider responses.
+Exercise popup/worker/content messaging with fake Chrome APIs; worker/API request validation; API/provider adapter boundaries; local/upstream rate classification and Retry-After propagation; cancellation; partial failure; restore; dynamic content; service-worker restart recovery; cache reuse; authentication/usage-limit errors; and invalid provider responses.
 
 ### Browser end-to-end tests
 
-Use local deterministic fixtures, not third-party sites, for static articles, documentation/code, nested inline formatting, links, lists, tables, forms, RTL, SPA navigation, dynamic insertion, infinite scroll, large pages, unsupported pages, backend outage, provider timeout/invalid response, partial response, cancellation, restore, repeated language changes, reload, and navigation races.
+Use local deterministic fixtures, not third-party sites, for static articles, documentation/code, nested inline formatting, links, lists, tables, forms, RTL, SPA navigation, dynamic insertion, infinite scroll, large pages, unsupported pages, backend outage, provider timeout/invalid response, partial response, cancellation, pending-only continuation, restore, repeated language changes, reload, and navigation races. The implemented large fixture cancels a 1,000-section run after partial success, confirms completed text is preserved exactly once, and completes the remainder in the same session.
 
 ### Manual browser checks
 

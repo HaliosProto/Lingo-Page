@@ -10,6 +10,7 @@
 - Added normalized provider/model and token-usage metadata, strict segment reconciliation, prompt-injection boundaries, protected-token checks, malformed-output retry limits, and safe error normalization.
 - Added controlled provider tests, explicit live benchmark tooling and human-review worksheet, per-provider concurrency/timeouts/disable/quota controls, and provider-specific privacy disclosures.
 - Fixed blank optional `.dev.vars` values causing API-wide Zod failures, added request IDs and privacy-safe schema diagnostics for configuration errors, and corrected provider-test HTTP 500 classification.
+- Added normalized partial/stop reasons, exact popup explanations and recovery actions, queue/retry counts, allowlisted copyable diagnostics, bounded Retry-After handling, and continuation that never resends completed sections.
 
 ### Local MVP — 2026-07-15
 

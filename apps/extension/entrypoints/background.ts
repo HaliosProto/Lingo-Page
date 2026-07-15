@@ -13,6 +13,7 @@ import type {
   AppSettings,
   ProviderId,
   SelectionResult,
+  TranslationFailure,
   TranslationProgress,
   TranslationRequest,
   TranslationResponse,
@@ -38,6 +39,7 @@ const requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS + 2_000;
 const maxPersistentCacheEntries = 200;
 const memoryCache = new Map<string, CacheEntry>();
 const controllersBySession = new Map<string, Set<AbortController>>();
+const progressByTab = new Map<number, TranslationProgress>();
 
 function getApiBaseUrl(): string {
   const configured = import.meta.env.WXT_API_BASE_URL;
@@ -68,15 +70,19 @@ function createErrorResponse(
     | 'AUTH_REQUIRED'
     | 'RATE_LIMITED'
     | 'QUOTA_EXCEEDED'
+    | 'PROVIDER_AUTHENTICATION_FAILED'
+    | 'PROVIDER_UNAVAILABLE'
+    | 'INVALID_PROVIDER_RESPONSE'
     | 'INTERNAL_ERROR',
   message: string,
   retryable: boolean,
+  failure?: TranslationFailure,
 ): ExtensionResponse {
   return extensionResponseSchema.parse({
     version: CONTRACT_VERSION,
     requestId,
     type: 'MESSAGE_ERROR',
-    payload: { code, message, retryable },
+    payload: { code, message, retryable, failure },
   });
 }
 
@@ -136,9 +142,20 @@ async function getPageProgress(tabId: number, requestId: string): Promise<Transl
       type: 'GET_TRANSLATION_PROGRESS',
       payload: {},
     });
-    return response.type === 'TRANSLATION_PROGRESS' ? response.payload.progress : idleProgress();
+    if (response.type !== 'TRANSLATION_PROGRESS') return progressByTab.get(tabId) ?? idleProgress();
+    const current = response.payload.progress;
+    const stored = progressByTab.get(tabId);
+    if (
+      current.status === 'idle' &&
+      stored?.failure?.reason === 'NAVIGATION_CHANGED' &&
+      stored.status !== 'idle'
+    ) {
+      return stored;
+    }
+    if (current.status !== 'idle') progressByTab.set(tabId, current);
+    return current;
   } catch {
-    return idleProgress();
+    return progressByTab.get(tabId) ?? idleProgress();
   }
 }
 
@@ -236,7 +253,7 @@ async function testProvider(requestId: string, providerId: ProviderId): Promise<
       signal: controller.signal,
     });
     const body = (await response.json()) as unknown;
-    if (!response.ok) return mapApiError(requestId, body);
+    if (!response.ok) return mapApiError(requestId, body, providerId);
     const result = providerTestResponseSchema.parse(body);
     return extensionResponseSchema.parse({
       version: CONTRACT_VERSION,
@@ -330,7 +347,9 @@ function registerController(sessionId: string, controller: AbortController): () 
   controllersBySession.set(sessionId, controllers);
   return () => {
     controllers.delete(controller);
-    if (controllers.size === 0) controllersBySession.delete(sessionId);
+    if (controllers.size === 0 && controllersBySession.get(sessionId) === controllers) {
+      controllersBySession.delete(sessionId);
+    }
   };
 }
 
@@ -339,7 +358,11 @@ function cancelSession(sessionId: string): void {
   controllersBySession.delete(sessionId);
 }
 
-function mapApiError(requestId: string, value: unknown): ExtensionResponse {
+function mapApiError(
+  requestId: string,
+  value: unknown,
+  requestedProviderId?: ProviderId,
+): ExtensionResponse {
   const parsed = errorResponseSchema.safeParse(value);
   if (!parsed.success) {
     return createErrorResponse(
@@ -350,6 +373,51 @@ function mapApiError(requestId: string, value: unknown): ExtensionResponse {
     );
   }
   const error = parsed.data.error;
+  const providerId = error.details?.providerId ?? requestedProviderId;
+  const failureReason: TranslationFailure['reason'] =
+    error.code === 'RATE_LIMITED'
+      ? error.details?.source === 'local'
+        ? 'LOCAL_RATE_LIMIT'
+        : 'UPSTREAM_RATE_LIMIT'
+      : error.code === 'QUOTA_EXCEEDED'
+        ? providerId
+          ? 'UPSTREAM_QUOTA_EXHAUSTED'
+          : 'UNKNOWN'
+        : error.code === 'PROVIDER_AUTHENTICATION_FAILED'
+          ? 'AUTHENTICATION_FAILED'
+          : error.code === 'PROVIDER_TIMEOUT'
+            ? 'PROVIDER_TIMEOUT'
+            : error.code === 'PROVIDER_UNAVAILABLE'
+              ? 'PROVIDER_UNAVAILABLE'
+              : error.code === 'INVALID_PROVIDER_RESPONSE'
+                ? 'INVALID_PROVIDER_RESPONSE'
+                : error.code === 'CANCELLED'
+                  ? 'CANCELLED'
+                  : error.code === 'INTERNAL_ERROR'
+                    ? 'BACKEND_UNAVAILABLE'
+                    : 'UNKNOWN';
+  const automaticRetry =
+    error.retryable &&
+    (failureReason === 'LOCAL_RATE_LIMIT' || failureReason === 'UPSTREAM_RATE_LIMIT');
+  const failure: TranslationFailure = {
+    reason: failureReason,
+    metadata: {
+      ...(providerId ? { providerId } : {}),
+      ...(error.details?.httpStatus ? { httpStatus: error.details.httpStatus } : {}),
+      ...(error.details?.retryAfterSeconds !== undefined
+        ? { retryAfterSeconds: error.details.retryAfterSeconds }
+        : automaticRetry
+          ? { retryAfterSeconds: 5 }
+          : {}),
+      automaticRetry,
+      changingProviderMayHelp:
+        failureReason.startsWith('UPSTREAM_') ||
+        failureReason.startsWith('PROVIDER_') ||
+        failureReason === 'AUTHENTICATION_FAILED' ||
+        failureReason === 'INVALID_PROVIDER_RESPONSE',
+      requestId: error.requestId,
+    },
+  };
   const code =
     error.code === 'AUTH_REQUIRED'
       ? 'AUTH_REQUIRED'
@@ -357,12 +425,18 @@ function mapApiError(requestId: string, value: unknown): ExtensionResponse {
         ? 'RATE_LIMITED'
         : error.code === 'QUOTA_EXCEEDED'
           ? 'QUOTA_EXCEEDED'
-          : error.code === 'CANCELLED'
-            ? 'CANCELLED'
-            : error.code === 'PROVIDER_TIMEOUT'
-              ? 'REQUEST_TIMEOUT'
-              : 'BACKEND_UNAVAILABLE';
-  return createErrorResponse(requestId, code, error.message, error.retryable);
+          : error.code === 'PROVIDER_AUTHENTICATION_FAILED'
+            ? 'PROVIDER_AUTHENTICATION_FAILED'
+            : error.code === 'PROVIDER_UNAVAILABLE'
+              ? 'PROVIDER_UNAVAILABLE'
+              : error.code === 'INVALID_PROVIDER_RESPONSE'
+                ? 'INVALID_PROVIDER_RESPONSE'
+                : error.code === 'CANCELLED'
+                  ? 'CANCELLED'
+                  : error.code === 'PROVIDER_TIMEOUT'
+                    ? 'REQUEST_TIMEOUT'
+                    : 'BACKEND_UNAVAILABLE';
+  return createErrorResponse(requestId, code, error.message, error.retryable, failure);
 }
 
 async function translateRequest(request: TranslationRequest): Promise<ExtensionResponse> {
@@ -404,14 +478,39 @@ async function translateRequest(request: TranslationRequest): Promise<ExtensionR
         signal: controller.signal,
       });
       const body = (await response.json()) as unknown;
-      if (!response.ok) return mapApiError(request.requestId, body);
+      if (!response.ok) return mapApiError(request.requestId, body, request.providerId);
       const parsed = translationResponseSchema.safeParse(body);
-      if (!parsed.success || parsed.data.sessionId !== request.sessionId) {
+      if (!parsed.success) {
+        return createErrorResponse(
+          request.requestId,
+          'INVALID_PROVIDER_RESPONSE',
+          'The backend returned an invalid translation response.',
+          false,
+          {
+            reason: 'INVALID_PROVIDER_RESPONSE',
+            metadata: {
+              providerId: request.providerId,
+              requestId: request.requestId,
+              automaticRetry: false,
+              changingProviderMayHelp: true,
+            },
+          },
+        );
+      }
+      if (parsed.data.sessionId !== request.sessionId) {
         return createErrorResponse(
           request.requestId,
           'STALE_SESSION',
           'The backend response did not match the active translation session.',
           true,
+          {
+            reason: 'NAVIGATION_CHANGED',
+            metadata: {
+              providerId: request.providerId,
+              requestId: request.requestId,
+              automaticRetry: false,
+            },
+          },
         );
       }
       detectedSourceLanguage = parsed.data.detectedSourceLanguage;
@@ -445,6 +544,15 @@ async function translateRequest(request: TranslationRequest): Promise<ExtensionR
             ? 'The translation request timed out.'
             : 'The local translation service is unavailable.',
         !cancelled,
+        {
+          reason: cancelled ? 'CANCELLED' : timedOut ? 'PROVIDER_TIMEOUT' : 'BACKEND_UNAVAILABLE',
+          metadata: {
+            providerId: request.providerId,
+            requestId: request.requestId,
+            automaticRetry: false,
+            changingProviderMayHelp: false,
+          },
+        },
       );
     } finally {
       clearTimeout(timeout);
@@ -489,7 +597,9 @@ async function translateSelection(tabId: number, text: string): Promise<Selectio
   });
   if (response.type !== 'TRANSLATION_RESULT') {
     throw new Error(
-      response.type === 'MESSAGE_ERROR' ? response.payload.message : 'Translation failed.',
+      response.type === 'MESSAGE_ERROR'
+        ? response.payload.message
+        : 'Selected-text translation stopped without a result.',
     );
   }
   const translatedText = response.payload.response.translations[0]?.translatedText;
@@ -611,6 +721,7 @@ export default defineBackground(() => {
               false,
             );
           }
+          progressByTab.delete(tabId);
           await ensurePageShell(tabId);
           return await sendContentMessage(tabId, {
             version: CONTRACT_VERSION,
@@ -618,6 +729,20 @@ export default defineBackground(() => {
             type: 'START_PAGE_TRANSLATION',
             payload,
           });
+        }
+        case 'CONTINUE_PAGE_TRANSLATION': {
+          const { tabId, ...payload } = parsed.data.payload;
+          await ensurePageShell(tabId);
+          const response = await sendContentMessage(tabId, {
+            version: CONTRACT_VERSION,
+            requestId,
+            type: 'CONTINUE_PAGE_TRANSLATION',
+            payload,
+          });
+          if (response.type === 'TRANSLATION_PROGRESS') {
+            progressByTab.set(tabId, response.payload.progress);
+          }
+          return response;
         }
         case 'CANCEL_PAGE_TRANSLATION':
           cancelSession(parsed.data.payload.sessionId);
@@ -628,6 +753,7 @@ export default defineBackground(() => {
             payload: { sessionId: parsed.data.payload.sessionId },
           });
         case 'RESTORE_PAGE':
+          progressByTab.delete(parsed.data.payload.tabId);
           return await sendContentMessage(parsed.data.payload.tabId, {
             version: CONTRACT_VERSION,
             requestId,
@@ -657,6 +783,26 @@ export default defineBackground(() => {
             );
           }
           return await translateRequest(parsed.data.payload.request);
+        case 'REPORT_TRANSLATION_PROGRESS':
+          if (
+            sender.id !== browser.runtime.id ||
+            sender.tab?.id === undefined ||
+            sender.frameId !== 0
+          ) {
+            return createErrorResponse(
+              requestId,
+              'INVALID_MESSAGE',
+              'Page sender is missing.',
+              false,
+            );
+          }
+          progressByTab.set(sender.tab.id, parsed.data.payload.progress);
+          return extensionResponseSchema.parse({
+            version: CONTRACT_VERSION,
+            requestId,
+            type: 'TRANSLATION_PROGRESS',
+            payload: { progress: parsed.data.payload.progress },
+          });
         case 'TRANSLATE_SELECTION':
           await translateSelection(parsed.data.payload.tabId, parsed.data.payload.text);
           return extensionResponseSchema.parse({

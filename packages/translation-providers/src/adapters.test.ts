@@ -182,6 +182,7 @@ describe('OpenAI-compatible adapter', () => {
 
   it.each([
     [401, 'authentication', false],
+    [402, 'quota-exceeded', false],
     [429, 'rate-limited', true],
     [503, 'unavailable', true],
   ])('normalizes HTTP %s without exposing provider bodies', async (status, code, retryable) => {
@@ -194,8 +195,28 @@ describe('OpenAI-compatible adapter', () => {
         responseFormat: 'json-object',
       }),
     ).translate(request, {});
-    await expect(action).rejects.toMatchObject({ code, retryable });
+    await expect(action).rejects.toMatchObject({ code, retryable, httpStatus: status });
     await expect(action.catch((error: Error) => error.message)).resolves.not.toContain('secret');
+  });
+
+  it('preserves a privacy-safe Retry-After delay without exposing the response body', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response('secret upstream body', {
+        status: 429,
+        headers: { 'Retry-After': '18' },
+      }),
+    );
+    const action = createProviderFromConfig(
+      config('openai-chat-compatible', fetchImpl, {
+        id: 'deepseek',
+        responseFormat: 'json-object',
+      }),
+    ).translate(request, {});
+    await expect(action).rejects.toMatchObject({
+      code: 'rate-limited',
+      httpStatus: 429,
+      retryAfterSeconds: 18,
+    });
   });
 
   it('maps timeout and cancellation independently', async () => {

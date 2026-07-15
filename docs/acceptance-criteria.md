@@ -40,6 +40,8 @@ Implementation status: Milestones 0-2 pass. Milestone 3 passes in deterministic/
 
 Use the criteria in `docs/verification-matrix.md` as the gate. No milestone is complete with unresolved high-severity security, privacy, correctness, or data-loss failures.
 
+Partial, paused, cancelled, or stopped translation must show a normalized plain-language reason, completed and remaining counts, whether an automatic retry will occur, and relevant recovery actions. Technical details are optional and privacy-safe. Automatic retry honors the displayed delay; exhaustion changes the reason; manual continuation processes only failed/pending sections and preserves completed DOM changes.
+
 ## Universal provider release-candidate extension
 
 - Every provider is registered by stable ID with honest configured/enabled state, safe capability metadata, and backend-only credentials/endpoints.

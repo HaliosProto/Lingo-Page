@@ -4,21 +4,21 @@ Date: 2026-07-15
 
 ## Automated evidence
 
-| Check                   | Result | Evidence                                                                                                                           |
-| ----------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Formatting              | Pass   | `pnpm format:check`                                                                                                                |
-| Lint                    | Pass   | `pnpm lint`                                                                                                                        |
-| Strict types            | Pass   | `pnpm typecheck` across shared packages, API, and extension                                                                        |
-| Unit tests              | Pass   | 69 tests across configuration, validation, translation core, provider adapters, and provider-test classification                   |
-| API integration         | Pass   | 16 tests including Gemini-only health/registry, blank templates, malformed environment diagnostics, and existing API behavior      |
-| Direct Wrangler runtime | Pass   | Existing ignored Gemini configuration: `/v1/health` and `/v1/providers` returned HTTP 200 with request IDs                         |
-| Local launcher runtime  | Pass   | `pnpm local:start` returned Gemini health HTTP 200; `pnpm local:mock` returned mock health HTTP 200                                |
-| Live Gemini smoke       | Pass   | Explicit controlled `pnpm provider:test -- gemini` reached the real adapter and returned normalized success                        |
-| Browser E2E             | Pass   | Managed Chromium: page translation, exclusions, form safety, dynamic text, cancellation, restore, selection result, popup, options |
-| Extension build         | Pass   | WXT Chrome MV3 production build                                                                                                    |
-| API build               | Pass   | Wrangler deploy dry-run                                                                                                            |
-| Dependency audit        | Pass   | No known production dependency vulnerabilities                                                                                     |
-| Secret/bundle scan      | Pass   | Two extension roots scanned; one configured secret checked by value without display                                                |
+| Check                   | Result | Evidence                                                                                                                                                                                                     |
+| ----------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Formatting              | Pass   | `pnpm format:check`                                                                                                                                                                                          |
+| Lint                    | Pass   | `pnpm lint`                                                                                                                                                                                                  |
+| Strict types            | Pass   | `pnpm typecheck` across shared packages, API, and extension                                                                                                                                                  |
+| Unit tests              | Pass   | 95 tests across configuration, validation, translation core, provider adapters, exact failure explanations, safe diagnostics, and provider-test classification                                               |
+| API integration         | Pass   | 21 tests including Gemini-only health/registry, blank templates, malformed environment diagnostics, local/upstream HTTP classification, and existing API behavior                                            |
+| Direct Wrangler runtime | Pass   | Existing ignored Gemini configuration: `/v1/health` and `/v1/providers` returned HTTP 200 with request IDs                                                                                                   |
+| Local launcher runtime  | Pass   | `pnpm local:start` returned Gemini health HTTP 200; `pnpm local:mock` returned mock health HTTP 200                                                                                                          |
+| Live Gemini smoke       | Pass   | Explicit controlled `pnpm provider:test -- gemini` reached the real adapter and returned normalized success                                                                                                  |
+| Browser E2E             | Pass   | Managed Chromium: page translation, exact exclusion/cancellation explanations, 1,000-section partial preservation and continuation, form safety, dynamic text, restore, selection result, popup, and options |
+| Extension build         | Pass   | WXT Chrome MV3 production build                                                                                                                                                                              |
+| API build               | Pass   | Wrangler deploy dry-run                                                                                                                                                                                      |
+| Dependency audit        | Pass   | No known production dependency vulnerabilities                                                                                                                                                               |
+| Secret/bundle scan      | Pass   | Two extension roots scanned; one configured secret checked by value without display                                                                                                                          |
 
 ## Security and privacy evidence
 
@@ -40,6 +40,7 @@ Date: 2026-07-15
 - A shared top-level backend environment schema initially left backend config symbol names in the extension bundle; backend configuration now has a server-only package export and the repeated bundle scan is clean.
 - A blank optional `CUSTOM_OPENAI_BASE_URL` from the checked-in template was represented by Wrangler as an empty string, while `apiEnvironmentSchema` accepted only a valid URL or `undefined`. Environment parsing failed before request context was set, so every route returned an unstructured 500 and logs lacked a request ID. Blank optional entries now normalize to unset values, malformed non-blank entries produce value-redacted schema diagnostics, and request IDs are assigned before parsing.
 - The provider-test CLI parsed JSON inside its transport-error catch, so a non-JSON HTTP 500 was mislabeled `BACKEND_UNAVAILABLE`. HTTP responses now retain structured backend codes or receive a `BACKEND_HTTP_<status>` classification; only connection failures use `BACKEND_UNAVAILABLE`.
+- Partial failures previously collapsed to a generic popup label and could not continue the same page session. Failures now use a normalized reason with allowlisted metadata, exact actions and retry timing; completed node records survive cancellation/failure and continuation selects only unresolved records.
 
 ## Unverified/deferred
 

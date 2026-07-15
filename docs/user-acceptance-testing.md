@@ -18,7 +18,7 @@ If the backend does not become ready, stop and inspect `.local/api.stdout.log` a
 7. Keep source on automatic detection and choose a target language. Click **Translate page**. Expected: progress moves through discovery/translation and eligible text changes to deterministic mock output; the page structure and styling remain intact.
 8. Click links, focus controls, select text, and interact with the page. Expected: links, controls, images, formatting, and behavior still work. Provider output must appear as plain text, never injected markup.
 9. Click **Restore original page**. Expected: original eligible text returns exactly and the page remains usable.
-10. Start a translation on a page with enough text to observe progress, then click **Cancel translation**. Expected: progress becomes cancelled or partial, no stale session applies later, and restore remains available.
+10. Start a translation on a page with enough text to observe progress, then click **Cancel translation** after some sections finish. Expected: the popup states exactly how many sections were translated and how many remain; completed sections stay translated; **Continue remaining sections** processes only pending work; restore remains available.
 11. While a translation is running, navigate or reload the tab. Expected: text from the previous navigation is not applied to the new page. A fresh translation may be started manually.
 12. Add a visible paragraph through the page’s own UI or a dynamic test page while dynamic translation is enabled. Expected: newly eligible text is eventually translated. Disable **Translate dynamic content**, save, and repeat; expected: the new text stays original.
 
@@ -38,7 +38,7 @@ If the backend does not become ready, stop and inspect `.local/api.stdout.log` a
 ## 5. UX, recovery, and diagnostics
 
 20. Use Options to switch light, dark, and system themes and toggle reduced motion. Expected: the setting is visible immediately or after save, with readable contrast and no required animation.
-21. Stop the backend with `pnpm local:stop`, reopen the popup, and click **Retry** after attempting a translation. Expected: an unavailable state is clear and no translation is applied.
+21. Stop the backend with `pnpm local:stop`, reopen the popup, and attempt a translation. Expected: the popup explains that the local service stopped responding, preserves completed counts, and offers **Retry connection**, **Continue after reconnecting**, and restore. Expand **Technical details** and copy diagnostics; expected: normalized code/count/request metadata only, with no page text, URL, key, token, cookie, header, stack, or provider body.
 22. Run `pnpm local:mock` to restart the backend. Expected: the provider status returns to mock and a retry can translate again.
 23. Open Options and verify the provider/model card reports Mock, its local data recipient, connection state, and privacy notice. Click **Download privacy-safe diagnostics**. Expected: a JSON file is downloaded with provider/model IDs, version, backend status, boolean settings, and counts only; it contains no endpoint, key, text, or URL.
 24. Use keyboard navigation through popup controls and Options. Expected: focus is visible, controls have labels, and no action requires a mouse.

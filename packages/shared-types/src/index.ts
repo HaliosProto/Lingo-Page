@@ -63,7 +63,54 @@ export type ProviderDefinition = {
 };
 export type LanguageDirection = 'ltr' | 'rtl';
 export type TranslationStatus =
-  'idle' | 'discovering' | 'translating' | 'completed' | 'partial' | 'cancelled' | 'error';
+  | 'idle'
+  | 'discovering'
+  | 'translating'
+  | 'paused'
+  | 'retrying'
+  | 'completed'
+  | 'partial'
+  | 'cancelled'
+  | 'error';
+
+export type TranslationFailureReason =
+  | 'LOCAL_RATE_LIMIT'
+  | 'UPSTREAM_RATE_LIMIT'
+  | 'UPSTREAM_QUOTA_EXHAUSTED'
+  | 'AUTHENTICATION_FAILED'
+  | 'PROVIDER_TIMEOUT'
+  | 'PROVIDER_UNAVAILABLE'
+  | 'INVALID_PROVIDER_RESPONSE'
+  | 'BACKEND_UNAVAILABLE'
+  | 'CANCELLED'
+  | 'NAVIGATION_CHANGED'
+  | 'UNSUPPORTED_CONTENT'
+  | 'PRIVACY_EXCLUSION'
+  | 'RETRY_EXHAUSTED'
+  | 'UNKNOWN';
+
+export type TranslationFailureMetadata = {
+  providerId?: ProviderId;
+  translatedSegments?: number;
+  totalSegments?: number;
+  failedSegments?: number;
+  queuedSegments?: number;
+  retryAttempt?: number;
+  retryAfterSeconds?: number;
+  httpStatus?: number;
+  automaticRetry?: boolean;
+  changingProviderMayHelp?: boolean;
+  requestId?: string;
+  failedBatches?: number;
+  unsupportedCount?: number;
+  excludedCount?: number;
+  causeReason?: Exclude<TranslationFailureReason, 'RETRY_EXHAUSTED'>;
+};
+
+export type TranslationFailure = {
+  reason: TranslationFailureReason;
+  metadata: TranslationFailureMetadata;
+};
 
 export type SupportedLanguage = {
   code: string;
@@ -151,10 +198,14 @@ export type TranslationProgress = {
   discoveredSegments: number;
   translatedSegments: number;
   failedSegments: number;
+  queuedSegments?: number;
+  waitingSegments?: number;
+  retryingSegments?: number;
   targetLanguage?: string;
   detectedSourceLanguage?: string;
   error?: string;
-  navigationId?: string;
+  failure?: TranslationFailure;
+  notices?: TranslationFailure[];
 };
 
 export type LanguageDetectionResult = {
@@ -180,6 +231,7 @@ export type ApiErrorCode =
   | 'QUOTA_EXCEEDED'
   | 'TRANSLATION_DISABLED'
   | 'PROVIDER_UNAVAILABLE'
+  | 'PROVIDER_AUTHENTICATION_FAILED'
   | 'PROVIDER_TIMEOUT'
   | 'INVALID_PROVIDER_RESPONSE'
   | 'CANCELLED'
@@ -190,6 +242,12 @@ export type ApiError = {
   message: string;
   retryable: boolean;
   requestId: string;
+  details?: {
+    source: 'local' | 'provider' | 'backend';
+    providerId?: ProviderId;
+    httpStatus?: number;
+    retryAfterSeconds?: number;
+  };
 };
 
 export type HealthResponse = {

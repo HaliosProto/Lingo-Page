@@ -17,6 +17,8 @@ All JSON responses include `requestId` when a request exists. Errors use:
 }
 ```
 
+Provider-originated errors may add only the safe `details` fields `source`, `providerId`, `httpStatus`, and `retryAfterSeconds`. Keys, headers, upstream bodies, page text, stacks, and URLs are not part of the response schema.
+
 Messages are validated with shared runtime schemas. The API accepts only stable provider IDs and backend-allowlisted model IDs. It never accepts arbitrary provider URLs, prompts, headers, or upstream parameters from the client.
 
 ## Domain types
@@ -99,8 +101,10 @@ Unauthenticated liveness/readiness response with version and provider availabili
 
 ## Extension message contracts
 
-Implemented message types include settings/health/provider/status operations plus `GET_PROVIDERS`, `TEST_PROVIDER`, `START_PAGE_TRANSLATION`, `TRANSLATE_SEGMENTS`, `GET_TRANSLATION_PROGRESS`, `CANCEL_PAGE_TRANSLATION`, `RESTORE_PAGE`, `TRANSLATE_SELECTION`, and `SHOW_SELECTION_RESULT`. Every message carries contract version and request ID; translation work is bound to a session ID and tab.
+Implemented message types include settings/health/provider/status operations plus `GET_PROVIDERS`, `TEST_PROVIDER`, `START_PAGE_TRANSLATION`, `CONTINUE_PAGE_TRANSLATION`, `TRANSLATE_SEGMENTS`, `GET_TRANSLATION_PROGRESS`, `REPORT_TRANSLATION_PROGRESS`, `CANCEL_PAGE_TRANSLATION`, `RESTORE_PAGE`, `TRANSLATE_SELECTION`, and `SHOW_SELECTION_RESULT`. Every message carries contract version and request ID; translation work is bound to a session ID and tab. Continuation keeps the session and can request smaller batches, but it selects only untranslated connected records.
 
 ## Error categories
 
 `UNSUPPORTED_PAGE`, `AUTH_REQUIRED`, `INVALID_REQUEST`, `QUOTA_EXCEEDED`, `RATE_LIMITED`, `PROVIDER_UNAVAILABLE`, `PROVIDER_TIMEOUT`, `INVALID_PROVIDER_RESPONSE`, `CANCELLED`, `STALE_SESSION`, `PARTIAL_FAILURE`, and `INTERNAL_ERROR`.
+
+The extension normalizes stop state to `LOCAL_RATE_LIMIT`, `UPSTREAM_RATE_LIMIT`, `UPSTREAM_QUOTA_EXHAUSTED`, `AUTHENTICATION_FAILED`, `PROVIDER_TIMEOUT`, `PROVIDER_UNAVAILABLE`, `INVALID_PROVIDER_RESPONSE`, `BACKEND_UNAVAILABLE`, `CANCELLED`, `NAVIGATION_CHANGED`, `UNSUPPORTED_CONTENT`, `PRIVACY_EXCLUSION`, `RETRY_EXHAUSTED`, or `UNKNOWN`. Progress carries translated, queued, waiting, retrying, and failed counts plus privacy-safe metadata needed for exact explanations.

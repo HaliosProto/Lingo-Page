@@ -7,6 +7,7 @@ import {
 } from '@translation/shared-config/api';
 import type {
   ApiErrorCode,
+  ApiError,
   HealthResponse,
   LanguageDetectionResult,
   LanguagesResponse,
@@ -62,8 +63,14 @@ function createRequestId(): string {
   return `req_${crypto.randomUUID().replaceAll('-', '')}`;
 }
 
-function createError(code: ApiErrorCode, message: string, requestId: string, retryable = false) {
-  return errorResponseSchema.parse({ error: { code, message, requestId, retryable } });
+function createError(
+  code: ApiErrorCode,
+  message: string,
+  requestId: string,
+  retryable = false,
+  details?: ApiError['details'],
+) {
+  return errorResponseSchema.parse({ error: { code, message, requestId, retryable, details } });
 }
 
 function clientKey(context: { req: { header(name: string): string | undefined } }): string {
@@ -83,7 +90,10 @@ function isAuthorized(authorization: string | undefined, environment: ApiEnviron
   );
 }
 
-function checkRateLimit(key: string, environment: ApiEnvironment): boolean {
+function checkRateLimit(
+  key: string,
+  environment: ApiEnvironment,
+): { allowed: boolean; retryAfterSeconds?: number } {
   const now = Date.now();
   const current = rateByClient.get(key);
   if (!current || now - current.windowStartedAt >= 60_000) {
@@ -92,11 +102,16 @@ function checkRateLimit(key: string, environment: ApiEnvironment): boolean {
       if (oldestKey !== undefined) rateByClient.delete(oldestKey);
     }
     rateByClient.set(key, { windowStartedAt: now, requests: 1 });
-    return true;
+    return { allowed: true };
   }
-  if (current.requests >= environment.REQUESTS_PER_MINUTE) return false;
+  if (current.requests >= environment.REQUESTS_PER_MINUTE) {
+    return {
+      allowed: false,
+      retryAfterSeconds: Math.max(1, Math.ceil((60_000 - (now - current.windowStartedAt)) / 1_000)),
+    };
+  }
   current.requests += 1;
-  return true;
+  return { allowed: true };
 }
 
 function parseProviderQuotas(value: string): Map<ProviderId, number> {
@@ -168,29 +183,57 @@ function detectLanguage(
   return { detectedLanguage: 'en', confidence: 'low' };
 }
 
-function providerErrorResponse(error: ProviderError, requestId: string) {
+function providerErrorResponse(error: ProviderError, requestId: string, providerId: ProviderId) {
+  const details: ApiError['details'] = {
+    source: 'provider',
+    providerId,
+    ...(error.httpStatus ? { httpStatus: error.httpStatus } : {}),
+    ...(error.retryAfterSeconds !== undefined
+      ? { retryAfterSeconds: error.retryAfterSeconds }
+      : {}),
+  };
   if (error.code === 'cancelled')
-    return { status: 408 as const, body: createError('CANCELLED', error.message, requestId) };
+    return {
+      status: 408 as const,
+      body: createError('CANCELLED', error.message, requestId, false, details),
+    };
+  if (error.code === 'authentication')
+    return {
+      status: 401 as const,
+      body: createError('PROVIDER_AUTHENTICATION_FAILED', error.message, requestId, false, details),
+    };
   if (error.code === 'timeout')
     return {
       status: 504 as const,
-      body: createError('PROVIDER_TIMEOUT', error.message, requestId, true),
+      body: createError('PROVIDER_TIMEOUT', error.message, requestId, true, {
+        ...details,
+        httpStatus: 504,
+      }),
     };
   if (error.code === 'rate-limited')
     return {
       status: 429 as const,
-      body: createError('RATE_LIMITED', error.message, requestId, true),
+      body: createError('RATE_LIMITED', error.message, requestId, true, details),
     };
   if (error.code === 'quota-exceeded')
-    return { status: 429 as const, body: createError('QUOTA_EXCEEDED', error.message, requestId) };
+    return {
+      status: 429 as const,
+      body: createError('QUOTA_EXCEEDED', error.message, requestId, false, details),
+    };
   if (error.code === 'invalid-response')
     return {
       status: 502 as const,
-      body: createError('INVALID_PROVIDER_RESPONSE', error.message, requestId, error.retryable),
+      body: createError(
+        'INVALID_PROVIDER_RESPONSE',
+        error.message,
+        requestId,
+        error.retryable,
+        details,
+      ),
     };
   return {
     status: 503 as const,
-    body: createError('PROVIDER_UNAVAILABLE', error.message, requestId, error.retryable),
+    body: createError('PROVIDER_UNAVAILABLE', error.message, requestId, error.retryable, details),
   };
 }
 
@@ -406,7 +449,7 @@ app.post('/v1/providers/:providerId/test', async (context) => {
     return context.json(response);
   } catch (error) {
     if (error instanceof ProviderError) {
-      const mapped = providerErrorResponse(error, requestId);
+      const mapped = providerErrorResponse(error, requestId, id.data);
       return context.json(mapped.body, mapped.status);
     }
     throw error;
@@ -468,13 +511,19 @@ app.post('/v1/translate', async (context) => {
     );
   }
   const key = clientKey(context);
-  if (!checkRateLimit(key, environment)) {
+  const rateLimit = checkRateLimit(key, environment);
+  if (!rateLimit.allowed) {
     return context.json(
       createError(
         'RATE_LIMITED',
         'Too many translation requests. Try again shortly.',
         request.requestId,
         true,
+        {
+          source: 'local',
+          httpStatus: 429,
+          retryAfterSeconds: rateLimit.retryAfterSeconds,
+        },
       ),
       429,
     );
@@ -482,7 +531,13 @@ app.post('/v1/translate', async (context) => {
   const usage = usageByClient.get(key) ?? { inputCharacters: 0, requests: 0 };
   if (usage.inputCharacters + inputCharacters > environment.CHARACTERS_PER_SESSION) {
     return context.json(
-      createError('QUOTA_EXCEEDED', 'Development character quota reached.', request.requestId),
+      createError(
+        'QUOTA_EXCEEDED',
+        'Development character quota reached.',
+        request.requestId,
+        false,
+        { source: 'local', httpStatus: 429 },
+      ),
       429,
     );
   }
@@ -495,7 +550,13 @@ app.post('/v1/translate', async (context) => {
     (dailyUsageByProvider.get(dailyKey) ?? 0) + inputCharacters > providerQuota
   ) {
     return context.json(
-      createError('QUOTA_EXCEEDED', 'Provider daily character quota reached.', request.requestId),
+      createError(
+        'QUOTA_EXCEEDED',
+        'Provider daily character quota reached.',
+        request.requestId,
+        false,
+        { source: 'local', providerId, httpStatus: 429 },
+      ),
       429,
     );
   }
@@ -531,7 +592,7 @@ app.post('/v1/translate', async (context) => {
     return context.json(response);
   } catch (error) {
     if (error instanceof ProviderError) {
-      const mapped = providerErrorResponse(error, request.requestId);
+      const mapped = providerErrorResponse(error, request.requestId, providerId);
       return context.json(mapped.body, mapped.status);
     }
     throw error;

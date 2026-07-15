@@ -21,12 +21,22 @@ export type ProviderErrorCode =
 export class ProviderError extends Error {
   readonly code: ProviderErrorCode;
   readonly retryable: boolean;
+  readonly httpStatus?: number;
+  readonly retryAfterSeconds?: number;
 
-  constructor(code: ProviderErrorCode, message: string, retryable: boolean, cause?: unknown) {
+  constructor(
+    code: ProviderErrorCode,
+    message: string,
+    retryable: boolean,
+    cause?: unknown,
+    metadata: { httpStatus?: number; retryAfterSeconds?: number } = {},
+  ) {
     super(message, { cause });
     this.name = 'ProviderError';
     this.code = code;
     this.retryable = retryable;
+    this.httpStatus = metadata.httpStatus;
+    this.retryAfterSeconds = metadata.retryAfterSeconds;
   }
 }
 
@@ -83,17 +93,53 @@ export function joinEndpoint(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/$/u, '')}/${path.replace(/^\//u, '')}`;
 }
 
-export function mapHttpFailure(status: number): ProviderError {
+function parseRetryAfter(headers: Headers): number | undefined {
+  const value = headers.get('retry-after');
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.min(86_400, Math.ceil(seconds));
+  const date = Date.parse(value);
+  if (!Number.isFinite(date)) return undefined;
+  return Math.min(86_400, Math.max(0, Math.ceil((date - Date.now()) / 1_000)));
+}
+
+export function mapHttpFailure(response: Pick<Response, 'status' | 'headers'>): ProviderError {
+  const { status } = response;
+  const metadata = { httpStatus: status, retryAfterSeconds: parseRetryAfter(response.headers) };
   if (status === 401 || status === 403) {
-    return new ProviderError('authentication', 'Provider authentication failed.', false);
+    return new ProviderError(
+      'authentication',
+      'Provider authentication failed.',
+      false,
+      undefined,
+      metadata,
+    );
   }
   if (status === 429) {
-    return new ProviderError('rate-limited', 'The provider rate limit was reached.', true);
+    return new ProviderError(
+      'rate-limited',
+      'The provider rate limit was reached.',
+      true,
+      undefined,
+      metadata,
+    );
   }
   if (status === 402 || status === 456) {
-    return new ProviderError('quota-exceeded', 'The provider quota was reached.', false);
+    return new ProviderError(
+      'quota-exceeded',
+      'The provider quota was reached.',
+      false,
+      undefined,
+      metadata,
+    );
   }
-  return new ProviderError('unavailable', `Provider request failed (${status}).`, status >= 500);
+  return new ProviderError(
+    'unavailable',
+    `Provider request failed (${status}).`,
+    status >= 500,
+    undefined,
+    metadata,
+  );
 }
 
 export async function fetchProviderJson(
@@ -117,7 +163,7 @@ export async function fetchProviderJson(
   } finally {
     scope.dispose();
   }
-  if (!response.ok) throw mapHttpFailure(response.status);
+  if (!response.ok) throw mapHttpFailure(response);
   try {
     return await response.json();
   } catch (error) {

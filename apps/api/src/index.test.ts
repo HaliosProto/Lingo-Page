@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { app } from './index';
 
 const environment = {
@@ -26,6 +26,10 @@ const geminiEnvironment = {
   GEMINI_ALLOWED_MODELS: 'gemini-test-model, gemini-test-model-2',
   CUSTOM_OPENAI_BASE_URL: '',
 };
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe('translation API', () => {
   it('returns validated health data without exposing configuration values', async () => {
@@ -191,6 +195,104 @@ describe('translation API', () => {
     expect(body.modelId).toBe('mock-deterministic');
     expect(body.translations[0]?.translatedText).toBe('[fa] Hello');
   });
+
+  it('classifies a local backend 429 with a real retry delay', async () => {
+    const limitedEnvironment = { ...environment, REQUESTS_PER_MINUTE: '1' };
+    const origin = 'chrome-extension://local-rate-limit-test';
+    const first = await app.request(
+      'http://localhost/v1/translate',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin },
+        body: JSON.stringify({ ...requestBody, requestId: 'req_local_limit_first_12345' }),
+      },
+      limitedEnvironment,
+    );
+    expect(first.status).toBe(200);
+
+    const second = await app.request(
+      'http://localhost/v1/translate',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin },
+        body: JSON.stringify({ ...requestBody, requestId: 'req_local_limit_second_12345' }),
+      },
+      limitedEnvironment,
+    );
+    const body = (await second.json()) as {
+      error: {
+        code: string;
+        retryable: boolean;
+        details: { source: string; httpStatus: number; retryAfterSeconds: number };
+      };
+    };
+    expect(second.status).toBe(429);
+    expect(body.error).toMatchObject({
+      code: 'RATE_LIMITED',
+      retryable: true,
+      details: { source: 'local', httpStatus: 429 },
+    });
+    expect(body.error.details.retryAfterSeconds).toBeGreaterThan(0);
+  });
+
+  it.each([
+    [401, 401, 'PROVIDER_AUTHENTICATION_FAILED', false],
+    [402, 429, 'QUOTA_EXCEEDED', false],
+    [429, 429, 'RATE_LIMITED', true],
+    [503, 503, 'PROVIDER_UNAVAILABLE', true],
+  ])(
+    'normalizes an upstream HTTP %s with safe provider diagnostics',
+    async (upstreamStatus, apiStatus, code, retryable) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn<typeof fetch>().mockResolvedValue(
+          new Response('secret upstream response', {
+            status: upstreamStatus,
+            headers: upstreamStatus === 429 ? { 'Retry-After': '18' } : {},
+          }),
+        ),
+      );
+      const response = await app.request(
+        'http://localhost/v1/translate',
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            origin: `chrome-extension://upstream-${upstreamStatus}-test`,
+          },
+          body: JSON.stringify({
+            ...requestBody,
+            requestId: `req_upstream_${upstreamStatus}_12345`,
+            providerId: 'gemini',
+            modelId: 'gemini-test-model',
+          }),
+        },
+        geminiEnvironment,
+      );
+      const body = (await response.json()) as {
+        error: {
+          code: string;
+          retryable: boolean;
+          details: Record<string, unknown>;
+        };
+      };
+      expect(response.status).toBe(apiStatus);
+      expect(body.error).toMatchObject({
+        code,
+        retryable,
+        details: {
+          source: 'provider',
+          providerId: 'gemini',
+          httpStatus: upstreamStatus,
+        },
+      });
+      if (upstreamStatus === 429) {
+        expect(body.error.details.retryAfterSeconds).toBe(18);
+      }
+      expect(JSON.stringify(body)).not.toContain('secret upstream response');
+      expect(JSON.stringify(body)).not.toContain('synthetic-gemini-test-key');
+    },
+  );
 
   it('rejects extension-invented model identifiers', async () => {
     const response = await app.request(

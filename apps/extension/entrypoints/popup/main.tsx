@@ -12,9 +12,16 @@ import type {
   HealthResponse,
   ProviderDefinition,
   TabStatus,
+  TranslationFailure,
   TranslationProgress,
 } from '@translation/shared-types';
 import { extensionResponseSchema, type ExtensionResponse } from '@translation/shared-validation';
+import {
+  failurePresentation,
+  progressLabel,
+  safeFailureDiagnostics,
+  type FailureActionId,
+} from '../../src/translation-failures';
 import { ErrorBoundary } from '../../src/ui/ErrorBoundary';
 import '../../src/ui/global.css';
 
@@ -31,18 +38,23 @@ function supportLabel(status: TabStatus | null): string {
   return 'This page cannot be translated';
 }
 
-function progressLabel(progress: TranslationProgress): string {
-  if (progress.status === 'idle') return 'No active translation';
-  if (progress.status === 'discovering') return 'Finding page text…';
-  if (progress.status === 'translating') {
-    return `Translated ${progress.translatedSegments} of ${progress.discoveredSegments}`;
-  }
-  if (progress.status === 'completed') {
-    return `Translated ${progress.translatedSegments} text segments`;
-  }
-  if (progress.status === 'cancelled') return 'Translation cancelled';
-  if (progress.status === 'partial') return 'Page partially translated';
-  return progress.error ?? 'Translation failed';
+function diagnosticLabel(key: string): string {
+  return (
+    {
+      errorCode: 'Error code',
+      provider: 'Provider',
+      httpStatus: 'HTTP status',
+      requestId: 'Request ID',
+      translatedSections: 'Translated sections',
+      totalSections: 'Total sections',
+      failedSections: 'Failed sections',
+      queuedSections: 'Queued sections',
+      failedBatches: 'Failed batches',
+      retryAttempts: 'Retry attempts',
+      retryAfterSeconds: 'Retry after (seconds)',
+      automaticRetry: 'Automatic retry',
+    }[key] ?? key
+  );
 }
 
 function PopupApp() {
@@ -59,6 +71,7 @@ function PopupApp() {
   });
   const [error, setError] = useState<string>();
   const [working, setWorking] = useState(false);
+  const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
 
   const refreshProgress = useCallback(async (activeTabId: number) => {
     const response = await sendMessage({
@@ -200,9 +213,107 @@ function PopupApp() {
     if (response.type === 'TRANSLATION_PROGRESS') setProgress(response.payload.progress);
   }
 
+  async function continueTranslation(useSmallerBatches = false): Promise<void> {
+    if (tabId === undefined || !progress.sessionId) return;
+    setWorking(true);
+    setError(undefined);
+    try {
+      const response = await sendMessage({
+        version: 1,
+        requestId: createRequestId(),
+        type: 'CONTINUE_PAGE_TRANSLATION',
+        payload: {
+          tabId,
+          sessionId: progress.sessionId,
+          providerId: settings.providerId,
+          modelId: settings.modelId,
+          useSmallerBatches,
+        },
+      });
+      if (response.type === 'TRANSLATION_PROGRESS') setProgress(response.payload.progress);
+      if (response.type === 'MESSAGE_ERROR') setError(response.payload.message);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Translation could not continue.');
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function refreshBackend(): Promise<void> {
+    setWorking(true);
+    setError(undefined);
+    try {
+      const [healthResponse, providersResponse] = await Promise.all([
+        sendMessage({
+          version: 1,
+          requestId: createRequestId(),
+          type: 'GET_API_HEALTH',
+          payload: {},
+        }),
+        sendMessage({
+          version: 1,
+          requestId: createRequestId(),
+          type: 'GET_PROVIDERS',
+          payload: {},
+        }),
+      ]);
+      if (healthResponse.type === 'API_HEALTH') setHealth(healthResponse.payload.health);
+      if (providersResponse.type === 'PROVIDERS') {
+        setProviders(providersResponse.payload.providers);
+      }
+      if (healthResponse.type === 'MESSAGE_ERROR') setError(healthResponse.payload.message);
+      if (providersResponse.type === 'MESSAGE_ERROR') setError(providersResponse.payload.message);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The local service is unavailable.');
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  function handleFailureAction(action: FailureActionId): void {
+    setDiagnosticsCopied(false);
+    switch (action) {
+      case 'automatic-retry':
+        return;
+      case 'retry-failed':
+      case 'continue':
+      case 'retry-later':
+        void continueTranslation();
+        return;
+      case 'continue-smaller':
+        void continueTranslation(true);
+        return;
+      case 'retry-connection':
+        void refreshBackend();
+        return;
+      case 'start-again':
+        void startTranslation();
+        return;
+      case 'change-provider':
+        document.querySelector<HTMLSelectElement>('[data-provider-select]')?.focus();
+        return;
+      case 'restore':
+        void restorePage();
+    }
+  }
+
+  async function copyDiagnostics(
+    failure: TranslationFailure,
+    providerName?: string,
+  ): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(
+        JSON.stringify(safeFailureDiagnostics(failure, providerName), null, 2),
+      );
+      setDiagnosticsCopied(true);
+    } catch {
+      setDiagnosticsCopied(false);
+    }
+  }
+
   const supported =
     tabStatus?.support.status === 'supported' || tabStatus?.support.status === 'warning';
-  const busy = progress.status === 'discovering' || progress.status === 'translating';
+  const busy = ['discovering', 'translating', 'paused', 'retrying'].includes(progress.status);
   const selectableProviders = providers.filter(
     (provider) => provider.enabled && provider.configured,
   );
@@ -221,6 +332,16 @@ function PopupApp() {
   const percent = progress.discoveredSegments
     ? Math.round((progress.translatedSegments / progress.discoveredSegments) * 100)
     : 0;
+  const failure = progress.failure;
+  const failureProvider = failure?.metadata.providerId
+    ? providers.find((provider) => provider.id === failure.metadata.providerId)
+    : undefined;
+  const failureDetails = failure
+    ? failurePresentation(failure, failureProvider?.displayName)
+    : undefined;
+  const diagnosticEntries = failure
+    ? Object.entries(safeFailureDiagnostics(failure, failureProvider?.displayName))
+    : [];
 
   return (
     <main className="popup-shell" dir="auto">
@@ -257,6 +378,7 @@ function PopupApp() {
         <label>
           Provider
           <select
+            data-provider-select
             value={
               selectableProviders.some((provider) => provider.id === settings.providerId)
                 ? settings.providerId
@@ -339,7 +461,66 @@ function PopupApp() {
           <span>{percent}%</span>
         </div>
         <progress max="100" value={percent} />
+        <div className="progress-metrics" aria-label="Translation queue status">
+          <span>{progress.translatedSegments} translated</span>
+          <span>{progress.queuedSegments ?? 0} queued</span>
+          <span>{progress.waitingSegments ?? 0} waiting</span>
+          <span>{progress.retryingSegments ?? 0} retrying</span>
+          <span>{progress.failedSegments} failed</span>
+        </div>
       </section>
+
+      {failure && failureDetails && (
+        <section className="failure-panel" role="alert" aria-live="assertive">
+          <p className="failure-message">{failureDetails.message}</p>
+          {failureDetails.secondaryMessage && (
+            <p className="failure-secondary">{failureDetails.secondaryMessage}</p>
+          )}
+          {failureDetails.actions.length > 0 && (
+            <div className="failure-actions">
+              {failureDetails.actions.map((action, index) => (
+                <button
+                  className={index === 0 ? 'primary-button compact-button' : 'secondary-button'}
+                  type="button"
+                  key={action.id}
+                  disabled={working || busy}
+                  onClick={() => handleFailureAction(action.id)}
+                >
+                  {action.label}
+                </button>
+              ))}
+            </div>
+          )}
+          <details className="technical-details">
+            <summary>Technical details</summary>
+            <dl>
+              {diagnosticEntries.map(([label, value]) => (
+                <div key={label}>
+                  <dt>{diagnosticLabel(label)}</dt>
+                  <dd>{String(value)}</dd>
+                </div>
+              ))}
+            </dl>
+            <button
+              className="text-button"
+              type="button"
+              onClick={() => void copyDiagnostics(failure, failureProvider?.displayName)}
+            >
+              {diagnosticsCopied ? 'Diagnostics copied' : 'Copy diagnostics'}
+            </button>
+          </details>
+        </section>
+      )}
+
+      {progress.notices?.map((notice) => {
+        const noticeDetails = failurePresentation(notice);
+        return (
+          <section className="notice-panel" key={notice.reason} aria-live="polite">
+            <p>{noticeDetails.message}</p>
+            {noticeDetails.secondaryMessage && <p>{noticeDetails.secondaryMessage}</p>}
+          </section>
+        );
+      })}
 
       {busy ? (
         <button
@@ -349,7 +530,7 @@ function PopupApp() {
         >
           Cancel translation
         </button>
-      ) : (
+      ) : !failure ? (
         <button
           className="primary-button"
           type="button"
@@ -358,7 +539,7 @@ function PopupApp() {
         >
           {working ? 'Starting…' : 'Translate page'}
         </button>
-      )}
+      ) : null}
       <button
         className="secondary-button"
         type="button"

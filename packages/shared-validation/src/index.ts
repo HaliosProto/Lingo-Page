@@ -74,6 +74,7 @@ export const apiErrorCodeSchema = z.enum([
   'QUOTA_EXCEEDED',
   'TRANSLATION_DISABLED',
   'PROVIDER_UNAVAILABLE',
+  'PROVIDER_AUTHENTICATION_FAILED',
   'PROVIDER_TIMEOUT',
   'INVALID_PROVIDER_RESPONSE',
   'CANCELLED',
@@ -85,6 +86,14 @@ export const apiErrorSchema = z.object({
   message: z.string().min(1).max(300),
   retryable: z.boolean(),
   requestId: requestIdSchema,
+  details: z
+    .object({
+      source: z.enum(['local', 'provider', 'backend']),
+      providerId: providerIdSchema.optional(),
+      httpStatus: z.number().int().min(100).max(599).optional(),
+      retryAfterSeconds: z.number().int().nonnegative().max(86_400).optional(),
+    })
+    .optional(),
 });
 
 export const errorResponseSchema = z.object({ error: apiErrorSchema });
@@ -264,12 +273,70 @@ export const diagnosticReportSchema = z.object({
   }),
 });
 
+export const translationFailureReasonSchema = z.enum([
+  'LOCAL_RATE_LIMIT',
+  'UPSTREAM_RATE_LIMIT',
+  'UPSTREAM_QUOTA_EXHAUSTED',
+  'AUTHENTICATION_FAILED',
+  'PROVIDER_TIMEOUT',
+  'PROVIDER_UNAVAILABLE',
+  'INVALID_PROVIDER_RESPONSE',
+  'BACKEND_UNAVAILABLE',
+  'CANCELLED',
+  'NAVIGATION_CHANGED',
+  'UNSUPPORTED_CONTENT',
+  'PRIVACY_EXCLUSION',
+  'RETRY_EXHAUSTED',
+  'UNKNOWN',
+]);
+
+const translationFailureMetadataSchema = z.object({
+  providerId: providerIdSchema.optional(),
+  translatedSegments: z.number().int().nonnegative().optional(),
+  totalSegments: z.number().int().nonnegative().optional(),
+  failedSegments: z.number().int().nonnegative().optional(),
+  queuedSegments: z.number().int().nonnegative().optional(),
+  retryAttempt: z.number().int().nonnegative().max(20).optional(),
+  retryAfterSeconds: z.number().int().nonnegative().max(86_400).optional(),
+  httpStatus: z.number().int().min(100).max(599).optional(),
+  automaticRetry: z.boolean().optional(),
+  changingProviderMayHelp: z.boolean().optional(),
+  requestId: requestIdSchema.optional(),
+  failedBatches: z.number().int().nonnegative().optional(),
+  unsupportedCount: z.number().int().nonnegative().optional(),
+  excludedCount: z.number().int().nonnegative().optional(),
+  causeReason: z
+    .enum([
+      'LOCAL_RATE_LIMIT',
+      'UPSTREAM_RATE_LIMIT',
+      'UPSTREAM_QUOTA_EXHAUSTED',
+      'AUTHENTICATION_FAILED',
+      'PROVIDER_TIMEOUT',
+      'PROVIDER_UNAVAILABLE',
+      'INVALID_PROVIDER_RESPONSE',
+      'BACKEND_UNAVAILABLE',
+      'CANCELLED',
+      'NAVIGATION_CHANGED',
+      'UNSUPPORTED_CONTENT',
+      'PRIVACY_EXCLUSION',
+      'UNKNOWN',
+    ])
+    .optional(),
+});
+
+export const translationFailureSchema = z.object({
+  reason: translationFailureReasonSchema,
+  metadata: translationFailureMetadataSchema,
+});
+
 export const translationProgressSchema = z.object({
   sessionId: sessionIdSchema.optional(),
   status: z.enum([
     'idle',
     'discovering',
     'translating',
+    'paused',
+    'retrying',
     'completed',
     'partial',
     'cancelled',
@@ -278,10 +345,14 @@ export const translationProgressSchema = z.object({
   discoveredSegments: z.number().int().nonnegative(),
   translatedSegments: z.number().int().nonnegative(),
   failedSegments: z.number().int().nonnegative(),
+  queuedSegments: z.number().int().nonnegative().optional(),
+  waitingSegments: z.number().int().nonnegative().optional(),
+  retryingSegments: z.number().int().nonnegative().optional(),
   targetLanguage: languageCodeSchema.optional(),
   detectedSourceLanguage: languageCodeSchema.optional(),
   error: z.string().max(300).optional(),
-  navigationId: z.string().max(500).optional(),
+  failure: translationFailureSchema.optional(),
+  notices: z.array(translationFailureSchema).max(8).optional(),
 });
 
 const messageBaseSchema = z.object({
@@ -325,6 +396,16 @@ export const extensionRequestSchema = z.discriminatedUnion('type', [
       .merge(translateCommandPayloadSchema),
   }),
   messageBaseSchema.extend({
+    type: z.literal('CONTINUE_PAGE_TRANSLATION'),
+    payload: z.object({
+      tabId: z.number().int().nonnegative(),
+      sessionId: sessionIdSchema,
+      providerId: providerIdSchema,
+      modelId: modelIdSchema,
+      useSmallerBatches: z.boolean().default(false),
+    }),
+  }),
+  messageBaseSchema.extend({
     type: z.literal('CANCEL_PAGE_TRANSLATION'),
     payload: z.object({ tabId: z.number().int().nonnegative(), sessionId: sessionIdSchema }),
   }),
@@ -339,6 +420,10 @@ export const extensionRequestSchema = z.discriminatedUnion('type', [
   messageBaseSchema.extend({
     type: z.literal('TRANSLATE_SEGMENTS'),
     payload: z.object({ request: translationRequestSchema }),
+  }),
+  messageBaseSchema.extend({
+    type: z.literal('REPORT_TRANSLATION_PROGRESS'),
+    payload: z.object({ progress: translationProgressSchema }),
   }),
   messageBaseSchema.extend({
     type: z.literal('TRANSLATE_SELECTION'),
@@ -356,6 +441,15 @@ export const contentRequestSchema = z.discriminatedUnion('type', [
   messageBaseSchema.extend({
     type: z.literal('START_PAGE_TRANSLATION'),
     payload: translateCommandPayloadSchema,
+  }),
+  messageBaseSchema.extend({
+    type: z.literal('CONTINUE_PAGE_TRANSLATION'),
+    payload: z.object({
+      sessionId: sessionIdSchema,
+      providerId: providerIdSchema,
+      modelId: modelIdSchema,
+      useSmallerBatches: z.boolean().default(false),
+    }),
   }),
   messageBaseSchema.extend({
     type: z.literal('CANCEL_PAGE_TRANSLATION'),
@@ -455,10 +549,14 @@ export const extensionResponseSchema = z.discriminatedUnion('type', [
         'AUTH_REQUIRED',
         'RATE_LIMITED',
         'QUOTA_EXCEEDED',
+        'PROVIDER_AUTHENTICATION_FAILED',
+        'PROVIDER_UNAVAILABLE',
+        'INVALID_PROVIDER_RESPONSE',
         'INTERNAL_ERROR',
       ]),
       message: z.string().min(1).max(300),
       retryable: z.boolean(),
+      failure: translationFailureSchema.optional(),
     }),
   }),
 ]);

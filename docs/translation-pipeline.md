@@ -20,8 +20,9 @@ The pipeline translates text nodes, not page markup. It is incremental, cancelab
 12. **Apply** — write translated text with `Text.nodeValue`/equivalent text-node operations. Do not change element structure. Track applied state and original text.
 13. **Layout adaptation** — first allow natural wrapping; then update scoped `lang`/`dir` metadata when safe; detect clipping/overflow; avoid global styles; track and reverse every change.
 14. **Observe** — debounce mutations, ignore extension-owned mutations, translate new eligible content only when the session remains valid, and cap work per observer cycle.
-15. **Restore/cancel** — restore only nodes belonging to the active session and only when their current value is still the extension's translated value; otherwise leave page-authored changes untouched and report partial restoration.
-16. **Cleanup** — disconnect observers, abort requests, clear temporary mappings and content, and keep only non-sensitive status needed by the popup.
+15. **Pause/retry/continue** — normalize the failure source, retain completed node records, honor a bounded `Retry-After` delay for one automatic transient retry, and expose translated/queued/waiting/retrying/failed counts. After failure or cancellation, continuation batches only connected records without a translated value; completed sections are never resent.
+16. **Restore/cancel** — cancellation aborts pending work but preserves already translated sections and reports exact counts. Restore only nodes belonging to the active session and only when their current value is still the extension's translated value; otherwise leave page-authored changes untouched and report partial restoration.
+17. **Cleanup** — disconnect observers, abort requests, clear temporary mappings and content, and keep only non-sensitive status needed by the popup.
 
 ## Response invariants
 
@@ -30,6 +31,7 @@ The pipeline translates text nodes, not page markup. It is incremental, cancelab
 - No translated output is interpreted as markup.
 - Protected tokens are preserved exactly or the segment is rejected.
 - A stale navigation/session response cannot mutate the current page.
+- A failed or cancelled batch cannot reset completed progress, and continuation cannot apply a completed segment twice.
 
 ## Dynamic pages
 

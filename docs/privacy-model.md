@@ -29,6 +29,7 @@ Use a warning/blocking layer based on conservative hostname/path signals and pag
 - Future cache modes explicitly labeled: none, local-only, account-synced, organization-managed.
 - Diagnostic export deliberately redacts text, tokens, cookies, form contents, query parameters, and authorization headers.
 - The local diagnostics export is metadata-only: provider category, availability, settings booleans, and cache/glossary counts.
+- Expandable translation-failure diagnostics are also metadata-only: normalized code, provider display name, HTTP status, request ID, section/batch counts, and retry timing. Copying diagnostics cannot include page text, keys, headers, cookies, tokens, provider bodies, stacks, or URLs.
 - Backend configuration-validation logs never include environment values. They contain only request ID, schema name, issue path, expected format/type, received value category, and a value-redacted validation message.
 
 ## Provider disclosure

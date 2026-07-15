@@ -22,9 +22,11 @@
       <p id="whitespace">Whitespace must survive restoration.</p>
       <p translate="no" id="notranslate">ProductName must stay unchanged.</p>
       <code id="code">const doNotTranslate = true;</code>
+      <canvas id="protected-canvas" aria-label="Chart rendered as pixels"></canvas>
       <label>Account number <input id="account" value="1234 5678 9012" /></label>
       <button type="button">A page control</button>
       <div id="dynamic"></div>
+      <div id="bulk"></div>
     </main>
     <script>
       window.addDynamicText = () => {
@@ -32,6 +34,15 @@
         paragraph.id = 'dynamic-paragraph';
         paragraph.textContent = 'New content arrived after initial translation.';
         document.querySelector('#dynamic').append(paragraph);
+      };
+      window.addBulkText = (count) => {
+        const container = document.querySelector('#bulk');
+        for (let index = 0; index < count; index += 1) {
+          const paragraph = document.createElement('p');
+          paragraph.id = `bulk-${index}`;
+          paragraph.textContent = `Bulk section ${index} remains stable.`;
+          container.append(paragraph);
+        }
       };
     </script>
   </body>
