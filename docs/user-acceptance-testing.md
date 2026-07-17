@@ -17,10 +17,18 @@ If the backend does not become ready, stop and inspect `.local/api.stdout.log` a
 
 7. Keep source on automatic detection and choose a target language. Click **Translate page**. Expected: progress moves through discovery/translation and eligible text changes to deterministic mock output; the page structure and styling remain intact.
 8. Click links, focus controls, select text, and interact with the page. Expected: links, controls, images, formatting, and behavior still work. Provider output must appear as plain text, never injected markup.
-9. Click **Restore original page**. Expected: original eligible text returns exactly and the page remains usable.
-10. Start a translation on a page with enough text to observe progress, then click **Cancel translation** after some sections finish. Expected: the popup states exactly how many sections were translated and how many remain; completed sections stay translated; **Continue remaining sections** processes only pending work; restore remains available.
+9. Select **Original** in the View control. Expected: original eligible text returns exactly, the session and counts remain available, and no translation request occurs. Select **Translated** and repeat several times; expected: retained output reapplies instantly with no provider request.
+10. Start a translation on a page with enough text to observe progress, then click **Cancel translation** after some sections finish. Expected: the popup states exactly how many sections were translated and how many remain; completed sections stay reusable in both views; **Continue remaining sections** processes only pending work.
 11. While a translation is running, navigate or reload the tab. Expected: text from the previous navigation is not applied to the new page. A fresh translation may be started manually.
 12. Add a visible paragraph through the page’s own UI or a dynamic test page while dynamic translation is enabled. Expected: newly eligible text is eventually translated. Disable **Translate dynamic content**, save, and repeat; expected: the new text stays original.
+
+### Milestone 1 durable-session supplement
+
+- Add and modify visible text through a safe synthetic page, then choose **Check for page changes**. Expected: new, modified, removed, reordered, and uncertain counts are clear; uncertain text stays original. **Update changed sections** sends only confident new or modified text.
+- Choose **Open translated copy**. Expected: the same URL opens in another tab, confidently matched translations appear without provider requests, unmatched text remains original, and ending the source session does not change the copy.
+- Choose **Open comparison**. Expected: aligned source/translation text appears in an extension page, keyboard Previous/Next works, copy controls copy only plain text, narrow and dark layouts remain readable, and source scripts/markup are not executed.
+- Expand advanced actions and choose **Refresh translation**. Expected: a quota/cost confirmation appears before a full refresh. Cancel it once, then confirm on the deterministic mock page and verify the previous translation remains safe if replacement fails.
+- Choose **End translation session** and cancel the confirmation. Expected: the session remains. Confirm the action on a second attempt; expected: exact originals return, the page session is removed, and global settings plus other tabs remain unchanged.
 
 ## 3. Selection, language, and glossary
 

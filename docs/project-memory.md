@@ -3,12 +3,13 @@
 ## Quick orientation
 
 - Product: Lingo Page, the first privacy-first browser client of the Lingo multilingual platform.
-- Current program state: Milestone 0 establishes the post-MVP baseline; Milestone 1 has not begun and requires product-owner approval.
-- Verified source before this milestone: `fdcc9aaca680691981bc5bcc0019e669b254bad1`; historical requested baseline: `b929ac52484840c8c5b69f40719efb04b768f425`. The repository `HEAD` and latest milestone report are authoritative after a new local commit.
+- Current program state: Milestone 1 is implemented and locally verified on `milestone/01-durable-translation-sessions`; branch review and separate owner acceptance remain the active gate. Milestone 2 has not begun.
+- Starting source: `f011f6fb85c2f6e1a79541f1ee4ed4aac1c436c6`. The branch `HEAD` and `docs/milestone-1-verification-report.md` become authoritative after the milestone commit.
 - Canonical sources: `PRODUCT_CONSTITUTION.md`, `PRODUCT_VISION.md`, `ROADMAP.md`, `TASKS.md`, `AGENTS.md`, approved milestone specs, `docs/architecture.md`, contracts, security/privacy/threat documents, acceptance criteria, and verification reports.
 - Execution graph: Beads. Run `bd prime`; use `bd ready/show/update/close`; use `bd remember` for short durable facts.
 - Specification templates: repository workflow is active; CLI integration remains pending the safe plan in `docs/tooling-and-workflow.md`.
 - Handoffs: dated milestone verification reports in `docs/`, plus Beads issue comments/status.
+- Milestone 1 decisions: page-shell memory owns normal sessions; display mode is independent from lifecycle; translated copies clone bounded bundles; comparison uses an owning-tab single-use `chrome.storage.session` token; full restart persistence is deferred. Canonical sources are `docs/milestone-1-specification.md`, ADR 0007, and ADR 0009.
 
 ## Memory and Obsidian role
 

@@ -2,7 +2,7 @@
 
 Status as of 2026-07-15: Milestones 0-2 and the credential-independent local-MVP scope of Milestones 3-6 are implemented. Live-provider verification, production identity/quotas, public-release hardening, and expansion remain open.
 
-These entries preserve implementation history. The post-MVP program established on 2026-07-18 is authoritative in `ROADMAP.md`; its Milestone 0 is a new foundation/audit gate and its proposed Milestone 1 is durable browser sessions and performance, not the historical monorepo shell below.
+These entries preserve implementation history. The post-MVP program established on 2026-07-18 is authoritative in `ROADMAP.md`; its Milestone 0 is the completed foundation/audit gate and its Milestone 1 is the implemented durable-session foundation, not the historical monorepo shell below.
 
 ## Milestone 0 — Discovery, specification, architecture
 

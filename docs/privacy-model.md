@@ -47,3 +47,7 @@ Gemini Interactions and OpenAI Responses requests explicitly disable provider-si
 - Which regions process data and can users select a region?
 - How are deletion requests propagated to usage and diagnostic stores?
 - Is the store privacy disclosure consistent with actual permissions and network behavior?
+
+## Milestone 1 session lifecycle
+
+Normal original/translated text stays in the source or cloned page shell and is cleared by explicit End session, navigation invalidation, tab close, or content-script loss. A view switch never transmits text. Changed-only update transmits only confident new/modified eligible sections. Comparison creates a bounded temporary `chrome.storage.session` bundle only after explicit action; the webpage cannot read it, the URL carries only a random single-use token, and retrieval/cleanup deletes it. No history, analytics, account record, or cloud session store was added.

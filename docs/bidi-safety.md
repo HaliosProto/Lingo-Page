@@ -6,13 +6,13 @@ Mixed Persian/Arabic/Hebrew and Latin text can reorder URLs, numbers, punctuatio
 
 ## Current state and risks
 
-- Popup and Options roots use `dir="auto"`; this helps overall direction but is too coarse for mixed independent fields.
-- Current CSS uses some logical properties, but there is no audited BiDi component contract or visual fixture matrix.
-- Provider output is inserted as plain text, preserving XSS safety, but its direction is inherited from the host element unless the page already supplies an appropriate context.
+- Popup and Options roots use `dir="auto"`; independent comparison source/translation paragraphs now establish their own direction, while host-page translated Text nodes still inherit the page element context.
+- Logical CSS and a Milestone 1 comparison fixture exist, but the complete Arabic/Hebrew/table/form/browser matrix remains unfinished.
+- Provider output is inserted as plain text, preserving XSS safety. The extension does not alter unrelated host direction attributes.
 - Exact text restoration is implemented; direction-related DOM attributes are not currently added, so restore does not need to unwind them.
-- Clipboard behavior, isolated identifiers, table cells, result-card source/translation direction, and browser differences are unverified.
+- Comparison copy uses the exact logical string, but automated clipboard equality, table cells, selection-card direction, screen-reader order, and branded-browser differences remain unverified.
 
-## BiDi Safety Engine contract (future)
+## BiDi Safety Engine contract
 
 1. Determine direction per independent content unit from language metadata plus first-strong fallback; never infer security-sensitive semantics from appearance alone.
 2. Keep UI chrome direction separate from source text and translated text.
@@ -36,3 +36,7 @@ Run deterministic screenshots and DOM assertions in managed Chromium, then manua
 ## Release-blocking acceptance
 
 No critical identifier is visually reordered ambiguously; source/translation containers isolate direction; logical copy is exact; keyboard/screen-reader order is coherent; all fixture categories pass at supported zoom/theme states; restore is exact; and browser-specific deviations are documented with safe fallbacks.
+
+## Milestone 1 implementation status
+
+Popup content and comparison pairs use content-boundary `dir="auto"`; comparison text uses `unicode-bidi: plaintext` and logical layout without changing stored/copied strings or host ancestors. Managed Chromium covers Persian/English, a technical model number, URL, Persian digits, original/translated switching, copy-tab application, dark theme, and narrow comparison. Arabic/Hebrew tables, clipboard equality, screen-reader order, zoom, high contrast, and branded Chrome remain manual release evidence.

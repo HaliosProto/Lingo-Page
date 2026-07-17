@@ -9,7 +9,7 @@ Beads is the operational task/dependency graph; run `bd prime` and `bd ready` fo
 - [x] Establish the Beads program/Milestone 0 structure and detailed Milestone 1 graph.
 - [x] Record bounded defensive security and reproducible managed-Chromium mock performance baselines.
 - [x] Complete final Milestone 0 quality gates and the authorized local commit (the commit containing `docs/milestone-0-verification-report.md` is the closure artifact).
-- [ ] Product owner approves the exact Milestone 1 scope before implementation begins.
+- [x] Product owner approved the exact Milestone 1 scope and dedicated branch on 2026-07-18.
 
 ## Completed local MVP
 
@@ -48,4 +48,4 @@ Beads is the operational task/dependency graph; run `bd prime` and `bd ready` fo
 
 ## Next proposed milestone
 
-Milestone 1 is the durable browser foundation defined in `ROADMAP.md`: lifecycle/session recovery, no-call original/translation toggles, changed-section updates, long-page performance, SPA/infinite fixtures, saved reduced motion, and accessibility/BiDi regression infrastructure. No Milestone 1 implementation has begun.
+Milestone 1 implementation is on `milestone/01-durable-translation-sessions`: page-owned durable sessions, no-call original/translation toggles, changed-only updates, translated-copy isolation, comparison foundation, long-page reuse measurements, saved reduced motion, accessibility/BiDi, and bounded defensive security. See `docs/milestone-1-specification.md` and the dedicated verification report. Milestone 2 has not begun.

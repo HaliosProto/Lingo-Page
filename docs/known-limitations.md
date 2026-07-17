@@ -12,11 +12,13 @@ This local release candidate is intentionally bounded. These are known limitatio
 - Only eligible visible text nodes in the top-level page are handled. Shadow DOM, canvas-rendered text, images, cross-origin frames, and iframe contents are not translated by this MVP.
 - The local API quota and rate counters are process-local and reset when the worker restarts. They are not an enforcement boundary for production.
 - The custom compatible provider restricts configuration to backend-controlled HTTPS public or loopback URLs, but it is an advanced local feature and is not a general-purpose proxy.
-- Navigation/session safety is implemented, but route changes in complex single-page applications can require a fresh user action. Dynamic observation is bounded and may leave newly added content untranslated when a page is unusually busy.
+- Page-owned sessions support repeated views, changed-only updates, copy isolation, and comparison while the content script remains alive. Full service-worker/browser restart, sleep/wake, reload reconstruction, and complex SPA navigation persistence are intentionally deferred.
 - The diagnostics export is intentionally limited to operational metadata and counts. It is not a crash dump or a full browser trace.
 - Deployment, store publication, public hosting, provider-key provisioning, and branded-Chrome approval are out of scope for this milestone and require explicit owner approval.
-- DOM eligibility needs dedicated coverage for inherited/variant `contenteditable`, hidden ancestors, and excluded descendants inside `surroundingText`; see `docs/security-baseline.md`.
+- Eligibility now rejects inherited/variant editability and hidden ancestors, and request context excludes descendant text; broad real-site and shadow-DOM coverage remains incomplete.
 - Provider response bodies are not independently size-bounded and the provider timeout scope currently ends before JSON body consumption; validate and harden in a narrow task.
 - Production dependency advisories could not be refreshed while external registry access was prohibited; prior clean audits are dated historical evidence.
-- Interactive visual screenshots, branded-Chrome console/network inspection, screen-reader review, and saved reduced-motion runtime behavior remain unverified.
-- Chromium heap snapshots in the performance baseline are not leak proof; repeated GC-aware lifecycle profiling remains Milestone 1 work.
+- Managed Chromium screenshots cover completed, retained-original, reapplied, partial, changed, copied, dark, and narrow comparison states. Interactive browser inspection was unavailable in this session; branded-Chrome console/network, screen-reader, zoom/contrast, and owner acceptance remain unverified.
+- Saved reduced motion now applies in popup, Options, and comparison surfaces and is covered in managed Chromium; OS-level and branded-Chrome visual confirmation remain manual.
+- Chromium heap snapshots are not leak proof. The very-large final-original snapshot remained elevated without forced collection; repeatable GC-aware lifecycle profiling remains a dedicated follow-up.
+- Comparison handoff is single-use. Reload before retrieval, service-worker failure during handoff, mismatched navigation, oversized sessions, or invalid data fail closed instead of reconstructing the session.

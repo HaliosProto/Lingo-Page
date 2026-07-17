@@ -42,6 +42,10 @@
 | Retry of completed batches          | Duplicate provider disclosure/cost and double-applied text | Session-bound node state; continuation selects only untranslated connected records                           | Large multi-batch cancellation/continuation browser test.         |
 | Compromised dependency              | Extension/API compromise                                   | Lockfile, minimal dependencies, audit, review, CSP, no remote code                                           | Release audit.                                                    |
 | Sensitive content sent remotely     | Privacy harm                                               | Explicit action, warning/block mode, exclusions, no sensitive fields                                         | Privacy fixtures and manual review.                               |
+| Replayed or guessed session handoff | Cross-tab translation disclosure                           | Random single-use token, owning comparison tab, cloned copy IDs, exact navigation, bounded runtime schema    | Browser copy/comparison and invalid-schema tests.                 |
+| Ambiguous duplicate page content    | Old translation applied to the wrong text                  | Fingerprint plus structure/node identity; uncertain matches stay original                                    | Dynamic duplicate and translated-copy tests.                      |
+| Oversized session bundle            | Storage/memory exhaustion or UI freeze                     | 2,500-segment and 2 MB caps at export, validation, worker, and import boundaries                             | Schema limit and 2,206-segment browser/performance tests.         |
+| Source HTML in comparison           | Script execution or misleading reconstructed UI            | Dedicated extension page renders validated strings only and imports no source markup                         | Comparison DOM/browser and bundle scans.                          |
 
 ## Residual risks
 

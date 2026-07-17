@@ -14,12 +14,15 @@ The original local-MVP acceptance history remains below where useful. The active
 
 ## Milestone 1
 
-- Approved versioned session design minimizes stored text and defines migration, deletion, stale-DOM handling, and rollback.
-- Original/translation switching repeats without a provider call; changed-section updates send only changed eligible content.
-- Popup close/reopen, service-worker termination/restart, tab reload/close, SPA navigation, sleep/wake approximation, backend disconnect/restart, cancellation, continuation, and restore have explicit evidence/limitations.
-- Small/medium/large/very-large, viewport-first/adaptive batching, mutation storm, memory cleanup, cache, 429, and timeout baselines meet approved targets or create blocking issues.
-- Saved and OS reduced-motion paths work; accessibility and BiDi fixture/visual/clipboard/keyboard gates pass in managed Chromium, with branded-Chrome evidence recorded separately.
-- Least permissions, plain-text output, backend-only keys, runtime validation, and privacy defaults are preserved; no accounts, billing, deployment, publication, automatic routing, or new platform implementation is added.
+- Display mode is independent from lifecycle; original and translated values remain reusable after full, partial, and cancelled translation.
+- Original/translation switching repeats with zero backend/provider calls; exact originals and page interaction remain intact.
+- Changed scans distinguish confident new/modified/removed/reordered records from uncertain duplicates; updates transmit only confident changed eligible text.
+- Translated copies clone bounded validated sessions, confidently match the same navigation, make zero provider calls for matches, and remain isolated from the source.
+- Comparison renders aligned plain text without source HTML/scripts, supports keyboard/copy/responsive/BiDi states, and fails safely for invalid or expired handoff.
+- End session is separately confirmed, restores originals, cancels work, stops observers/timers, and clears only the owning tab session.
+- The 2,206-segment managed fixture records switch/copy/comparison time, request deltas, long tasks, and directional memory evidence against the Milestone 0 baseline.
+- Saved and OS reduced motion, semantic controls, narrow/dark layouts, and mixed RTL/LTR content have managed evidence; branded Chrome and screen-reader evidence are reported separately.
+- Permissions, plain-text output, backend-only keys, runtime validation, bounds, and privacy defaults are preserved; deferred restart/SPA/viewport work is not claimed.
 
 ## Milestone 2
 
