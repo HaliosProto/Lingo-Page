@@ -104,6 +104,15 @@ Observed failures were resolved or bounded:
 - Architecture, privacy, data retention, security, threat, accessibility, BiDi, testing, performance, acceptance, verification, roadmap, tasks, changelog, README, UAT, known limitations, and project memory were reconciled.
 - Beads tasks `translation-1mp.2.1` through `.10` provide the specification-to-evidence graph. The cross-milestone release/owner-acceptance epic `translation-12l` remains open under the program root rather than blocking or being falsely closed as Milestone 1 implementation work.
 
+## Git and Beads closure
+
+- `d3ea973` — `feat: add durable translation sessions and reusable views`
+- `451056e` — `test: verify durable session workflows and reuse`
+- `d62da8f` — `docs: specify and verify Milestone 1`
+- A final focused closure-metadata commit records the completed task/epic evidence after this report.
+
+The branch was pushed with upstream tracking to `origin/milestone/01-durable-translation-sessions`. Beads tasks `translation-1mp.2.1` through `.10` and epic `translation-1mp.2` are closed with evidence. No commit was pushed to main, no pull request was opened or merged, and the prepared title/description is part of the handoff for team review.
+
 ## Known limitations and owner actions
 
 - Sessions are durable only while their page/content-script context lives. Full service-worker/browser restart, reload reconstruction, sleep/wake, and complex SPA persistence are deferred.
