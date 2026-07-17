@@ -45,7 +45,7 @@ Open comparison places a single-use 128-bit token in the extension-page fragment
 
 The 360 px popup now provides a semantic Original/Translated segmented control, lifecycle badge, changed-content summary/action, copy/comparison actions, and progressive advanced Refresh/End actions with confirmation. State is not communicated by color alone. Popup, Options, and comparison apply both saved and system reduced-motion preferences. Controls are labeled and keyboard operable; comparison Previous/Next and copy actions passed managed tests.
 
-Mixed Persian/English text with numbers, a model identifier, and URL preserved logical order in the managed fixture. Comparison content uses paragraph-level automatic direction and inline isolation without changing host-page ancestor direction. Dark desktop and 390 px narrow comparison layouts were visually inspected and remained readable.
+Managed fixtures cover English to Persian, Persian to English, Arabic with Arabic numerals, Hebrew with a URL, mixed Persian/English text, technical model identifiers, Persian digits, a list, table cells, and a button. Comparison content uses paragraph-level automatic direction and inline isolation without changing host-page ancestor direction. Dark desktop and 390 px narrow comparison layouts were visually inspected and remained readable.
 
 Formal screen-reader, 200% zoom, contrast-tool, OS-level motion, broad real-site RTL, and branded-Chrome checks remain owner/manual release evidence.
 
@@ -109,7 +109,8 @@ Observed failures were resolved or bounded:
 - `d3ea973` — `feat: add durable translation sessions and reusable views`
 - `451056e` — `test: verify durable session workflows and reuse`
 - `d62da8f` — `docs: specify and verify Milestone 1`
-- A final focused closure-metadata commit records the completed task/epic evidence after this report.
+- `ef8afc9` — `chore: record Milestone 1 closure`
+- A final focused test-evidence commit expands the explicit Arabic, Hebrew, table, list, and button BiDi matrix after the closure cross-check.
 
 The branch was pushed with upstream tracking to `origin/milestone/01-durable-translation-sessions`. Beads tasks `translation-1mp.2.1` through `.10` and epic `translation-1mp.2` are closed with evidence. No commit was pushed to main, no pull request was opened or merged, and the prepared title/description is part of the handoff for team review.
 

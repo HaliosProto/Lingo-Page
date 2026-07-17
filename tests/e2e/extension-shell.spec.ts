@@ -78,6 +78,7 @@ test('translates, explains exclusions and cancellation, continues pending work, 
     await popup.goto(`chrome-extension://${extensionId}/popup.html`);
     await fixture.bringToFront();
     await popup.reload();
+    await fixture.evaluate(() => window.addBidiTestMatrix());
 
     const original = {
       heading: await fixture.locator('#heading').textContent(),
@@ -108,6 +109,13 @@ test('translates, explains exclusions and cancellation, continues pending work, 
     await expect(fixture.locator('#notranslate')).toHaveText('ProductName must stay unchanged.');
     await expect(fixture.locator('#code')).toHaveText('const doNotTranslate = true;');
     await expect(fixture.locator('#account')).toHaveValue('1234 5678 9012');
+    await expect(fixture.locator('#bidi-english-persian')).toContainText('[fa]');
+    await expect(fixture.locator('#bidi-arabic-numbers')).toContainText('١٢٣٤');
+    await expect(fixture.locator('#bidi-hebrew-url')).toContainText('https://example.com/path');
+    await expect(fixture.locator('#bidi-list li')).toContainText('[fa]');
+    await expect(fixture.locator('#bidi-table td')).toHaveCount(2);
+    await expect(fixture.locator('#bidi-table td').first()).toContainText('[fa]');
+    await expect(fixture.locator('#bidi-button')).toContainText('[fa]');
     await expect(popup.getByText('Translation available')).toBeVisible();
     await expect(popup.getByRole('group', { name: 'Page view' })).toBeVisible();
     if (captureMilestoneOne) {
@@ -192,13 +200,13 @@ test('translates, explains exclusions and cancellation, continues pending work, 
         providerId: 'mock',
         modelId: 'mock-deterministic',
         sourceLanguage: 'auto',
-        targetLanguage: 'de',
+        targetLanguage: 'en',
         glossaryVersion: 0,
         glossary: [],
         autoTranslateDynamicContent: false,
       },
     });
-    await expect(fixture.locator('#bulk-0')).toHaveText('[de] Bulk section 0 remains stable.');
+    await expect(fixture.locator('#bulk-0')).toHaveText('[en] Bulk section 0 remains stable.');
     const cancelResponse = await commandForFixture(popup, fixtureTabId, {
       version: 1,
       requestId: 'req_e2e_partial_cancel_12345',
@@ -221,7 +229,7 @@ test('translates, explains exclusions and cancellation, continues pending work, 
     expect(partialProgress.payload.progress.translatedSegments).toBeLessThan(
       partialProgress.payload.progress.discoveredSegments,
     );
-    await expect(fixture.locator('#bulk-0')).toHaveText('[de] Bulk section 0 remains stable.');
+    await expect(fixture.locator('#bulk-0')).toHaveText('[en] Bulk section 0 remains stable.');
     await expect(
       popup.getByText(/^Translation was cancelled\. \d+ of \d+ sections/u),
     ).toBeVisible();
@@ -246,7 +254,7 @@ test('translates, explains exclusions and cancellation, continues pending work, 
       type: 'SET_PAGE_VIEW',
       payload: { sessionId: 'session_e2e_partial_12345', displayMode: 'translated' },
     });
-    await expect(fixture.locator('#bulk-0')).toHaveText('[de] Bulk section 0 remains stable.');
+    await expect(fixture.locator('#bulk-0')).toHaveText('[en] Bulk section 0 remains stable.');
     expect(translationRequestCount).toBe(requestsBeforePartialSwitch);
 
     await commandForFixture(popup, fixtureTabId, {
@@ -260,8 +268,8 @@ test('translates, explains exclusions and cancellation, continues pending work, 
         useSmallerBatches: false,
       },
     });
-    await expect(fixture.locator('#bulk-999')).toHaveText('[de] Bulk section 999 remains stable.');
-    await expect(fixture.locator('#bulk-0')).toHaveText('[de] Bulk section 0 remains stable.');
+    await expect(fixture.locator('#bulk-999')).toHaveText('[en] Bulk section 999 remains stable.');
+    await expect(fixture.locator('#bulk-0')).toHaveText('[en] Bulk section 0 remains stable.');
     const completedProgress = (await commandForFixture(popup, fixtureTabId, {
       version: 1,
       requestId: 'req_e2e_completed_progress_12345',
@@ -302,7 +310,7 @@ test('translates, explains exclusions and cancellation, continues pending work, 
       payload: { sessionId: 'session_e2e_partial_12345' },
     });
     await expect(fixture.locator('#changed-section')).toHaveText(
-      '[de] A deliberately added section needs translation.',
+      '[en] A deliberately added section needs translation.',
     );
     await expect(fixture.locator('#mixed-direction')).toContainText(
       'Persian فارسی model XJ-2026, https://example.com/path and number ۱۲۳۴.',
@@ -342,7 +350,7 @@ test('translates, explains exclusions and cancellation, continues pending work, 
       payload: { sessionId: 'session_e2e_partial_12345' },
     });
     await expect(fixture.locator('#paragraph')).toHaveText(
-      '[de] This paragraph was deliberately modified after translation.',
+      '[en] This paragraph was deliberately modified after translation.',
     );
     expect(translationRequestCount).toBe(requestsBeforeStructuralUpdate + 1);
 
@@ -364,7 +372,7 @@ test('translates, explains exclusions and cancellation, continues pending work, 
       payload: { sessionId: 'session_e2e_partial_12345' },
     });
     await expect(fixture.locator('#duplicate-dynamic-0')).toHaveText(
-      '[de] Duplicated dynamic text requires a confident match.',
+      '[en] Duplicated dynamic text requires a confident match.',
     );
     await expect(fixture.locator('#duplicate-dynamic-1')).toHaveText(
       'Duplicated dynamic text requires a confident match.',
@@ -383,7 +391,7 @@ test('translates, explains exclusions and cancellation, continues pending work, 
       .pages()
       .find((page) => page.url() === 'http://127.0.0.1:4173/fixture.html' && page !== fixture);
     expect(copyPage).toBeDefined();
-    await expect(copyPage!.locator('#heading')).toHaveText('[de] Stable fixture heading');
+    await expect(copyPage!.locator('#heading')).toHaveText('[en] Stable fixture heading');
     if (captureMilestoneOne) {
       await copyPage!.screenshot({
         path: join(milestoneOneScreenshotRoot, 'translated-copy.png'),
@@ -456,7 +464,7 @@ test('translates, explains exclusions and cancellation, continues pending work, 
       payload: { sessionId: 'session_e2e_partial_12345' },
     });
     await expect(fixture.locator('#heading')).toHaveText(original.heading!);
-    await expect(copyPage!.locator('#heading')).toHaveText('[de] Stable fixture heading');
+    await expect(copyPage!.locator('#heading')).toHaveText('[en] Stable fixture heading');
 
     await commandForFixture(popup, fixtureTabId, {
       version: 1,
@@ -507,6 +515,7 @@ declare global {
     reorderFixtureHeading(): void;
     removeFixtureWhitespace(): void;
     addMixedDirectionText(): void;
+    addBidiTestMatrix(): void;
     addDuplicateDynamicText(): void;
   }
 }

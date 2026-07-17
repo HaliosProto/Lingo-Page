@@ -69,6 +69,45 @@
           'Persian فارسی model XJ-2026, https://example.com/path and number ۱۲۳۴.';
         document.querySelector('#dynamic').append(paragraph);
       };
+      window.addBidiTestMatrix = () => {
+        const section = document.createElement('section');
+        section.id = 'bidi-test-matrix';
+
+        const englishToPersian = document.createElement('p');
+        englishToPersian.id = 'bidi-english-persian';
+        englishToPersian.dir = 'auto';
+        englishToPersian.textContent = 'English sentence with Persian فارسی and model PX-2026.';
+
+        const arabic = document.createElement('p');
+        arabic.id = 'bidi-arabic-numbers';
+        arabic.dir = 'auto';
+        arabic.textContent = 'النص العربي مع الرقم ١٢٣٤ والرمز AR-42.';
+
+        const hebrew = document.createElement('p');
+        hebrew.id = 'bidi-hebrew-url';
+        hebrew.dir = 'auto';
+        hebrew.textContent = 'טקסט עברי עם https://example.com/path והדגם HX-9.';
+
+        const list = document.createElement('ul');
+        list.id = 'bidi-list';
+        const listItem = document.createElement('li');
+        listItem.textContent = 'List item فارسی with tag #release-2026.';
+        list.append(listItem);
+
+        const table = document.createElement('table');
+        table.id = 'bidi-table';
+        const row = table.insertRow();
+        row.insertCell().textContent = 'جدول ۲۰۲۶';
+        row.insertCell().textContent = 'SKU TB-44';
+
+        const button = document.createElement('button');
+        button.id = 'bidi-button';
+        button.type = 'button';
+        button.textContent = 'Continue ادامه';
+
+        section.append(englishToPersian, arabic, hebrew, list, table, button);
+        document.querySelector('#dynamic').append(section);
+      };
       window.addDuplicateDynamicText = () => {
         for (let index = 0; index < 2; index += 1) {
           const paragraph = document.createElement('p');
