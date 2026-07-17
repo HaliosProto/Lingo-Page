@@ -13,7 +13,7 @@ The established local MVP was preserved. Milestone 0 reconciled its real archite
 - Remote URL is the existing GitHub repository. A URL does not independently prove server-side private visibility; no connector/network access was used. Owner confirmation remains optional unless independent evidence is required.
 - The initial tracked/staged diff was empty. One pre-existing untracked 5,132-byte text file named `t Enter an email verified on your GitHub account` was preserved and excluded. A bounded pattern check found no common token/private-key/Bearer/email pattern; content ownership remains unknown.
 - `apps/api/.dev.vars` is ignored and untracked. No tracked `node_modules`, `.output`, `dist`, artifacts, test results, coverage, logs, local vars, or environment secret files were found.
-- The commit containing this report is the local Milestone 0 closure commit; obtain its immutable hash with `git log -1 --format=%H`. The final handoff reports it explicitly.
+- The program artifact commit containing this report is `71a970c79a5247cd67a4b4a3f6708902dd791d8a`. A following local metadata commit records the Beads close event; the final handoff reports both. Neither was pushed.
 
 ## 3. Architecture and current feature findings
 
@@ -123,4 +123,4 @@ Not fixed automatically: every application/security/lifecycle/accessibility/BiDi
 
 Required before M1: review this report, `ROADMAP.md`, and Beads M1 scope; explicitly approve or revise M1. Optional now: authorize official Spec Kit/uv download and confirm remote private visibility. Later owner gates are in `docs/user-action-checklist.md`.
 
-The local Milestone 0 commit is authorized by the task. No push follows. M0 Beads closure occurs only after the commit succeeds; M1 remains blocked and unstarted.
+The local Milestone 0 commit was authorized by the task and no push followed. M0 Beads closure was recorded only after the program commit succeeded; M1 remains unclaimed and unstarted pending explicit approval.
