@@ -2,6 +2,7 @@ import { browser } from 'wxt/browser';
 import {
   batchSegments,
   createSegmentId,
+  createTextFingerprint,
   isLikelyTranslatableText,
   normalizeText,
 } from '@translation/translation-core';
@@ -9,10 +10,15 @@ import type {
   GlossaryEntry,
   ProviderId,
   TranslationFailure,
+  TranslationChangeSummary,
+  TranslationDisplayMode,
   TranslationProgress,
   TranslationSegment,
+  TranslationSessionBundle,
+  TranslationSessionLifecycle,
+  TranslationSegmentStatus,
 } from '@translation/shared-types';
-import { CONTRACT_VERSION } from '@translation/shared-types';
+import { CONTRACT_VERSION, TRANSLATION_SESSION_VERSION } from '@translation/shared-types';
 import {
   contentRequestSchema,
   extensionResponseSchema,
@@ -22,10 +28,14 @@ import {
 
 type NodeRecord = {
   node: Text;
+  element: Element;
   originalText: string;
   leadingWhitespace: string;
   trailingWhitespace: string;
   segment: TranslationSegment;
+  sourceFingerprint: string;
+  structuralFingerprint: string;
+  status: TranslationSegmentStatus;
   translatedText?: string;
 };
 
@@ -43,6 +53,11 @@ type Session = {
   cancellationEpoch: number;
   retryTimer?: ReturnType<typeof setTimeout>;
   rejectRetryWait?: () => void;
+  createdAt: number;
+  lastActivityAt: number;
+  displayMode: TranslationDisplayMode;
+  lifecycle: TranslationSessionLifecycle;
+  changed: TranslationChangeSummary;
 };
 
 class TranslationFailureError extends Error {
@@ -69,12 +84,25 @@ const excludedSelector = [
   'input',
   'select',
   'option',
-  '[contenteditable="true"]',
+  '[contenteditable]:not([contenteditable="false"])',
   '[translate="no"]',
   '.notranslate',
   '[aria-hidden="true"]',
   '#lingo-page-selection-result',
 ].join(',');
+
+const MAX_SESSION_SEGMENTS = 2_500;
+const MAX_SESSION_BUNDLE_BYTES = 2_000_000;
+
+function emptyChangeSummary(): TranslationChangeSummary {
+  return {
+    newSegments: 0,
+    modifiedSegments: 0,
+    removedSegments: 0,
+    reorderedSegments: 0,
+    uncertainSegments: 0,
+  };
+}
 
 export default defineUnlistedScript(() => {
   const scope = globalThis as PageShellScope;
@@ -83,7 +111,7 @@ export default defineUnlistedScript(() => {
 
   const recordsByNode = new Map<Text, NodeRecord>();
   const recordsById = new Map<string, NodeRecord>();
-  const selfMutatedNodes = new WeakSet<Text>();
+  const selfMutatedNodes = new WeakMap<Text, string>();
   let currentSession: Session | undefined;
   let observer: MutationObserver | undefined;
   let observerTimer: ReturnType<typeof setTimeout> | undefined;
@@ -102,12 +130,25 @@ export default defineUnlistedScript(() => {
     };
   }
 
+  function sessionProgress(): TranslationProgress {
+    const session = currentSession;
+    if (!session) return progress;
+    return {
+      ...progress,
+      sessionId: session.id,
+      displayMode: session.displayMode,
+      lifecycle: session.lifecycle,
+      changed: session.changed,
+      pageDiverged: Object.values(session.changed).some((count) => count > 0),
+    };
+  }
+
   function progressResponse(requestId: string): ExtensionResponse {
     return extensionResponseSchema.parse({
       version: CONTRACT_VERSION,
       requestId,
       type: 'TRANSLATION_PROGRESS',
-      payload: { progress },
+      payload: { progress: sessionProgress() },
     });
   }
 
@@ -121,27 +162,67 @@ export default defineUnlistedScript(() => {
   }
 
   function isVisible(element: Element): boolean {
-    const style = getComputedStyle(element);
-    return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+    let current: Element | null = element;
+    while (current) {
+      if (current.hasAttribute('hidden') || current.hasAttribute('inert')) return false;
+      if (current.getAttribute('aria-hidden') === 'true') return false;
+      const style = getComputedStyle(current);
+      if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+        return false;
+      }
+      current = current.parentElement;
+    }
+    return true;
+  }
+
+  function structuralFingerprint(element: Element): string {
+    const parts: string[] = [];
+    const siblingContext = `prev:${element.previousElementSibling?.tagName.toLowerCase() ?? 'none'}|next:${element.nextElementSibling?.tagName.toLowerCase() ?? 'none'}`;
+    let current: Element | null = element;
+    for (let depth = 0; current && depth < 6; depth += 1) {
+      const role = current.getAttribute('role');
+      parts.unshift(`${current.tagName.toLowerCase()}${role ? `:${role}` : ''}`);
+      current = current.parentElement;
+    }
+    return createTextFingerprint(`${parts.join('>')}|${siblingContext}`);
   }
 
   function createRecord(node: Text): NodeRecord | undefined {
     if (recordsByNode.has(node)) return undefined;
+    if (recordsByNode.size >= MAX_SESSION_SEGMENTS) return undefined;
     const parent = node.parentElement;
-    if (!parent || parent.closest(excludedSelector) || !isVisible(parent)) return undefined;
+    if (
+      !parent ||
+      parent.closest(excludedSelector) ||
+      parent.isContentEditable ||
+      !isVisible(parent)
+    )
+      return undefined;
     const originalText = node.nodeValue ?? '';
     if (!isLikelyTranslatableText(originalText)) return undefined;
     const { normalized, leadingWhitespace, trailingWhitespace } = normalizeText(originalText);
     if (!normalized) return undefined;
     const elementRole = parent.getAttribute('role') ?? parent.tagName.toLowerCase();
+    const sourceFingerprint = createTextFingerprint(normalized);
+    const locationFingerprint = structuralFingerprint(parent);
     const segment: TranslationSegment = {
       id: createSegmentId(normalized, nextOrdinal, elementRole),
       text: normalized,
       elementRole,
-      surroundingText: (parent.textContent ?? '').replace(/\s+/gu, ' ').trim().slice(0, 500),
+      context: locationFingerprint,
     };
     nextOrdinal += 1;
-    const record = { node, originalText, leadingWhitespace, trailingWhitespace, segment };
+    const record: NodeRecord = {
+      node,
+      element: parent,
+      originalText,
+      leadingWhitespace,
+      trailingWhitespace,
+      segment,
+      sourceFingerprint,
+      structuralFingerprint: locationFingerprint,
+      status: 'pending',
+    };
     recordsByNode.set(node, record);
     recordsById.set(segment.id, record);
     return record;
@@ -212,19 +293,58 @@ export default defineUnlistedScript(() => {
     session.rejectRetryWait = undefined;
   }
 
-  function restorePage(): void {
-    if (currentSession) cancelSession(currentSession);
+  function writeRecord(record: NodeRecord, text: string): void {
+    if (!record.node.isConnected || record.node.nodeValue === text) return;
+    selfMutatedNodes.set(record.node, text);
+    record.node.nodeValue = text;
+  }
+
+  function setDisplayMode(displayMode: 'original' | 'translated'): void {
+    const session = currentSession;
+    if (!session) return;
+    if (displayMode === 'original') {
+      for (const record of recordsByNode.values()) {
+        if (record.status === 'removed') continue;
+        writeRecord(record, record.originalText);
+      }
+      session.displayMode = 'original';
+    } else {
+      let untranslated = 0;
+      for (const record of recordsByNode.values()) {
+        if (record.status === 'removed') continue;
+        if (record.translatedText && record.status === 'translated') {
+          writeRecord(record, record.translatedText);
+        } else {
+          untranslated += 1;
+          writeRecord(record, record.originalText);
+        }
+      }
+      session.displayMode = untranslated > 0 ? 'mixed-partial' : 'translated';
+    }
+    session.lastActivityAt = Date.now();
+  }
+
+  function endSession(restoreOriginal = true): void {
+    const session = currentSession;
+    if (session) {
+      cancelSession(session);
+      session.lifecycle = 'ended';
+    }
     stopObserver();
-    for (const record of recordsByNode.values()) {
-      if (!record.node.isConnected) continue;
-      selfMutatedNodes.add(record.node);
-      record.node.nodeValue = record.originalText;
+    if (restoreOriginal) {
+      for (const record of recordsByNode.values()) {
+        if (record.status !== 'removed') writeRecord(record, record.originalText);
+      }
     }
     recordsByNode.clear();
     recordsById.clear();
     currentSession = undefined;
     nextOrdinal = 0;
     progress = idleProgress();
+  }
+
+  function restorePage(): void {
+    if (currentSession) setDisplayMode('original');
   }
 
   function makeTranslationRequest(
@@ -356,6 +476,8 @@ export default defineUnlistedScript(() => {
       failedSegments: 0,
       failure: undefined,
     };
+    session.lifecycle = 'translating';
+    session.lastActivityAt = Date.now();
 
     for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
       const segments = batches[batchIndex]!;
@@ -388,9 +510,9 @@ export default defineUnlistedScript(() => {
             const record = recordsById.get(translation.id);
             if (!record || !record.node.isConnected || record.translatedText !== undefined)
               continue;
-            selfMutatedNodes.add(record.node);
             record.translatedText = `${record.leadingWhitespace}${translation.translatedText}${record.trailingWhitespace}`;
-            record.node.nodeValue = record.translatedText;
+            record.status = 'translated';
+            if (session.displayMode !== 'original') writeRecord(record, record.translatedText);
             progress = { ...progress, translatedSegments: progress.translatedSegments + 1 };
           }
           if (response.payload.response.detectedSourceLanguage) {
@@ -420,6 +542,10 @@ export default defineUnlistedScript(() => {
           const failedSegments = segments.filter(
             (segment) => recordsById.get(segment.id)?.translatedText === undefined,
           ).length;
+          for (const segment of segments) {
+            const record = recordsById.get(segment.id);
+            if (record && record.translatedText === undefined) record.status = 'failed';
+          }
           const pendingSegments = records.filter(
             (record) => record.translatedText === undefined,
           ).length;
@@ -522,6 +648,11 @@ export default defineUnlistedScript(() => {
       failure: finalFailure,
       error: undefined,
     };
+    if (currentSession) {
+      currentSession.lifecycle = translatedSegments > 0 ? 'partial' : 'active';
+      if (currentSession.displayMode !== 'original') currentSession.displayMode = 'mixed-partial';
+      currentSession.lastActivityAt = Date.now();
+    }
   }
 
   async function translateDiscovered(session: Session, records: NodeRecord[]): Promise<void> {
@@ -543,6 +674,174 @@ export default defineUnlistedScript(() => {
         retryingSegments: 0,
         failure: undefined,
       };
+      session.lifecycle = 'complete';
+      if (session.displayMode !== 'original') session.displayMode = 'translated';
+      session.lastActivityAt = Date.now();
+    } catch (cause) {
+      if (currentSession !== session || session.cancellationEpoch !== cancellationEpoch) return;
+      finishWithFailure(
+        cause instanceof TranslationFailureError
+          ? cause.failure
+          : { reason: 'UNKNOWN', metadata: { providerId: session.providerId } },
+      );
+    }
+  }
+
+  function scanForChanges(session: Session): TranslationChangeSummary {
+    const summary = emptyChangeSummary();
+    const seenFingerprints = new Map<string, number>();
+
+    for (const record of recordsByNode.values()) {
+      if (!record.node.isConnected) {
+        const replacementNodes = [...record.element.childNodes].filter(
+          (node): node is Text =>
+            node.nodeType === Node.TEXT_NODE &&
+            !recordsByNode.has(node as Text) &&
+            isLikelyTranslatableText(node.nodeValue ?? ''),
+        );
+        if (record.element.isConnected && replacementNodes.length === 1) {
+          const oldNode = record.node;
+          const replacement = replacementNodes[0]!;
+          const { normalized, leadingWhitespace, trailingWhitespace } = normalizeText(
+            replacement.nodeValue ?? '',
+          );
+          recordsByNode.delete(oldNode);
+          recordsById.delete(record.segment.id);
+          record.node = replacement;
+          record.originalText = replacement.nodeValue ?? '';
+          record.leadingWhitespace = leadingWhitespace;
+          record.trailingWhitespace = trailingWhitespace;
+          record.sourceFingerprint = createTextFingerprint(normalized);
+          record.structuralFingerprint = structuralFingerprint(record.element);
+          record.segment = {
+            id: createSegmentId(normalized, nextOrdinal, record.segment.elementRole),
+            text: normalized,
+            elementRole: record.segment.elementRole,
+            context: record.structuralFingerprint,
+          };
+          nextOrdinal += 1;
+          record.translatedText = undefined;
+          record.status = 'changed';
+          recordsByNode.set(replacement, record);
+          recordsById.set(record.segment.id, record);
+          summary.modifiedSegments += 1;
+          continue;
+        }
+        if (record.status !== 'removed') record.status = 'removed';
+        summary.removedSegments += 1;
+        continue;
+      }
+
+      const nextStructuralFingerprint = record.node.parentElement
+        ? structuralFingerprint(record.node.parentElement)
+        : record.structuralFingerprint;
+      if (
+        nextStructuralFingerprint !== record.structuralFingerprint &&
+        record.status === 'translated'
+      ) {
+        record.structuralFingerprint = nextStructuralFingerprint;
+        summary.reorderedSegments += 1;
+      }
+
+      const expected =
+        session.displayMode === 'original' || record.status !== 'translated'
+          ? record.originalText
+          : (record.translatedText ?? record.originalText);
+      const currentText = record.node.nodeValue ?? '';
+      if (currentText !== expected && !selfMutatedNodes.has(record.node)) {
+        const { normalized, leadingWhitespace, trailingWhitespace } = normalizeText(currentText);
+        if (!normalized || !isLikelyTranslatableText(normalized)) {
+          record.status = 'removed';
+          summary.removedSegments += 1;
+          continue;
+        }
+        recordsById.delete(record.segment.id);
+        record.originalText = currentText;
+        record.leadingWhitespace = leadingWhitespace;
+        record.trailingWhitespace = trailingWhitespace;
+        record.sourceFingerprint = createTextFingerprint(normalized);
+        record.segment = {
+          id: createSegmentId(normalized, nextOrdinal, record.segment.elementRole),
+          text: normalized,
+          elementRole: record.segment.elementRole,
+          context: nextStructuralFingerprint,
+        };
+        nextOrdinal += 1;
+        record.translatedText = undefined;
+        record.status = 'changed';
+        recordsById.set(record.segment.id, record);
+        summary.modifiedSegments += 1;
+      }
+
+      seenFingerprints.set(
+        record.sourceFingerprint,
+        (seenFingerprints.get(record.sourceFingerprint) ?? 0) + 1,
+      );
+    }
+
+    const newRecords = discover();
+    for (const record of newRecords) {
+      const duplicateCount = seenFingerprints.get(record.sourceFingerprint) ?? 0;
+      if (duplicateCount > 0) {
+        record.status = 'uncertain';
+        summary.uncertainSegments += 1;
+      } else {
+        summary.newSegments += 1;
+      }
+      seenFingerprints.set(record.sourceFingerprint, duplicateCount + 1);
+    }
+
+    session.changed = summary;
+    session.lastActivityAt = Date.now();
+    if (Object.values(summary).some((count) => count > 0)) session.lifecycle = 'stale';
+    return summary;
+  }
+
+  async function updateChangedSections(session: Session): Promise<void> {
+    scanForChanges(session);
+    for (const record of [...recordsByNode.values()]) {
+      if (record.status !== 'removed') continue;
+      recordsByNode.delete(record.node);
+      recordsById.delete(record.segment.id);
+    }
+    const changed = [...recordsByNode.values()].filter(
+      (record) =>
+        record.node.isConnected &&
+        (record.status === 'pending' || record.status === 'changed' || record.status === 'failed'),
+    );
+    if (changed.length === 0) {
+      session.changed = {
+        ...emptyChangeSummary(),
+        uncertainSegments: session.changed.uncertainSegments,
+      };
+      session.lifecycle = progress.failedSegments > 0 ? 'partial' : 'complete';
+      return;
+    }
+    for (const record of changed) record.status = 'pending';
+    const cancellationEpoch = session.cancellationEpoch;
+    try {
+      await translateRecords(session, changed, false, cancellationEpoch);
+      assertActive(session, cancellationEpoch);
+      session.changed = {
+        ...emptyChangeSummary(),
+        uncertainSegments: [...recordsByNode.values()].filter(
+          (record) => record.status === 'uncertain',
+        ).length,
+      };
+      session.lifecycle = session.changed.uncertainSegments > 0 ? 'partial' : 'complete';
+      progress = {
+        ...progress,
+        status: session.lifecycle === 'complete' ? 'completed' : 'partial',
+        discoveredSegments: [...recordsByNode.values()].filter(
+          (record) => record.status !== 'removed',
+        ).length,
+        translatedSegments: [...recordsByNode.values()].filter(
+          (record) => record.status === 'translated',
+        ).length,
+        failedSegments: 0,
+        queuedSegments: session.changed.uncertainSegments,
+        failure: undefined,
+      };
     } catch (cause) {
       if (currentSession !== session || session.cancellationEpoch !== cancellationEpoch) return;
       finishWithFailure(
@@ -555,36 +854,28 @@ export default defineUnlistedScript(() => {
 
   function scheduleDynamicTranslation(mutations: MutationRecord[]): void {
     const session = currentSession;
-    if (!session || !session.autoTranslateDynamicContent || session.cancelled) return;
-    let hasExternalChange = false;
-    for (const mutation of mutations) {
-      if (mutation.type !== 'characterData') {
-        hasExternalChange = true;
-        continue;
-      }
+    if (!session || session.cancelled) return;
+    const selfNodes = new Set<Text>();
+    const hasExternalChange = mutations.some((mutation) => {
+      if (mutation.type !== 'characterData') return true;
       const node = mutation.target as Text;
-      if (selfMutatedNodes.has(node)) {
-        selfMutatedNodes.delete(node);
-        continue;
-      }
-      const existing = recordsByNode.get(node);
-      if (existing) {
-        recordsByNode.delete(node);
-        recordsById.delete(existing.segment.id);
-      }
-      hasExternalChange = true;
-    }
+      if (selfMutatedNodes.get(node) !== (node.nodeValue ?? '')) return true;
+      selfNodes.add(node);
+      return false;
+    });
+    for (const node of selfNodes) selfMutatedNodes.delete(node);
     if (!hasExternalChange) return;
     if (observerTimer !== undefined) clearTimeout(observerTimer);
     observerTimer = setTimeout(() => {
       observerTimer = undefined;
       if (currentSession?.id !== session.id || session.cancelled) return;
-      void translateDiscovered(session, discover());
+      scanForChanges(session);
+      if (session.autoTranslateDynamicContent) void updateChangedSections(session);
     }, 350);
   }
 
-  function startObserver(session: Session): void {
-    if (!session.autoTranslateDynamicContent || !document.body) return;
+  function startObserver(): void {
+    if (!document.body) return;
     observer = new MutationObserver(scheduleDynamicTranslation);
     observer.observe(document.body, { childList: true, characterData: true, subtree: true });
   }
@@ -599,7 +890,8 @@ export default defineUnlistedScript(() => {
     glossary: GlossaryEntry[];
     autoTranslateDynamicContent: boolean;
   }): Promise<void> {
-    restorePage();
+    endSession(true);
+    const now = Date.now();
     const session: Session = {
       id: payload.sessionId,
       providerId: payload.providerId,
@@ -612,6 +904,11 @@ export default defineUnlistedScript(() => {
       navigationId: location.href,
       cancelled: false,
       cancellationEpoch: 0,
+      createdAt: now,
+      lastActivityAt: now,
+      displayMode: 'translated',
+      lifecycle: 'translating',
+      changed: emptyChangeSummary(),
     };
     currentSession = session;
     progress = {
@@ -629,7 +926,7 @@ export default defineUnlistedScript(() => {
     const records = discover();
     if (records.length === 0) progress = { ...progress, status: 'completed' };
     await translateDiscovered(session, records);
-    if (currentSession?.id === session.id && !session.cancelled) startObserver(session);
+    if (currentSession?.id === session.id && !session.cancelled) startObserver();
   }
 
   async function continueTranslation(payload: {
@@ -656,6 +953,8 @@ export default defineUnlistedScript(() => {
     session.providerId = payload.providerId;
     session.modelId = payload.modelId;
     session.cancelled = false;
+    session.lifecycle = 'translating';
+    session.lastActivityAt = Date.now();
     stopObserver();
     const cancellationEpoch = session.cancellationEpoch;
     const pending = [...recordsByNode.values()].filter(
@@ -671,7 +970,10 @@ export default defineUnlistedScript(() => {
         retryingSegments: 0,
         failure: undefined,
       };
-      startObserver(session);
+      session.lifecycle = 'complete';
+      if (session.displayMode !== 'original') session.displayMode = 'translated';
+      session.lastActivityAt = Date.now();
+      startObserver();
       return;
     }
     try {
@@ -686,9 +988,184 @@ export default defineUnlistedScript(() => {
         retryingSegments: 0,
         failure: undefined,
       };
-      startObserver(session);
+      session.lifecycle = 'complete';
+      if (session.displayMode !== 'original') session.displayMode = 'translated';
+      session.lastActivityAt = Date.now();
+      startObserver();
     } catch (cause) {
       if (currentSession !== session || session.cancellationEpoch !== cancellationEpoch) return;
+      finishWithFailure(
+        cause instanceof TranslationFailureError
+          ? cause.failure
+          : { reason: 'UNKNOWN', metadata: { providerId: session.providerId } },
+      );
+    }
+  }
+
+  function createPageFingerprint(records: NodeRecord[]): string {
+    const pageUrl = new URL(location.href);
+    const identity = `${pageUrl.origin}${pageUrl.pathname}\u0000${document.title}\u0000${records
+      .slice(0, 24)
+      .map((record) => record.sourceFingerprint)
+      .join('|')}`;
+    return createTextFingerprint(identity);
+  }
+
+  function exportSessionBundle(sessionId: string): TranslationSessionBundle | undefined {
+    const session = currentSession;
+    if (!session || session.id !== sessionId || location.href !== session.navigationId)
+      return undefined;
+    scanForChanges(session);
+    const records = [...recordsByNode.values()].filter((record) => record.status !== 'removed');
+    const bundle: TranslationSessionBundle = {
+      version: TRANSLATION_SESSION_VERSION,
+      sessionId: session.id,
+      navigationUrl: session.navigationId,
+      pageFingerprint: createPageFingerprint(records),
+      pageTitle: document.title.slice(0, 500),
+      sourceLanguage: session.sourceLanguage,
+      targetLanguage: session.targetLanguage,
+      providerId: session.providerId,
+      modelId: session.modelId,
+      createdAt: session.createdAt,
+      lastActivityAt: Date.now(),
+      displayMode: session.displayMode,
+      lifecycle: session.lifecycle,
+      partial: session.lifecycle !== 'complete',
+      segments: records.map((record) => ({
+        id: record.segment.id,
+        sourceFingerprint: record.sourceFingerprint,
+        structuralFingerprint: record.structuralFingerprint,
+        originalText: record.originalText,
+        sourceText: record.segment.text,
+        ...(record.translatedText ? { translatedText: record.translatedText } : {}),
+        ...(record.segment.elementRole ? { elementRole: record.segment.elementRole } : {}),
+        status: record.status,
+      })),
+    };
+    if (new TextEncoder().encode(JSON.stringify(bundle)).byteLength > MAX_SESSION_BUNDLE_BYTES) {
+      return undefined;
+    }
+    return bundle;
+  }
+
+  function importSessionBundle(bundle: TranslationSessionBundle): void {
+    if (location.href !== bundle.navigationUrl) {
+      throw new Error('The translated copy does not match the source navigation.');
+    }
+    endSession(true);
+    const records = discover();
+    if (createPageFingerprint(records) !== bundle.pageFingerprint) {
+      for (const record of records) record.status = 'uncertain';
+    }
+
+    const sourceByFingerprint = new Map<string, TranslationSessionBundle['segments']>();
+    for (const source of bundle.segments) {
+      sourceByFingerprint.set(source.sourceFingerprint, [
+        ...(sourceByFingerprint.get(source.sourceFingerprint) ?? []),
+        source,
+      ]);
+    }
+    const usedSourceIds = new Set<string>();
+    let matchedSegments = 0;
+    let uncertainSegments = 0;
+    for (const record of records) {
+      const candidates = (sourceByFingerprint.get(record.sourceFingerprint) ?? []).filter(
+        (candidate) => !usedSourceIds.has(candidate.id) && candidate.translatedText,
+      );
+      const structuralMatches = candidates.filter(
+        (candidate) => candidate.structuralFingerprint === record.structuralFingerprint,
+      );
+      const source = candidates.length === 1 ? candidates[0] : structuralMatches[0];
+      if (!source || (candidates.length > 1 && structuralMatches.length !== 1)) {
+        record.status = candidates.length > 0 ? 'uncertain' : 'pending';
+        if (record.status === 'uncertain') uncertainSegments += 1;
+        continue;
+      }
+      usedSourceIds.add(source.id);
+      record.translatedText = source.translatedText;
+      record.status = 'translated';
+      matchedSegments += 1;
+    }
+
+    const now = Date.now();
+    const unmatchedSegments = records.length - matchedSegments - uncertainSegments;
+    currentSession = {
+      id: bundle.sessionId,
+      providerId: bundle.providerId,
+      modelId: bundle.modelId,
+      sourceLanguage: bundle.sourceLanguage,
+      targetLanguage: bundle.targetLanguage,
+      glossaryVersion: 0,
+      glossary: [],
+      autoTranslateDynamicContent: false,
+      navigationId: bundle.navigationUrl,
+      cancelled: false,
+      cancellationEpoch: 0,
+      createdAt: now,
+      lastActivityAt: now,
+      displayMode: matchedSegments === records.length ? 'translated' : 'mixed-partial',
+      lifecycle: unmatchedSegments + uncertainSegments === 0 ? 'complete' : 'partial',
+      changed: {
+        ...emptyChangeSummary(),
+        newSegments: unmatchedSegments,
+        uncertainSegments,
+      },
+    };
+    progress = {
+      sessionId: bundle.sessionId,
+      status: unmatchedSegments + uncertainSegments === 0 ? 'completed' : 'partial',
+      discoveredSegments: records.length,
+      translatedSegments: matchedSegments,
+      failedSegments: 0,
+      queuedSegments: unmatchedSegments,
+      waitingSegments: 0,
+      retryingSegments: 0,
+      targetLanguage: bundle.targetLanguage,
+    };
+    setDisplayMode('translated');
+    startObserver();
+  }
+
+  async function refreshTranslation(
+    session: Session,
+    scope: 'changed' | 'entire-page',
+  ): Promise<void> {
+    if (scope === 'changed') {
+      await updateChangedSections(session);
+      return;
+    }
+    const candidates = [...recordsByNode.values()].filter(
+      (record) => record.node.isConnected && record.status !== 'removed',
+    );
+    const previous = candidates.map((record) => ({
+      record,
+      translatedText: record.translatedText,
+      status: record.status,
+    }));
+    for (const record of candidates) {
+      record.translatedText = undefined;
+      record.status = 'pending';
+    }
+    progress = { ...progress, translatedSegments: 0 };
+    try {
+      await translateRecords(session, candidates);
+      session.lifecycle = 'complete';
+      session.changed = emptyChangeSummary();
+      progress = {
+        ...progress,
+        status: 'completed',
+        translatedSegments: candidates.length,
+        failedSegments: 0,
+        queuedSegments: 0,
+        failure: undefined,
+      };
+    } catch (cause) {
+      for (const item of previous) {
+        item.record.translatedText = item.translatedText;
+        item.record.status = item.status;
+      }
+      if (session.displayMode !== 'original') setDisplayMode('translated');
       finishWithFailure(
         cause instanceof TranslationFailureError
           ? cause.failure
@@ -716,12 +1193,13 @@ export default defineUnlistedScript(() => {
       },
     };
     cancelSession(session);
+    session.lifecycle = 'invalidated';
     finishWithFailure(failure);
     void browser.runtime.sendMessage({
       version: CONTRACT_VERSION,
       requestId: `req_navigation_${crypto.randomUUID().replaceAll('-', '')}`,
       type: 'REPORT_TRANSLATION_PROGRESS',
-      payload: { progress },
+      payload: { progress: sessionProgress() },
     });
   });
 
@@ -831,6 +1309,72 @@ export default defineUnlistedScript(() => {
       case 'RESTORE_PAGE':
         restorePage();
         return Promise.resolve(progressResponse(requestId));
+      case 'SET_PAGE_VIEW':
+        if (currentSession?.id !== parsed.data.payload.sessionId) {
+          return Promise.resolve(
+            errorResponse(requestId, 'The translation session is unavailable.'),
+          );
+        }
+        setDisplayMode(parsed.data.payload.displayMode);
+        return Promise.resolve(progressResponse(requestId));
+      case 'END_TRANSLATION_SESSION':
+        if (currentSession?.id !== parsed.data.payload.sessionId) {
+          return Promise.resolve(
+            errorResponse(requestId, 'The translation session is unavailable.'),
+          );
+        }
+        endSession(true);
+        return Promise.resolve(progressResponse(requestId));
+      case 'SCAN_PAGE_CHANGES':
+        if (currentSession?.id !== parsed.data.payload.sessionId) {
+          return Promise.resolve(
+            errorResponse(requestId, 'The translation session is unavailable.'),
+          );
+        }
+        scanForChanges(currentSession);
+        return Promise.resolve(progressResponse(requestId));
+      case 'UPDATE_CHANGED_SECTIONS':
+        if (currentSession?.id !== parsed.data.payload.sessionId) {
+          return Promise.resolve(
+            errorResponse(requestId, 'The translation session is unavailable.'),
+          );
+        }
+        return updateChangedSections(currentSession).then(() => progressResponse(requestId));
+      case 'REFRESH_TRANSLATION':
+        if (currentSession?.id !== parsed.data.payload.sessionId) {
+          return Promise.resolve(
+            errorResponse(requestId, 'The translation session is unavailable.'),
+          );
+        }
+        return refreshTranslation(currentSession, parsed.data.payload.scope).then(() =>
+          progressResponse(requestId),
+        );
+      case 'EXPORT_SESSION_BUNDLE': {
+        const bundle = exportSessionBundle(parsed.data.payload.sessionId);
+        if (!bundle) {
+          return Promise.resolve(
+            errorResponse(requestId, 'The translation session cannot be transferred safely.'),
+          );
+        }
+        return Promise.resolve(
+          extensionResponseSchema.parse({
+            version: CONTRACT_VERSION,
+            requestId,
+            type: 'SESSION_BUNDLE',
+            payload: { bundle },
+          }),
+        );
+      }
+      case 'IMPORT_SESSION_BUNDLE':
+        try {
+          importSessionBundle(parsed.data.payload.bundle);
+          return Promise.resolve(progressResponse(requestId));
+        } catch {
+          endSession(true);
+          return Promise.resolve(
+            errorResponse(requestId, 'The translated copy did not match this page safely.'),
+          );
+        }
       case 'GET_TRANSLATION_PROGRESS':
         return Promise.resolve(progressResponse(requestId));
       case 'SHOW_SELECTION_RESULT':

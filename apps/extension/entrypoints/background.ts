@@ -17,6 +17,7 @@ import type {
   TranslationProgress,
   TranslationRequest,
   TranslationResponse,
+  TranslationSessionBundle,
 } from '@translation/shared-types';
 import { CONTRACT_VERSION } from '@translation/shared-types';
 import { createCacheKey } from '@translation/translation-core';
@@ -29,6 +30,7 @@ import {
   providersResponseSchema,
   providerTestResponseSchema,
   translationResponseSchema,
+  translationSessionBundleSchema,
   type ExtensionResponse,
 } from '@translation/shared-validation';
 
@@ -40,6 +42,42 @@ const maxPersistentCacheEntries = 200;
 const memoryCache = new Map<string, CacheEntry>();
 const controllersBySession = new Map<string, Set<AbortController>>();
 const progressByTab = new Map<number, TranslationProgress>();
+const comparisonTokenByTab = new Map<number, string>();
+const COMPARISON_STORAGE_PREFIX = 'comparisonSession:';
+const MAX_SESSION_BUNDLE_BYTES = 2_000_000;
+const extensionPageCommandTypes = new Set([
+  'GET_TAB_STATUS',
+  'GET_API_HEALTH',
+  'GET_PROVIDERS',
+  'TEST_PROVIDER',
+  'OPEN_OPTIONS',
+  'GET_SETTINGS',
+  'UPDATE_SETTINGS',
+  'START_PAGE_TRANSLATION',
+  'CONTINUE_PAGE_TRANSLATION',
+  'CANCEL_PAGE_TRANSLATION',
+  'RESTORE_PAGE',
+  'SET_PAGE_VIEW',
+  'END_TRANSLATION_SESSION',
+  'SCAN_PAGE_CHANGES',
+  'UPDATE_CHANGED_SECTIONS',
+  'REFRESH_TRANSLATION',
+  'OPEN_TRANSLATED_COPY',
+  'OPEN_COMPARISON_VIEW',
+  'GET_COMPARISON_SESSION',
+  'GET_TRANSLATION_PROGRESS',
+  'TRANSLATE_SELECTION',
+  'CLEAR_LOCAL_DATA',
+  'EXPORT_DIAGNOSTICS',
+]);
+
+function comparisonStorageKey(token: string): string {
+  return `${COMPARISON_STORAGE_PREFIX}${token}`;
+}
+
+function bundleByteLength(bundle: TranslationSessionBundle): number {
+  return new TextEncoder().encode(JSON.stringify(bundle)).byteLength;
+}
 
 function getApiBaseUrl(): string {
   const configured = import.meta.env.WXT_API_BASE_URL;
@@ -117,6 +155,132 @@ async function ensurePageShell(tabId: number): Promise<void> {
 async function sendContentMessage(tabId: number, message: unknown): Promise<ExtensionResponse> {
   const response = await browser.tabs.sendMessage(tabId, message);
   return extensionResponseSchema.parse(response);
+}
+
+async function exportSessionBundle(
+  tabId: number,
+  sessionId: string,
+  requestId: string,
+): Promise<TranslationSessionBundle> {
+  await ensurePageShell(tabId);
+  const response = await sendContentMessage(tabId, {
+    version: CONTRACT_VERSION,
+    requestId,
+    type: 'EXPORT_SESSION_BUNDLE',
+    payload: { sessionId },
+  });
+  if (response.type !== 'SESSION_BUNDLE') {
+    throw new Error('The active translation session is unavailable.');
+  }
+  const bundle = translationSessionBundleSchema.parse(response.payload.bundle);
+  if (bundleByteLength(bundle) > MAX_SESSION_BUNDLE_BYTES) {
+    throw new Error('The translation session is too large to transfer safely.');
+  }
+  return bundle;
+}
+
+function waitForTabComplete(tabId: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      browser.tabs.onUpdated.removeListener(listener);
+      reject(new Error('The new tab did not finish loading.'));
+    }, 15_000);
+    const listener = (updatedTabId: number, changeInfo: { status?: string }) => {
+      if (updatedTabId !== tabId || changeInfo.status !== 'complete') return;
+      clearTimeout(timeout);
+      browser.tabs.onUpdated.removeListener(listener);
+      resolve();
+    };
+    browser.tabs.onUpdated.addListener(listener);
+    void browser.tabs.get(tabId).then((tab) => {
+      if (tab.status !== 'complete') return;
+      clearTimeout(timeout);
+      browser.tabs.onUpdated.removeListener(listener);
+      resolve();
+    });
+  });
+}
+
+async function openTranslatedCopy(
+  sourceTabId: number,
+  sessionId: string,
+  requestId: string,
+): Promise<ExtensionResponse> {
+  const [sourceTab, sourceBundle] = await Promise.all([
+    browser.tabs.get(sourceTabId),
+    exportSessionBundle(sourceTabId, sessionId, createRequestId()),
+  ]);
+  if (!sourceTab.url || sourceTab.url !== sourceBundle.navigationUrl) {
+    throw new Error('The source tab navigation changed before the copy could open.');
+  }
+  const copyTab = await browser.tabs.create({ url: sourceTab.url, active: true });
+  if (copyTab.id === undefined) throw new Error('The translated copy tab could not be created.');
+  try {
+    await waitForTabComplete(copyTab.id);
+    await ensurePageShell(copyTab.id);
+    const now = Date.now();
+    const clonedBundle = translationSessionBundleSchema.parse({
+      ...sourceBundle,
+      sessionId: createSessionId(),
+      createdAt: now,
+      lastActivityAt: now,
+    });
+    const response = await sendContentMessage(copyTab.id, {
+      version: CONTRACT_VERSION,
+      requestId: createRequestId(),
+      type: 'IMPORT_SESSION_BUNDLE',
+      payload: { bundle: clonedBundle },
+    });
+    if (response.type !== 'TRANSLATION_PROGRESS') {
+      throw new Error('The translated copy did not match the source page safely.');
+    }
+    progressByTab.set(copyTab.id, response.payload.progress);
+    const uncertainSegments = response.payload.progress.changed?.uncertainSegments ?? 0;
+    return extensionResponseSchema.parse({
+      version: CONTRACT_VERSION,
+      requestId,
+      type: 'TRANSLATED_COPY_OPENED',
+      payload: {
+        tabId: copyTab.id,
+        matchedSegments: response.payload.progress.translatedSegments,
+        unmatchedSegments: Math.max(
+          0,
+          response.payload.progress.discoveredSegments -
+            response.payload.progress.translatedSegments -
+            uncertainSegments,
+        ),
+        uncertainSegments,
+      },
+    });
+  } catch (cause) {
+    await browser.tabs.remove(copyTab.id).catch(() => undefined);
+    throw cause;
+  }
+}
+
+async function openComparisonView(
+  sourceTabId: number,
+  sessionId: string,
+  requestId: string,
+): Promise<ExtensionResponse> {
+  const bundle = await exportSessionBundle(sourceTabId, sessionId, createRequestId());
+  const token = `cmp_${crypto.randomUUID().replaceAll('-', '')}`;
+  await browser.storage.session.set({ [comparisonStorageKey(token)]: bundle });
+  const comparisonTab = await browser.tabs.create({
+    url: browser.runtime.getURL(`/comparison.html#${token}`),
+    active: true,
+  });
+  if (comparisonTab.id === undefined) {
+    await browser.storage.session.remove(comparisonStorageKey(token));
+    throw new Error('The comparison view could not be opened.');
+  }
+  comparisonTokenByTab.set(comparisonTab.id, token);
+  return extensionResponseSchema.parse({
+    version: CONTRACT_VERSION,
+    requestId,
+    type: 'COMPARISON_OPENED',
+    payload: { tabId: comparisonTab.id },
+  });
 }
 
 async function pingPageShell(tabId: number, requestId: string): Promise<boolean> {
@@ -621,6 +785,13 @@ async function translateSelection(tabId: number, text: string): Promise<Selectio
 }
 
 export default defineBackground(() => {
+  browser.tabs.onRemoved.addListener((tabId) => {
+    progressByTab.delete(tabId);
+    const token = comparisonTokenByTab.get(tabId);
+    comparisonTokenByTab.delete(tabId);
+    if (token) void browser.storage.session.remove(comparisonStorageKey(token));
+  });
+
   void browser.contextMenus
     .remove('translate-selection')
     .catch(() => undefined)
@@ -656,6 +827,18 @@ export default defineBackground(() => {
         requestId,
         'INVALID_MESSAGE',
         'The extension message was invalid.',
+        false,
+      );
+    }
+
+    if (
+      extensionPageCommandTypes.has(parsed.data.type) &&
+      (sender.id !== browser.runtime.id || !sender.url?.startsWith(browser.runtime.getURL('/')))
+    ) {
+      return createErrorResponse(
+        requestId,
+        'INVALID_MESSAGE',
+        'This command is available only to an extension page.',
         false,
       );
     }
@@ -753,13 +936,100 @@ export default defineBackground(() => {
             payload: { sessionId: parsed.data.payload.sessionId },
           });
         case 'RESTORE_PAGE':
-          progressByTab.delete(parsed.data.payload.tabId);
           return await sendContentMessage(parsed.data.payload.tabId, {
             version: CONTRACT_VERSION,
             requestId,
             type: 'RESTORE_PAGE',
             payload: {},
           });
+        case 'SET_PAGE_VIEW': {
+          const { tabId, ...payload } = parsed.data.payload;
+          const response = await sendContentMessage(tabId, {
+            version: CONTRACT_VERSION,
+            requestId,
+            type: 'SET_PAGE_VIEW',
+            payload,
+          });
+          if (response.type === 'TRANSLATION_PROGRESS') {
+            progressByTab.set(tabId, response.payload.progress);
+          }
+          return response;
+        }
+        case 'END_TRANSLATION_SESSION': {
+          const { tabId, ...payload } = parsed.data.payload;
+          cancelSession(payload.sessionId);
+          const response = await sendContentMessage(tabId, {
+            version: CONTRACT_VERSION,
+            requestId,
+            type: 'END_TRANSLATION_SESSION',
+            payload,
+          });
+          progressByTab.delete(tabId);
+          return response;
+        }
+        case 'SCAN_PAGE_CHANGES':
+        case 'UPDATE_CHANGED_SECTIONS':
+        case 'REFRESH_TRANSLATION': {
+          const { tabId, ...payload } = parsed.data.payload;
+          const response = await sendContentMessage(tabId, {
+            version: CONTRACT_VERSION,
+            requestId,
+            type: parsed.data.type,
+            payload,
+          });
+          if (response.type === 'TRANSLATION_PROGRESS') {
+            progressByTab.set(tabId, response.payload.progress);
+          }
+          return response;
+        }
+        case 'OPEN_TRANSLATED_COPY':
+          return await openTranslatedCopy(
+            parsed.data.payload.tabId,
+            parsed.data.payload.sessionId,
+            requestId,
+          );
+        case 'OPEN_COMPARISON_VIEW':
+          return await openComparisonView(
+            parsed.data.payload.tabId,
+            parsed.data.payload.sessionId,
+            requestId,
+          );
+        case 'GET_COMPARISON_SESSION': {
+          const { token } = parsed.data.payload;
+          const expectedPage = browser.runtime.getURL('/comparison.html');
+          if (
+            sender.id !== browser.runtime.id ||
+            sender.tab?.id === undefined ||
+            !sender.url?.startsWith(expectedPage) ||
+            comparisonTokenByTab.get(sender.tab.id) !== token
+          ) {
+            return createErrorResponse(
+              requestId,
+              'INVALID_MESSAGE',
+              'The comparison session is unavailable.',
+              false,
+            );
+          }
+          const key = comparisonStorageKey(token);
+          const stored = await browser.storage.session.get(key);
+          const bundle = translationSessionBundleSchema.safeParse(stored[key]);
+          await browser.storage.session.remove(key);
+          comparisonTokenByTab.delete(sender.tab.id);
+          if (!bundle.success || bundleByteLength(bundle.data) > MAX_SESSION_BUNDLE_BYTES) {
+            return createErrorResponse(
+              requestId,
+              'STALE_SESSION',
+              'The comparison session expired or was invalid.',
+              false,
+            );
+          }
+          return extensionResponseSchema.parse({
+            version: CONTRACT_VERSION,
+            requestId,
+            type: 'COMPARISON_SESSION',
+            payload: { bundle: bundle.data },
+          });
+        }
         case 'GET_TRANSLATION_PROGRESS':
           return extensionResponseSchema.parse({
             version: CONTRACT_VERSION,

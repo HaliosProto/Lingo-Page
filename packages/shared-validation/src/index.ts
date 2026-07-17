@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CONTRACT_VERSION } from '@translation/shared-types';
+import { CONTRACT_VERSION, TRANSLATION_SESSION_VERSION } from '@translation/shared-types';
 
 export const requestIdSchema = z.string().regex(/^req_[a-zA-Z0-9_-]{8,96}$/);
 export const sessionIdSchema = z.string().regex(/^session_[a-zA-Z0-9_-]{8,96}$/);
@@ -353,6 +353,66 @@ export const translationProgressSchema = z.object({
   error: z.string().max(300).optional(),
   failure: translationFailureSchema.optional(),
   notices: z.array(translationFailureSchema).max(8).optional(),
+  displayMode: z.enum(['original', 'translated', 'mixed-partial']).optional(),
+  lifecycle: z
+    .enum(['active', 'translating', 'partial', 'complete', 'stale', 'ended', 'invalidated'])
+    .optional(),
+  changed: z
+    .object({
+      newSegments: z.number().int().nonnegative().max(5_000),
+      modifiedSegments: z.number().int().nonnegative().max(5_000),
+      removedSegments: z.number().int().nonnegative().max(5_000),
+      reorderedSegments: z.number().int().nonnegative().max(5_000),
+      uncertainSegments: z.number().int().nonnegative().max(5_000),
+    })
+    .optional(),
+  pageDiverged: z.boolean().optional(),
+});
+
+const translationDisplayModeSchema = z.enum(['original', 'translated']);
+const comparisonTokenSchema = z.string().regex(/^cmp_[a-f0-9]{32}$/);
+
+export const translationSessionBundleSchema = z.object({
+  version: z.literal(TRANSLATION_SESSION_VERSION),
+  sessionId: sessionIdSchema,
+  navigationUrl: z
+    .string()
+    .url()
+    .max(4_096)
+    .refine((value) => /^https?:\/\//u.test(value)),
+  pageFingerprint: z.string().min(4).max(160),
+  pageTitle: z.string().max(500),
+  sourceLanguage: z.union([z.literal('auto'), languageCodeSchema]),
+  targetLanguage: languageCodeSchema,
+  providerId: providerIdSchema,
+  modelId: modelIdSchema,
+  createdAt: z.number().int().nonnegative(),
+  lastActivityAt: z.number().int().nonnegative(),
+  displayMode: z.enum(['original', 'translated', 'mixed-partial']),
+  lifecycle: z.enum([
+    'active',
+    'translating',
+    'partial',
+    'complete',
+    'stale',
+    'ended',
+    'invalidated',
+  ]),
+  partial: z.boolean(),
+  segments: z
+    .array(
+      z.object({
+        id: z.string().regex(/^seg_[a-zA-Z0-9_-]{1,120}$/),
+        sourceFingerprint: z.string().min(2).max(120),
+        structuralFingerprint: z.string().min(2).max(300),
+        originalText: z.string().max(2_200),
+        sourceText: z.string().min(1).max(2_000),
+        translatedText: z.string().max(16_000).optional(),
+        elementRole: z.string().max(100).optional(),
+        status: z.enum(['pending', 'translated', 'failed', 'changed', 'uncertain', 'removed']),
+      }),
+    )
+    .max(2_500),
 });
 
 const messageBaseSchema = z.object({
@@ -414,6 +474,46 @@ export const extensionRequestSchema = z.discriminatedUnion('type', [
     payload: z.object({ tabId: z.number().int().nonnegative() }),
   }),
   messageBaseSchema.extend({
+    type: z.literal('SET_PAGE_VIEW'),
+    payload: z.object({
+      tabId: z.number().int().nonnegative(),
+      sessionId: sessionIdSchema,
+      displayMode: translationDisplayModeSchema,
+    }),
+  }),
+  messageBaseSchema.extend({
+    type: z.literal('END_TRANSLATION_SESSION'),
+    payload: z.object({ tabId: z.number().int().nonnegative(), sessionId: sessionIdSchema }),
+  }),
+  messageBaseSchema.extend({
+    type: z.literal('SCAN_PAGE_CHANGES'),
+    payload: z.object({ tabId: z.number().int().nonnegative(), sessionId: sessionIdSchema }),
+  }),
+  messageBaseSchema.extend({
+    type: z.literal('UPDATE_CHANGED_SECTIONS'),
+    payload: z.object({ tabId: z.number().int().nonnegative(), sessionId: sessionIdSchema }),
+  }),
+  messageBaseSchema.extend({
+    type: z.literal('REFRESH_TRANSLATION'),
+    payload: z.object({
+      tabId: z.number().int().nonnegative(),
+      sessionId: sessionIdSchema,
+      scope: z.enum(['changed', 'entire-page']),
+    }),
+  }),
+  messageBaseSchema.extend({
+    type: z.literal('OPEN_TRANSLATED_COPY'),
+    payload: z.object({ tabId: z.number().int().nonnegative(), sessionId: sessionIdSchema }),
+  }),
+  messageBaseSchema.extend({
+    type: z.literal('OPEN_COMPARISON_VIEW'),
+    payload: z.object({ tabId: z.number().int().nonnegative(), sessionId: sessionIdSchema }),
+  }),
+  messageBaseSchema.extend({
+    type: z.literal('GET_COMPARISON_SESSION'),
+    payload: z.object({ token: comparisonTokenSchema }),
+  }),
+  messageBaseSchema.extend({
     type: z.literal('GET_TRANSLATION_PROGRESS'),
     payload: z.object({ tabId: z.number().int().nonnegative() }),
   }),
@@ -456,6 +556,34 @@ export const contentRequestSchema = z.discriminatedUnion('type', [
     payload: z.object({ sessionId: sessionIdSchema }),
   }),
   messageBaseSchema.extend({ type: z.literal('RESTORE_PAGE'), payload: z.object({}) }),
+  messageBaseSchema.extend({
+    type: z.literal('SET_PAGE_VIEW'),
+    payload: z.object({ sessionId: sessionIdSchema, displayMode: translationDisplayModeSchema }),
+  }),
+  messageBaseSchema.extend({
+    type: z.literal('END_TRANSLATION_SESSION'),
+    payload: z.object({ sessionId: sessionIdSchema }),
+  }),
+  messageBaseSchema.extend({
+    type: z.literal('SCAN_PAGE_CHANGES'),
+    payload: z.object({ sessionId: sessionIdSchema }),
+  }),
+  messageBaseSchema.extend({
+    type: z.literal('UPDATE_CHANGED_SECTIONS'),
+    payload: z.object({ sessionId: sessionIdSchema }),
+  }),
+  messageBaseSchema.extend({
+    type: z.literal('REFRESH_TRANSLATION'),
+    payload: z.object({ sessionId: sessionIdSchema, scope: z.enum(['changed', 'entire-page']) }),
+  }),
+  messageBaseSchema.extend({
+    type: z.literal('EXPORT_SESSION_BUNDLE'),
+    payload: z.object({ sessionId: sessionIdSchema }),
+  }),
+  messageBaseSchema.extend({
+    type: z.literal('IMPORT_SESSION_BUNDLE'),
+    payload: z.object({ bundle: translationSessionBundleSchema }),
+  }),
   messageBaseSchema.extend({ type: z.literal('GET_TRANSLATION_PROGRESS'), payload: z.object({}) }),
   messageBaseSchema.extend({
     type: z.literal('SHOW_SELECTION_RESULT'),
@@ -526,6 +654,27 @@ export const extensionResponseSchema = z.discriminatedUnion('type', [
   messageBaseSchema.extend({
     type: z.literal('TRANSLATION_RESULT'),
     payload: z.object({ response: translationResponseSchema }),
+  }),
+  messageBaseSchema.extend({
+    type: z.literal('SESSION_BUNDLE'),
+    payload: z.object({ bundle: translationSessionBundleSchema }),
+  }),
+  messageBaseSchema.extend({
+    type: z.literal('TRANSLATED_COPY_OPENED'),
+    payload: z.object({
+      tabId: z.number().int().nonnegative(),
+      matchedSegments: z.number().int().nonnegative(),
+      unmatchedSegments: z.number().int().nonnegative(),
+      uncertainSegments: z.number().int().nonnegative(),
+    }),
+  }),
+  messageBaseSchema.extend({
+    type: z.literal('COMPARISON_OPENED'),
+    payload: z.object({ tabId: z.number().int().nonnegative() }),
+  }),
+  messageBaseSchema.extend({
+    type: z.literal('COMPARISON_SESSION'),
+    payload: z.object({ bundle: translationSessionBundleSchema }),
   }),
   messageBaseSchema.extend({
     type: z.literal('LOCAL_DATA_CLEARED'),

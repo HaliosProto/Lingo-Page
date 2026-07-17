@@ -50,6 +50,10 @@ function fnv1a(value: string): string {
   return (hash >>> 0).toString(36);
 }
 
+export function createTextFingerprint(value: string): string {
+  return `fp_${fnv1a(value.normalize('NFKC').replace(/\s+/gu, ' ').trim())}`;
+}
+
 export function createSegmentId(text: string, ordinal: number, context = ''): string {
   return `seg_${ordinal}_${fnv1a(`${text}\u0000${context}`)}`;
 }

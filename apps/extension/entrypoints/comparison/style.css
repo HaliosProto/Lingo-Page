@@ -1,0 +1,133 @@
+body {
+  min-width: 0;
+  max-height: none;
+}
+
+.comparison-shell,
+.comparison-loading,
+.comparison-error {
+  width: min(1120px, 100%);
+  margin: 0 auto;
+  padding: clamp(20px, 4vw, 48px);
+}
+
+.comparison-header,
+.comparison-summary,
+.comparison-nav,
+.segment-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.comparison-header {
+  align-items: flex-start;
+}
+
+.comparison-source {
+  margin: 8px 0 0;
+  color: var(--translation-muted);
+  overflow-wrap: anywhere;
+}
+
+.secondary-link,
+.comparison-nav button,
+.segment-heading button {
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid var(--translation-border);
+  border-radius: var(--translation-radius-small);
+  background: var(--translation-surface);
+  color: var(--translation-accent);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.comparison-summary,
+.comparison-nav {
+  flex-wrap: wrap;
+  margin-top: 24px;
+  padding: 14px 16px;
+  border: 1px solid var(--translation-border);
+  border-radius: var(--translation-radius-medium);
+  color: var(--translation-muted);
+  font-size: 13px;
+}
+
+.comparison-list {
+  display: grid;
+  gap: 14px;
+  margin-top: 20px;
+}
+
+.segment-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--translation-border);
+  border-radius: var(--translation-radius-medium);
+  background: var(--translation-border);
+}
+
+.segment-pair:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--translation-accent) 45%, transparent);
+  outline-offset: 3px;
+}
+
+.segment-pair > section {
+  min-width: 0;
+  padding: 18px;
+  background: var(--translation-surface);
+}
+
+.segment-heading h2 {
+  margin: 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.segment-heading button {
+  min-height: 30px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.segment-pair p {
+  margin: 14px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.65;
+  unicode-bidi: plaintext;
+}
+
+.unavailable-copy {
+  color: var(--translation-muted);
+  font-style: italic;
+}
+
+.comparison-error,
+.comparison-loading {
+  min-height: 60vh;
+  display: grid;
+  place-content: center;
+  text-align: center;
+}
+
+@media (max-width: 720px) {
+  .comparison-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .secondary-link {
+    text-align: center;
+  }
+
+  .segment-pair {
+    grid-template-columns: 1fr;
+  }
+}
