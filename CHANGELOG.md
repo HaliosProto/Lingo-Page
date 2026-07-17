@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Program foundation and audit - 2026-07-18
+
+- Added the product constitution/vision, post-MVP roadmap, current/platform architecture audit, risk/data-lifecycle policy, and workflow/memory governance.
+- Added design-system, frontend verification, accessibility, BiDi, competitive, research, marketing, positioning, and product-owner action foundations.
+- Added a bounded ordinary defensive security baseline with classified code-path findings and existing protections.
+- Added a reproducible managed-Chromium mock performance harness and baseline for 25, 400, 1,000, and 2,200-node fixtures plus dynamic and mixed-direction content.
+- Reconciled historical milestone/live-provider claims with the current verified mock-first state and defined the exact proposed durable-browser Milestone 1 gate.
+
 ### Universal provider local release candidate - 2026-07-15
 
 - Added a safe provider registry, capability metadata, backend allowlisted model catalogs, optional filtered discovery cache, and extension provider/model selection.

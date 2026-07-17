@@ -1,10 +1,10 @@
 # Current-state audit
 
-Audit date: 2026-07-15
+Audit date: 2026-07-18 (reconciled post-MVP program baseline)
 
 ## Result
 
-The repository now contains a complete local translation MVP and a reproducible local release-candidate workflow. The extension, local API, deterministic provider, secure real-provider adapter, settings, selected-text flow, diagnostics UX, tests, and owner documentation are implemented. Production deployment and public distribution were not authorized and were not performed.
+The repository contains a substantial local translation MVP and release-candidate workflow. “Complete” applies only to the implemented credential-independent local scope: lifecycle durability, broad performance, formal accessibility/BiDi, production identity/quotas, live-provider qualification, owner acceptance, deployment, and publication remain open. The authoritative forward program is `ROADMAP.md`.
 
 ## Verified implementation
 
@@ -32,3 +32,11 @@ The repository now contains a complete local translation MVP and a reproducible 
 - Installed branded Chrome 150 did not honor command-line unpacked-extension loading during automation; managed Playwright Chromium passed. Manual branded-Chrome steps are in `docs/local-development.md`.
 - Production identity, durable usage accounting, deployment, public privacy terms, store assets/review, broad performance profiling, and non-Chrome platforms remain future milestones.
 - Owner acceptance of `docs/user-acceptance-checklist.md` is still pending. The local RC artifact is ignored and must not be uploaded or published.
+
+## 2026-07-18 program audit additions
+
+- The 24-stage lifecycle and state-survival gaps are documented in `docs/current-architecture-audit.md`.
+- Managed Chromium now has a reproducible deterministic performance baseline through 2,200 synthetic nodes; branded visual/lifecycle evidence remains open.
+- The ordinary defensive baseline found one confirmed context-construction code path and several plausible hardening gaps; none was treated as an exploited or confirmed high-severity vulnerability.
+- Current governing status remains: mock is the verified default and no live real-provider call is presently reproducible from this workspace without external credentials/approval. Dated historical claims are not current evidence.
+- Spec Kit CLI integration is pending missing official tools/network approval; the repository workflow itself is active.

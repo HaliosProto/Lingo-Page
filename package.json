@@ -26,6 +26,7 @@
     "test:unit": "vitest run --passWithNoTests",
     "test:integration": "vitest run apps/api/src/index.test.ts",
     "test:e2e": "pnpm run build:packages && pnpm --filter @translation/extension build:e2e && playwright test",
+    "test:e2e:performance": "pnpm run build:packages && pnpm --filter @translation/extension build:e2e && playwright test --config playwright.performance.config.ts",
     "verify": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build",
     "local:start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-local-test.ps1",
     "local:test": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-local-test.ps1 -Provider mock -BuildReleaseCandidate",

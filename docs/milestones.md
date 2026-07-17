@@ -1,6 +1,8 @@
-# Ordered milestone plan
+# Historical milestone plan and current program link
 
 Status as of 2026-07-15: Milestones 0-2 and the credential-independent local-MVP scope of Milestones 3-6 are implemented. Live-provider verification, production identity/quotas, public-release hardening, and expansion remain open.
+
+These entries preserve implementation history. The post-MVP program established on 2026-07-18 is authoritative in `ROADMAP.md`; its Milestone 0 is a new foundation/audit gate and its proposed Milestone 1 is durable browser sessions and performance, not the historical monorepo shell below.
 
 ## Milestone 0 — Discovery, specification, architecture
 
@@ -53,3 +55,10 @@ Audit permissions/bundles/secrets, complete security/privacy tests, retention do
 ## Milestone 9 — Expansion architecture
 
 Detailed designs only for Firefox, Safari, desktop, mobile, composer, screen, documents, OCR, local models, billing, team glossaries, and enterprise controls.
+
+## Current program crosswalk
+
+- Historical local MVP and release-candidate gaps -> current M0 baseline plus M1 durable browser foundation.
+- Historical M7 production identity -> current M7 after browser durability is accepted.
+- Historical M8 store readiness -> current M8, still without deployment/publication authority.
+- Historical M9 expansion -> current M9-M12 staged cross-browser, media, Studio, and Platform work.

@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test, expect, chromium, type Page } from '@playwright/test';
@@ -195,6 +195,20 @@ test('translates, explains exclusions and cancellation, continues pending work, 
     await options.goto(`chrome-extension://${extensionId}/options.html`);
     await expect(options.getByRole('heading', { name: 'Translation settings' })).toBeVisible();
     await expect(options.getByText('Privacy and page behavior')).toBeVisible();
+
+    if (process.env.CAPTURE_BASELINE_SCREENSHOTS === '1') {
+      const screenshotRoot = resolve('artifacts/milestone-0-visual-baseline');
+      mkdirSync(screenshotRoot, { recursive: true });
+      await popup.setViewportSize({ width: 360, height: 700 });
+      await popup.screenshot({ path: join(screenshotRoot, 'popup.png'), fullPage: true });
+      await options.setViewportSize({ width: 1024, height: 900 });
+      await options.screenshot({ path: join(screenshotRoot, 'options.png'), fullPage: true });
+      await fixture.setViewportSize({ width: 1280, height: 720 });
+      await fixture.screenshot({
+        path: join(screenshotRoot, 'selected-text-result.png'),
+        fullPage: false,
+      });
+    }
   } finally {
     await context.close();
   }

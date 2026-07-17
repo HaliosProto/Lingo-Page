@@ -2,6 +2,8 @@
 
 Date: 2026-07-15
 
+> Status reconciliation (2026-07-18): this historical report records a Gemini smoke result from its dated environment, but the current governing repository state cannot reproduce a live real-provider call without an external credential and explicit approval. Treat mock/mocked-boundary evidence as current; do not use the historical live row as present release evidence.
+
 ## Automated evidence
 
 | Check                   | Result | Evidence                                                                                                                                                                                                     |

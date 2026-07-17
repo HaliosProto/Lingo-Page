@@ -30,4 +30,6 @@ Inject malformed JSON, duplicate/missing/unknown IDs, empty/truncated/expanded o
 
 ## Implemented quality commands
 
-`pnpm verify` runs format checking, lint, strict typecheck, unit/integration tests, and production builds. `pnpm test:e2e` builds a fixture-only manifest variant and runs managed Chromium. Secret and permission scans are documented in `docs/mvp-verification-report.md`; manual branded-Chrome checks are in `docs/local-development.md`.
+`pnpm verify` runs format checking, lint, strict typecheck, unit/integration tests, and production builds. `pnpm test:e2e` builds a fixture-only manifest variant and runs managed Chromium. `pnpm test:e2e:performance` runs the isolated 25/400/1,000/2,200-node deterministic baseline with a loopback-only high-rate measurement server. Secret and permission scans are documented in the milestone reports; manual branded-Chrome checks are in `docs/local-development.md`.
+
+Set `CAPTURE_BASELINE_SCREENSHOTS=1` only when running `pnpm test:e2e` with synthetic fixtures to refresh ignored local popup, Options, and selected-result screenshots under `artifacts/milestone-0-visual-baseline`. Screenshots are evidence for visual review, not substitutes for semantic/accessibility assertions.

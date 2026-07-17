@@ -2,6 +2,8 @@
 
 Lingo Page is a privacy-first Chrome extension and local application API for translating eligible webpage text in place. The local release candidate is verified with a deterministic mock provider and includes a backend-only universal provider registry for optional local testing.
 
+The repository is governed by `PRODUCT_CONSTITUTION.md`, `PRODUCT_VISION.md`, and `ROADMAP.md`. The original Milestones 0-6 describe implemented local-MVP history; the current program foundation is recorded in `docs/milestone-0-verification-report.md`, and no new product milestone begins without explicit approval.
+
 ## What works
 
 - Explicit whole-page translation with source detection and target selection.
@@ -45,6 +47,7 @@ pnpm lint
 pnpm typecheck
 pnpm test
 pnpm test:e2e
+pnpm test:e2e:performance
 pnpm build
 pnpm verify
 pnpm security:scan
@@ -58,3 +61,13 @@ pnpm local:stop
 Page text is sent only after an explicit translate action. Persistent translated-text caching is off by default, capped at 200 entries when enabled, and disabled by privacy mode. Password/payment input values are never discovered. The extension calls only the application API; provider credentials are backend-only.
 
 No deployment, Chrome Web Store publication, real-provider call, account system, or payment integration is performed by this repository. These require separate authorization and production configuration.
+
+## Program documentation
+
+- Current architecture audit: `docs/current-architecture-audit.md`
+- Platform direction: `docs/platform-architecture.md`
+- Security baseline: `docs/security-baseline.md`
+- Performance baseline: `docs/v2-performance-baseline.md`
+- Design, accessibility, and BiDi: `docs/design-strategy.md`, `docs/accessibility.md`, `docs/bidi-safety.md`
+- Workflow, task graph, and memory: `docs/tooling-and-workflow.md`, `docs/project-memory.md`
+- Research and positioning: `docs/research-registry.md`, `docs/competitive-parity.md`, `docs/marketing-strategy.md`

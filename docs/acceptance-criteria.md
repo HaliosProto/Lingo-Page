@@ -1,24 +1,25 @@
 # Acceptance criteria
 
-Implementation status: Milestones 0-2 pass. Milestone 3 passes in deterministic/mock and mocked-upstream form; a live real-provider smoke test remains credential-dependent. Local-MVP portions of Milestones 4-6 pass as recorded in `docs/mvp-verification-report.md`.
+The original local-MVP acceptance history remains below where useful. The active program gates are the post-MVP Milestones 0 and 1 defined here and in `ROADMAP.md`.
 
 ## Milestone 0
 
-- Repository and environment status is evidenced.
-- `AGENTS.md`, `README.md`, `TASKS.md`, `CHANGELOG.md`, `.env.example`, and all required `docs/` living documents exist.
-- Product behavior, architecture, package boundaries, API contracts, security/privacy/threat models, provider/framework/backend evaluations, pipeline, testing, performance, compatibility, roadmap, milestones, and verification matrix are documented.
-- Choices are explicit, provisional where appropriate, and linked to alternatives/risks.
-- No extension or backend feature code is implemented.
+- Repository/current/baseline commit, remote, ignored secret files, toolchain, architecture, and living-status contradictions are evidenced.
+- Product constitution/vision, complete roadmap, risks, current/platform architecture, 24-stage lifecycle, design/accessibility/BiDi, data lifecycle, research, competitive, marketing, workflow, project memory, user actions, and ADR decisions are coherent and linked.
+- Spec Kit is safely integrated or its missing prerequisite, exact official-only isolated plan, and non-blocking status are recorded.
+- Beads has one program parent, one epic per approved milestone, and an implementation-ready M1 graph without premature distant tasks.
+- Ordinary defensive security and reproducible deterministic performance baselines exist; findings/limitations are classified honestly.
+- Applicable format/lint/type/test/build/E2E/security/manifest/bundle checks pass or exact limitations are recorded.
+- Diff/staged content contains no secrets/generated clutter/unrelated user file; an authorized local commit is created; M1 implementation has not begun.
 
 ## Milestone 1
 
-- Workspace installs and builds with a lockfile.
-- Extension and API shells compile in strict TypeScript mode.
-- MV3 manifest has minimal declared permissions and no provider secret.
-- Popup/options/worker/content-script entrypoints load.
-- Shared schemas validate both accepted and rejected messages.
-- Health endpoint works locally; mock-only provider interface exists.
-- Unit tests, lint, format, typecheck, production build, and unpacked-load smoke test pass.
+- Approved versioned session design minimizes stored text and defines migration, deletion, stale-DOM handling, and rollback.
+- Original/translation switching repeats without a provider call; changed-section updates send only changed eligible content.
+- Popup close/reopen, service-worker termination/restart, tab reload/close, SPA navigation, sleep/wake approximation, backend disconnect/restart, cancellation, continuation, and restore have explicit evidence/limitations.
+- Small/medium/large/very-large, viewport-first/adaptive batching, mutation storm, memory cleanup, cache, 429, and timeout baselines meet approved targets or create blocking issues.
+- Saved and OS reduced-motion paths work; accessibility and BiDi fixture/visual/clipboard/keyboard gates pass in managed Chromium, with branded-Chrome evidence recorded separately.
+- Least permissions, plain-text output, backend-only keys, runtime validation, and privacy defaults are preserved; no accounts, billing, deployment, publication, automatic routing, or new platform implementation is added.
 
 ## Milestone 2
 

@@ -10,3 +10,8 @@ node_modules/
 pnpm-lock.yaml
 artifacts/
 .local/
+.agents/
+.beads/
+.claude/
+AGENTS.md
+CLAUDE.md

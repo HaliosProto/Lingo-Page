@@ -1,4 +1,15 @@
-# Tasks
+# Program status
+
+Beads is the operational task/dependency graph; run `bd prime` and `bd ready` for actionable work. This file is a human-readable milestone/status summary, not a second issue tracker.
+
+## Current foundation gate
+
+- [x] Audit the real post-MVP repository and reconcile the current/historical source of truth.
+- [x] Establish the product constitution, vision, architecture, roadmap, risks, retention, workflow, memory, design/accessibility/BiDi, research, competitive, positioning, and user-action documents.
+- [x] Establish the Beads program/Milestone 0 structure and detailed Milestone 1 graph.
+- [x] Record bounded defensive security and reproducible managed-Chromium mock performance baselines.
+- [x] Complete final Milestone 0 quality gates and the authorized local commit (the commit containing `docs/milestone-0-verification-report.md` is the closure artifact).
+- [ ] Product owner approves the exact Milestone 1 scope before implementation begins.
 
 ## Completed local MVP
 
@@ -34,3 +45,7 @@
 - [ ] Deploy the Worker or publish the extension.
 - [ ] Add accounts, payments, subscriptions, analytics, or remote translation-memory storage.
 - [ ] Add Firefox, Safari, desktop, mobile, OCR, document, or screen-translation implementations.
+
+## Next proposed milestone
+
+Milestone 1 is the durable browser foundation defined in `ROADMAP.md`: lifecycle/session recovery, no-call original/translation toggles, changed-section updates, long-page performance, SPA/infinite fixtures, saved reduced motion, and accessibility/BiDi regression infrastructure. No Milestone 1 implementation has begun.

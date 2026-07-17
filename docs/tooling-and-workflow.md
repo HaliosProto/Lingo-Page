@@ -1,0 +1,47 @@
+# Tooling and execution workflow
+
+Audit date: 2026-07-18.
+
+## Tool decision table
+
+| Tool                           | Current status / version                   | Purpose                                            | Need                               | Security / license                                                                   | Recommendation / owner action                                                                          |
+| ------------------------------ | ------------------------------------------ | -------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| Git                            | Available, 2.55.0.windows.3                | Source and local commits                           | Now                                | Review staged content; Git is GPL-2.0                                                | Keep; no remote mutation without approval                                                              |
+| Node.js                        | Available, 24.14.0 bundled runtime         | Workspace runtime                                  | Now                                | Use pinned dependencies; Node license applies                                        | Keep                                                                                                   |
+| pnpm                           | Repo pins 11.7.0; bundled 11.9.0 available | Monorepo/package scripts                           | Now                                | Lockfile integrity; MIT                                                              | Use bundled 11.9 only as recorded fallback; restore exact 11.7 when approved network/toolchain permits |
+| Python                         | Available, 3.12.13 bundled runtime         | Spec/tool scripts                                  | Later                              | PSF license; avoid unreviewed packages                                               | Satisfies likely runtime prerequisite; verify official tool requirement                                |
+| uv                             | Not installed                              | Official tool installation/environment management  | Spec workflow                      | Apache-2.0/MIT distribution; installation is external code                           | Install only from the official Astral distribution after network approval                              |
+| Specify CLI / Spec Kit         | Not installed                              | Constitution/spec/plan/task templates              | Process established now; CLI later | Official GitHub distribution only; pin version and inspect generated files/license   | Follow safe plan below; owner must allow official download/network                                     |
+| Beads (`bd`)                   | Available, 1.1.0, embedded Dolt mode       | Durable task/dependency graph and memory           | Now                                | Local DB; remote sync is external; license/source should be rechecked before upgrade | Keep; no sync/push; `bd doctor` is unsupported in embedded mode                                        |
+| WXT                            | Installed, 0.20.27                         | MV3 packaging and future browser variants          | Now                                | Dependency/manifest review; package license metadata at upgrade                      | Preserve                                                                                               |
+| Playwright                     | Installed, 1.61.1                          | Managed Chromium E2E and future screenshots/a11y   | Now                                | Apache-2.0; synthetic fixtures only                                                  | Preserve; add deterministic visual matrix in M1                                                        |
+| Chrome                         | Installed, 150.0.7871.128                  | Manual production-candidate acceptance             | Later gate                         | Unpacked extension/real browsing privacy                                             | Owner-run branded-Chrome acceptance remains required                                                   |
+| Edge                           | Installed, 150.0.4078.65                   | Future Chromium compatibility                      | Later                              | Separate permissions/store/runtime evidence                                          | Do not claim support yet                                                                               |
+| Existing security scan         | Available, `scripts/security-scan.ps1`     | Secret/extension-boundary scan                     | Now                                | Reads configured values without displaying them                                      | Keep; complement with dependency/manifest/bundle checks                                                |
+| Release scripts                | Available                                  | Build local candidate, checksums, local start/stop | Now/later                          | Current provenance/PID gaps are in security baseline                                 | Harden in an approved narrow task                                                                      |
+| Interactive browser inspection | Not callable in this session               | Visual/runtime inspection                          | Relevant now, required later       | Must use synthetic pages and avoid private screenshots                               | Managed E2E fallback only; record branded/interactive visual checks unverified                         |
+| GitHub connector               | Available but unused                       | Private repository metadata/workflow               | Not required now                   | External access and repository scope                                                 | Keep restricted to this private repository; no push                                                    |
+| Design-file connector          | Available but unused                       | Future design library/approval                     | Later                              | External account/assets/license                                                      | Product-owner authorization before use                                                                 |
+| Mobile toolchain               | Available but unused                       | Future client prototypes                           | Later                              | Platform dependencies/accounts                                                       | Do not add during browser milestones                                                                   |
+
+## Spec Kit safe-integration plan
+
+The CLI could not be installed or initialized because `uv` and `specify` are absent and external access is prohibited for this milestone. This blocks only CLI integration, not the repository’s specification workflow.
+
+When official downloads are approved:
+
+1. Verify the latest stable release, supported Python version, current integration names, license, checksums/signatures if published, and initialization behavior directly from `github/spec-kit` official documentation.
+2. Install official `uv`, then install a pinned Spec Kit tag/commit from the official repository (expected command shape: `uv tool install specify-cli --from git+https://github.com/github/spec-kit.git@<verified-stable-tag>`; confirm before execution).
+3. Record `python --version`, `uv --version`, `specify version`, the supported self-check command, and the integration list from that pinned CLI.
+4. Create an isolated local worktree or throwaway copy at the clean Milestone 0 commit. Inventory/hashes must protect `AGENTS.md`, product/roadmap/specification documents, `TASKS.md`, `.beads`, and project-memory documents.
+5. Run initialization only in the isolated copy with the confirmed supported integration. Capture all generated files and a full diff; reject any overwrite, rule replacement, executable hook, external call, or duplicate source of truth.
+6. Map only useful templates into `specs/<milestone>/` through reviewed patches. Keep `PRODUCT_CONSTITUTION.md` and canonical docs authoritative; do not regenerate working application code.
+7. Pin the verified tool version in repository tooling documentation, rerun formatting/link/security checks, and create a separate local review commit. Remote push still requires approval.
+
+## Specification flow
+
+Constitution -> milestone specification/clarification -> ADRs/contracts -> Beads tasks/dependencies -> implementation/tests -> verification report -> memory/handoff. Convergence review checks that code, tests, docs, Beads, and known limitations agree before closure.
+
+## Beads rules
+
+The program epic and milestone epics describe outcomes. Only the approved next milestone receives implementation-ready child tasks. Each task includes scope/out-of-scope, affected subsystem, dependencies, security/privacy, tests, and completion evidence. `bd remember` stores concise durable knowledge; repository documents remain authoritative. No Dolt or Git remote sync occurs without approval.

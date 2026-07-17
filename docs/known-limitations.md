@@ -15,3 +15,8 @@ This local release candidate is intentionally bounded. These are known limitatio
 - Navigation/session safety is implemented, but route changes in complex single-page applications can require a fresh user action. Dynamic observation is bounded and may leave newly added content untranslated when a page is unusually busy.
 - The diagnostics export is intentionally limited to operational metadata and counts. It is not a crash dump or a full browser trace.
 - Deployment, store publication, public hosting, provider-key provisioning, and branded-Chrome approval are out of scope for this milestone and require explicit owner approval.
+- DOM eligibility needs dedicated coverage for inherited/variant `contenteditable`, hidden ancestors, and excluded descendants inside `surroundingText`; see `docs/security-baseline.md`.
+- Provider response bodies are not independently size-bounded and the provider timeout scope currently ends before JSON body consumption; validate and harden in a narrow task.
+- Production dependency advisories could not be refreshed while external registry access was prohibited; prior clean audits are dated historical evidence.
+- Interactive visual screenshots, branded-Chrome console/network inspection, screen-reader review, and saved reduced-motion runtime behavior remain unverified.
+- Chromium heap snapshots in the performance baseline are not leak proof; repeated GC-aware lifecycle profiling remains Milestone 1 work.
