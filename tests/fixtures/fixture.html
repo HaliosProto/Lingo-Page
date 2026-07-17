@@ -2,6 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <link rel="icon" href="data:," />
     <title>Translation Extension Fixture</title>
     <style>
       body {
@@ -44,6 +45,42 @@
           container.append(paragraph);
         }
       };
+      window.addChangedSection = () => {
+        const paragraph = document.createElement('p');
+        paragraph.id = 'changed-section';
+        paragraph.textContent = 'A deliberately added section needs translation.';
+        document.querySelector('#dynamic').append(paragraph);
+      };
+      window.modifyFixtureParagraph = () => {
+        document.querySelector('#paragraph').textContent =
+          'This paragraph was deliberately modified after translation.';
+      };
+      window.reorderFixtureHeading = () => {
+        const heading = document.querySelector('#heading');
+        document.querySelector('main').append(heading);
+      };
+      window.removeFixtureWhitespace = () => {
+        document.querySelector('#whitespace').remove();
+      };
+      window.addMixedDirectionText = () => {
+        const paragraph = document.createElement('p');
+        paragraph.id = 'mixed-direction';
+        paragraph.textContent =
+          'Persian فارسی model XJ-2026, https://example.com/path and number ۱۲۳۴.';
+        document.querySelector('#dynamic').append(paragraph);
+      };
+      window.addDuplicateDynamicText = () => {
+        for (let index = 0; index < 2; index += 1) {
+          const paragraph = document.createElement('p');
+          paragraph.id = `duplicate-dynamic-${index}`;
+          paragraph.textContent = 'Duplicated dynamic text requires a confident match.';
+          document.querySelector('#dynamic').append(paragraph);
+        }
+      };
+      const initialBulkCount = Number(new URLSearchParams(location.search).get('bulk') ?? 0);
+      if (Number.isInteger(initialBulkCount) && initialBulkCount > 0 && initialBulkCount <= 2200) {
+        window.addBulkText(initialBulkCount);
+      }
     </script>
   </body>
 </html>

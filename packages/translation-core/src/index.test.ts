@@ -4,6 +4,7 @@ import {
   applyGlossary,
   batchSegments,
   createCacheKey,
+  createTextFingerprint,
   deduplicateSegments,
   isLikelyTranslatableText,
   normalizeText,
@@ -35,6 +36,11 @@ describe('translation core', () => {
       segments.slice(0, 2),
       segments.slice(2),
     ]);
+  });
+
+  it('creates stable normalized fingerprints for session matching', () => {
+    expect(createTextFingerprint('  Same   text ')).toBe(createTextFingerprint('Same text'));
+    expect(createTextFingerprint('Different text')).not.toBe(createTextFingerprint('Same text'));
   });
 
   it('deduplicates equal text and context without losing duplicate IDs', () => {
