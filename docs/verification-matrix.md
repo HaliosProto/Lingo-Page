@@ -1,44 +1,43 @@
 # Verification matrix
 
-Legend: `U` unit, `I` integration, `E` browser E2E, `M` manual browser, `S` security/secret scan, `D` documentation evidence.
+Status: CURRENT
 
-| Area                     | Evidence required                                                                        | Milestone       |
-| ------------------------ | ---------------------------------------------------------------------------------------- | --------------- |
-| Repository setup         | Files, scripts, lockfile, clean install/build                                            | 0/1             |
-| Product scope            | Product spec and open decisions                                                          | 0               |
-| Architecture             | Package graph, data flow, ADRs                                                           | 0/1             |
-| Message safety           | Schema rejection, sender/tab/frame checks, stale request tests                           | 1/2             |
-| DOM eligibility          | Fixtures for safe/unsafe/excluded nodes                                                  | 2               |
-| DOM preservation         | Text-node-only mutation; DOM structure snapshot unchanged                                | 2               |
-| Restore                  | Full, partial, stale-node, and navigation restore tests                                  | 2/4             |
-| Cancellation             | Abort during discovery, request, apply, and observer work                                | 2/4             |
-| Provider isolation       | Mock adapter works; core has no provider imports                                         | 1/2             |
-| API validation           | Bad body, IDs, limits, language, auth, error shape                                       | 1/3             |
-| Secret boundary          | Bundle/source-map/config/history scan; provider key absent client-side                   | 3/8             |
-| Rate/cost controls       | Per-user/IP limits, quotas, emergency disable, usage counters                            | 3/7             |
-| Dynamic content          | Mutation, SPA route, infinite scroll, loop prevention                                    | 4               |
-| Service-worker lifecycle | Restart, tab close, reload, navigation recovery                                          | 4               |
-| UI states                | Loading, empty, success, warning, disabled, error, retry, restore                        | 1/5             |
-| Accessibility            | Keyboard, focus, screen reader labels, zoom, contrast, RTL, reduced motion               | 5/8             |
-| Privacy                  | Explicit action, notice, exclusions, sensitive warning, clear data, redacted diagnostics | 3/5/8           |
-| Performance              | Small/medium/large fixture timing, long-task and memory checks                           | 2/4/8           |
-| Unsupported pages        | Chrome internal, Web Store, settings, restricted frames/viewers                          | 2/8             |
-| Backend observability    | Request IDs and privacy-safe logs; no page text in default logs                          | 3               |
-| Browser verification     | Unpacked extension loaded in real Chrome; page/popup/worker console inspected            | 1 onward        |
-| Documentation            | Changelog, tasks, limitations, milestone report updated                                  | Every milestone |
+Legend: `U` unit, `I` integration, `E` managed browser E2E, `P` performance browser, `M` manual branded browser/device, `S` security/secret scan, `D` documentation/reference evidence.
 
-## Active program additions
+| Area                            | Required evidence                                                                                                        | Layer       | Milestone     |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------- | ------------- |
+| Canonical documentation         | File inventory, status/owner/replacement index, old-path and Markdown-link validation                                    | D           | M1.5/every    |
+| Roadmap/scope                   | M1-M12 order, M8 GA gate, no premature implementation, owner decisions                                                   | D           | M1.5/every    |
+| Architecture/package boundaries | Import graph, typecheck, production build, ADR/contracts                                                                 | U/D         | Every         |
+| Message/API validation          | Bad schemas/IDs/limits/language/auth/error shape, sender/tab/frame/navigation identity                                   | U/I/S       | M1-M8         |
+| DOM eligibility/preservation    | Safe/unsafe/excluded fixtures, text-node-only mutation, unchanged structure                                              | U/E/S       | M1-M5         |
+| Restore/cancellation/stale work | Full/partial/cancel/navigation/end-session and exact-original checks                                                     | U/E         | M1-M2         |
+| Provider isolation/recovery     | Mock determinism, stable-ID partial recovery, bounded retries, no silent recipient fallback                              | U/I/E/S     | M1-M3/M8      |
+| Secret/permission boundary      | Config/history/bundle/source-map scan, keys absent client-side, least-privilege manifest                                 | S/D         | Every release |
+| Dynamic/lifecycle behavior      | Mutation/SPA/infinite scroll, worker/browser/reload/sleep-wake recovery                                                  | U/E/M       | M2/M8         |
+| Frontend states                 | Loading, empty, success, warning, disabled, error, retry, partial, restore, offline/restricted                           | E/M         | M1.5/M4/M8    |
+| Action hierarchy/components     | Shared token/component use and semantic primary/secondary/tertiary/destructive/link controls                             | U/E/D       | M1.5/M4       |
+| Accessibility                   | Keyboard/focus/labels/live regions, screen reader, zoom, contrast/high contrast, reduced motion                          | E/M         | M1.5/M4/M8    |
+| BiDi                            | RTL/LTR/mixed scripts, URLs/numbers/tables/lists/buttons, logical order and isolation                                    | U/E/M       | M1.5/M3/M4/M8 |
+| Responsive/visual               | Popup 360, 390 comparison, Options breakpoints, 200%/400%, long strings, light/dark, screenshots                         | E/M         | M1.5/M4/M8    |
+| Privacy/data lifecycle          | Explicit action/recipient, exclusions, sensitive warning, cache off/clear, deletion/export, redacted diagnostics         | U/I/E/S/M   | M1-M8         |
+| Performance/memory              | Small/medium/large/very-large timing, request deltas, long tasks, mutation budget, GC-aware cleanup                      | P/M         | M1/M2/M8      |
+| Billing/entitlements            | State machines, webhooks/replay/idempotency, reconciliation, metering integrity, cost/abuse controls, lifecycle/deletion | U/I/S/M/D   | M6-M8         |
+| Production operations           | Identity/revocation/quotas, observability, incident/support/rollback/store/browser evidence                              | I/S/M/D     | M6-M8         |
+| Repository closure              | Format/lint/types/unit/integration/build/E2E/performance/security/docs/Beads/Git checks                                  | U/I/E/P/S/D | Every         |
 
-| Area               | Milestone 0 evidence                                          | Milestone 1 gate                                                                                                                                                                                             |
-| ------------------ | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Program authority  | Constitution, vision, roadmap, ADRs, Beads/memory workflow    | Approved M1 spec and synchronized tasks                                                                                                                                                                      |
-| Lifecycle          | Current state-survival matrix and known gaps                  | View/lifecycle separation, acknowledged copy handoff, visible-tab failure retention, end cleanup; restart limits explicit                                                                                    |
-| Performance        | Managed-Chromium mock 25/400/1,000/2,200-node baseline        | Switch/copy/comparison timings, zero-call deltas, long tasks, heap direction                                                                                                                                 |
-| BiDi/accessibility | Code/plan audit and release fixture matrix                    | Managed semantic, light/dark/narrow/200%-zoom, mixed-script, motion tests; manual gaps explicit                                                                                                              |
-| Security/privacy   | Ordinary scan, source review, manifest/bundle/ignore evidence | Exact-origin optional grant; final-origin recheck; acknowledged owning-tab handoff; bounded snapshot and ordinary scans                                                                                      |
-| Acceptance fixes   | Rejected copy/comparison/scan behavior reproduced             | Adaptive unresolved-only provider recovery; one-click intent callback/event idempotence; final translated copy after hydration; grant/deny/revoke/redirect matrix; 50/50 comparison; explicit scan-result UI |
-| Process            | Spec CLI safe plan, Beads hierarchy, memory policy            | Spec-to-code convergence and issue closure evidence                                                                                                                                                          |
+## M1.5 runtime coverage inventory
 
-## Required final evidence format
+| Surface/state                                  | Functional evidence                                                                  | Visual/fit evidence                                                            |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
+| Popup no-session/restricted/provider error     | Primary action enablement, support classification, safe retry actions                | 360 px screenshots, no horizontal overflow, visible focus                      |
+| Translating/adaptive recovery/partial/complete | Progress counts, unresolved-only recovery, continuation, completed DOM               | Progress/partial/completed screenshots and readable dense state                |
+| Original/Translated                            | Reversible pressed-state control, zero request delta                                 | Selected state discernible without color alone                                 |
+| No changes/changes/update                      | Explicit scan status and changed-only request behavior                               | Status/action hierarchy screenshots                                            |
+| Optional permission denied/copy ready          | Exact-origin request, denial guidance, hydration acknowledgment, zero provider calls | Permission/status screenshots, no repeated prompt                              |
+| Comparison                                     | Link/unlink, swap/reset, pointer/keyboard divider, copy/source/close                 | Light/dark, RTL/LTR, 390 px, 200%, scrolled/dense screenshots and region fit   |
+| Options                                        | Theme/motion/privacy/cache/dynamic/selection/glossary/save/clear/export              | 680/600 breakpoint, dark/reduced-motion, empty/filled controls, keyboard focus |
 
-Each milestone report must list commands/checks run, pass/fail status, browser scenarios actually run, console/network observations, defects fixed, limitations, and exact next milestone scope. Unavailable browser checks must be marked unverified with manual instructions.
+## Final evidence record
+
+Each milestone report lists every material command (including failures), pass/fail status, exact browser/runtime scenarios, screenshot locations, console/network observations, defects fixed, unavailable/manual checks, limitations, changed files, and next blocked scope. Automated managed Chromium and manual branded Chrome are always named separately.
