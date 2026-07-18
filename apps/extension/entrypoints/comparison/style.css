@@ -26,7 +26,8 @@ body,
   padding: 10px 12px;
   border: 1px solid var(--translation-border);
   border-radius: var(--translation-radius-medium);
-  background: var(--translation-surface);
+  background: var(--translation-surface-raised);
+  box-shadow: var(--translation-shadow-small);
 }
 
 .comparison-identity,
@@ -69,28 +70,19 @@ body,
   gap: 6px;
 }
 
-.comparison-permission-note {
+.comparison-permission {
   flex-basis: 100%;
-  color: var(--translation-muted);
-  font-size: 10px;
-  line-height: 1.35;
-  text-align: end;
+  max-width: 440px;
+  margin-inline-start: auto;
+  padding: 8px;
+  box-shadow: none;
 }
 
-.comparison-actions button,
-.comparison-actions a {
+.comparison-actions .ui-button {
   min-height: 34px;
   padding: 6px 9px;
-  border: 1px solid var(--translation-border);
-  border-radius: var(--translation-radius-small);
-  background: var(--translation-surface);
-  color: var(--translation-accent);
-  cursor: pointer;
-  font: inherit;
   font-size: 11px;
-  font-weight: 700;
   line-height: 20px;
-  text-decoration: none;
 }
 
 .comparison-actions button[aria-pressed='true'] {
@@ -119,7 +111,7 @@ body,
   overflow: hidden;
   border: 1px solid var(--translation-border);
   border-radius: var(--translation-radius-medium);
-  background: var(--translation-surface);
+  background: var(--translation-surface-raised);
 }
 
 .comparison-pane-wrap > h2 {
@@ -139,7 +131,7 @@ body,
   contain: paint;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
-  background: color-mix(in srgb, var(--translation-surface) 96%, var(--translation-border));
+  background: color-mix(in srgb, var(--translation-background) 94%, var(--translation-border));
 }
 
 .comparison-divider {
@@ -167,7 +159,7 @@ body,
   min-height: 100%;
   margin-inline: auto;
   padding: clamp(18px, 3vw, 40px);
-  color: var(--translation-text);
+  color: var(--translation-ink);
   font:
     15px/1.65 system-ui,
     sans-serif;
@@ -226,7 +218,7 @@ body,
   border: 1px solid var(--translation-border);
   border-radius: var(--translation-radius-small);
   background: color-mix(in srgb, var(--translation-border) 28%, transparent);
-  color: var(--translation-text);
+  color: var(--translation-ink);
 }
 
 .snapshot-text {
@@ -271,6 +263,10 @@ body,
   .comparison-actions {
     grid-column: 1 / -1;
     justify-content: flex-start;
+  }
+
+  .comparison-permission {
+    margin-inline-start: 0;
   }
 }
 

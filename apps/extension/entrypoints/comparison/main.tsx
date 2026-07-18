@@ -15,6 +15,7 @@ import { browser } from 'wxt/browser';
 import { createRequestId } from '@translation/shared-config';
 import type { TranslationSessionBundle } from '@translation/shared-types';
 import { extensionResponseSchema } from '@translation/shared-validation';
+import { Button, PermissionRequest } from '@translation/ui';
 import { ErrorBoundary } from '../../src/ui/ErrorBoundary';
 import {
   beginTranslatedCopySiteAccessRequest,
@@ -399,37 +400,45 @@ function ComparisonApp() {
           <span>{bundle.partial ? 'Partial session' : 'Complete session'}</span>
         </div>
         <div className="comparison-actions" aria-label="Comparison controls">
-          <button type="button" aria-pressed={syncEnabled} onClick={toggleSynchronization}>
+          <Button variant="tertiary" aria-pressed={syncEnabled} onClick={toggleSynchronization}>
             {syncEnabled ? 'Scrolling linked' : 'Scrolling unlinked'}
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="tertiary"
             onClick={() => {
               setSwapped((current) => !current);
               setStatusMessage('Original and translation sides were swapped.');
             }}
           >
             Swap sides
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="tertiary"
             onClick={() => {
               setSplitPercent(50);
               setStatusMessage('Pane widths reset to 50/50.');
             }}
           >
             Reset layout
-          </button>
-          <a href={bundle.navigationUrl} target="_blank" rel="noreferrer">
+          </Button>
+          <a
+            className="ui-button ui-button--tertiary"
+            href={bundle.navigationUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
             Open source page
           </a>
-          <span className="comparison-permission-note">{TRANSLATED_COPY_ACCESS_EXPLANATION}</span>
-          <button type="button" onClick={() => void openTranslatedCopy()}>
+          <PermissionRequest
+            className="comparison-permission"
+            description={TRANSLATED_COPY_ACCESS_EXPLANATION}
+          />
+          <Button variant="primary" onClick={() => void openTranslatedCopy()}>
             Open translated copy
-          </button>
-          <button type="button" onClick={() => void closeComparison()}>
+          </Button>
+          <Button variant="secondary" onClick={() => void closeComparison()}>
             Close comparison
-          </button>
+          </Button>
         </div>
       </header>
 
