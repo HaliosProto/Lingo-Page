@@ -8,6 +8,8 @@ Branch: `chore/repository-cleanup-roadmap-and-extension-ux`
 
 Starting commit: `1a1162962768c60f29b2848eafa8be76acdd919c`
 
+Review: [draft PR #3](https://github.com/HaliosProto/Translation-Extension/pull/3)
+
 ## Scope verified
 
 - Repository inventory, canonical-document hierarchy, historical preservation, old-path reconciliation, and concise task/instruction/memory boundaries.

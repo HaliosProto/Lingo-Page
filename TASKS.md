@@ -1,6 +1,6 @@
 # Program status
 
-Status: ACTIVE
+Status: REVIEW
 
 Last reconciled: 2026-07-18
 
@@ -13,7 +13,7 @@ M1.5 — Repository cleanup, extension-first roadmap, and frontend foundation.
 - Beads issue: `translation-2np`
 - Branch: `chore/repository-cleanup-roadmap-and-extension-ux`
 - Starting commit: `1a1162962768c60f29b2848eafa8be76acdd919c`
-- Pull request: draft publication pending after final branch verification
+- Pull request: [draft PR #3](https://github.com/HaliosProto/Translation-Extension/pull/3)
 - Specification: the accepted Milestone 1.5 task and Beads acceptance criteria
 - Inventory: `docs/repository-cleanup-inventory.md`
 - Canonical documentation map: `docs/INDEX.md`
