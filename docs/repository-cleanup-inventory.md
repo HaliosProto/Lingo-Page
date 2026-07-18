@@ -144,3 +144,13 @@ This inventory classifies every tracked Markdown document before Milestone 1.5 s
 - The initial managed-Chromium baseline passed three E2E scenarios and produced ignored visual evidence.
 - No tracked temporary build, test-result, release-artifact, `.dev.vars`, or log file was found.
 - Historical milestone/specification paths have repository-wide references and must be updated atomically if moved.
+
+## Applied cleanup outcome
+
+- Added `docs/INDEX.md` as the canonical map and documented the authority hierarchy without duplicating specifications.
+- Moved Milestone 0/1 records into `docs/milestones/` and older MVP/provider/performance/roadmap evidence into `docs/archive/`; Git history is preserved as renames.
+- Consolidated the durable future-platform sequence and extension-first gate into `ROADMAP.md`, then removed the fully superseded `docs/future-platform-roadmap.md`.
+- Retained `CLAUDE.md` only as a short compatibility pointer to `AGENTS.md`; it no longer carries a second operating-policy copy.
+- Refactored `TASKS.md`, `AGENTS.md`, and `docs/project-memory.md` around their distinct operational, durable-instruction, and concise-orientation roles.
+- Updated active references in repository documents and added repeatable Markdown-link and workspace-cycle checks.
+- Preserved every ADR, security/privacy baseline, threat model, verification report, changelog record, research decision, and release-evidence document.

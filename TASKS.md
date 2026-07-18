@@ -1,51 +1,52 @@
 # Program status
 
-Beads is the operational task/dependency graph; run `bd prime` and `bd ready` for actionable work. This file is a human-readable milestone/status summary, not a second issue tracker.
+Status: ACTIVE
 
-## Current foundation gate
+Last reconciled: 2026-07-18
 
-- [x] Audit the real post-MVP repository and reconcile the current/historical source of truth.
-- [x] Establish the product constitution, vision, architecture, roadmap, risks, retention, workflow, memory, design/accessibility/BiDi, research, competitive, positioning, and user-action documents.
-- [x] Establish the Beads program/Milestone 0 structure and detailed Milestone 1 graph.
-- [x] Record bounded defensive security and reproducible managed-Chromium mock performance baselines.
-- [x] Complete final Milestone 0 quality gates and the authorized local commit (the commit containing `docs/milestone-0-verification-report.md` is the closure artifact).
-- [x] Product owner approved the exact Milestone 1 scope and dedicated branch on 2026-07-18.
+`TASKS.md` is an operational index, not a task-history archive. Detailed work, dependencies, ownership, and acceptance evidence live in Beads; durable scope lives in specifications and `ROADMAP.md`.
 
-## Completed local MVP
+## Current milestone
 
-- [x] Milestone 0: product specification, architecture, security/privacy models, ADRs, and verification plan.
-- [x] Milestone 1: pnpm monorepo, WXT MV3 extension, Hono Worker, shared contracts, strict tooling, production builds, and browser loading.
-- [x] Milestone 2: DOM discovery, deterministic mock translation, batching, progress, cancellation, stale-session safety, and exact restore.
-- [x] Milestone 3 (credential-independent scope): validated API routes, provider isolation, DeepL adapter with mocked upstream tests, timeouts, limits, rate/quota controls, and safe errors.
-- [x] Milestone 4 (MVP scope): dynamic-content observer, loop prevention, partial-failure state, bounded memory/persistent cache, and navigation identity.
-- [x] Milestone 5 (MVP scope): production popup/options states, preferences, domain exclusions, privacy mode, sensitive-page behavior, cache controls, glossary, reduced motion, and accessible labels.
-- [x] Milestone 6: selected-text context menu, isolated result UI, copy, and browser verification.
+M1.5 — Repository cleanup, extension-first roadmap, and frontend foundation.
 
-## Required before a public release
+- Beads issue: `translation-2np`
+- Branch: `chore/repository-cleanup-roadmap-and-extension-ux`
+- Starting commit: `1a1162962768c60f29b2848eafa8be76acdd919c`
+- Pull request: not opened yet
+- Specification: the accepted Milestone 1.5 task and Beads acceptance criteria
+- Inventory: `docs/repository-cleanup-inventory.md`
+- Canonical documentation map: `docs/INDEX.md`
 
-- [ ] Run a live DeepL smoke test only after the owner supplies a backend credential and explicitly approves the local test; the credential remains in ignored `apps/api/.dev.vars`.
-- [ ] Replace development authentication and in-memory usage counters with production identity, revocation, durable quotas, and abuse controls.
-- [ ] Complete medium/large fixture profiling, service-worker restart tests, SPA route fixtures, accessibility audit, and branded-Chrome manual console/network inspection.
-- [ ] Review provider processing/retention terms and finalize the public privacy policy and store disclosures.
-- [ ] Add store listing assets, support process, release signing, deployment configuration, and incident rollback procedure.
-- [ ] Decide the public product name, API hostname, supported language matrix, and production provider contract.
+## Previous accepted milestone
 
-## Current local release-candidate handoff
+M1 acceptance fixes were merged to `main` in PR #2 at `1a11629`.
 
-- [x] Universal backend provider registry, native/compatible adapters, safe model catalogs, provider/model settings, controlled test route, benchmark harness, and mocked contract tests.
-- [x] Full static/test/build gate, clean dependency audit, managed-Chromium mock regression, secret/bundle scan, and rebuilt local release candidate.
-- [x] Gemini-only local environment regression: blank optional template values, health/provider registry runtime, request-ID diagnostics, and provider-test HTTP error classification.
-- [x] Exact partial/stop explanations, normalized safe failure metadata, real retry-delay progress, pending-only continuation, and multi-batch browser regression.
-- [ ] Owner optionally configures and smoke-tests each desired real provider locally; no real provider has been called by automated verification.
-- [ ] Owner runs `docs/user-acceptance-testing.md` against `pnpm local:test`.
-- [ ] Owner approves the checklist and the exact next milestone before any deployment or publication work.
+- Specification: `docs/milestones/milestone-1-specification.md`
+- Verification: `docs/milestones/milestone-1-verification-report.md`
+- Architecture decisions: ADR 0007, ADR 0009, and ADR 0010
 
-## Explicitly out of scope until authorized
+Branded-Chrome, formal accessibility/RTL, and owner acceptance gaps remain tracked in Beads and `docs/known-limitations.md`; they are not silently treated as current evidence.
 
-- [ ] Deploy the Worker or publish the extension.
-- [ ] Add accounts, payments, subscriptions, analytics, or remote translation-memory storage.
-- [ ] Add Firefox, Safari, desktop, mobile, OCR, document, or screen-translation implementations.
+## Next approved milestone
 
-## Next proposed milestone
+M2 — Reliability, lifecycle resilience, and performance — is the next roadmap milestone but is blocked until M1.5 is reviewed and accepted. No M2 implementation has begun.
 
-Milestone 1 was merged into `main`. Post-merge acceptance defects for translated-copy acknowledgment, full-page split comparison, and explicit page-change scan results are tracked under Beads parent `translation-1mp.2.11`; translated-copy optional permission/hydration is `translation-1mp.2.12`, adaptive incomplete-provider recovery is `translation-1mp.2.13`, and one-click permission intent continuation is `translation-1mp.2.14`. Work remains confined to `fix/milestone-1-acceptance-bugs`. See `docs/milestone-1-specification.md`, ADRs 0009/0010, and the dedicated verification report. Milestone 2 has not begun.
+See `ROADMAP.md`, `docs/acceptance-criteria.md`, and `docs/verification-matrix.md`.
+
+## Active blockers and owner decisions
+
+- Complete M1.5 runtime/frontend evidence and repository gates.
+- Review and accept the M1.5 branch and draft pull request; do not merge automatically.
+- Re-authenticate the repository hosting CLI before pull-request creation if its current credential remains invalid.
+- Formal branded-browser accessibility, BiDi, zoom, motion, and owner acceptance remain separate release evidence.
+- Live provider calls, payment-provider selection, accounts, deployment, publication, pricing, legal entity/jurisdiction decisions, and public resources require explicit approval.
+
+## Current evidence links
+
+- Current limitations: `docs/known-limitations.md`
+- Acceptance criteria: `docs/acceptance-criteria.md`
+- Verification matrix: `docs/verification-matrix.md`
+- Local operator/UAT: `docs/local-development.md`, `docs/user-acceptance-testing.md`, `docs/user-acceptance-checklist.md`
+- Security/privacy: `docs/security-model.md`, `docs/threat-model.md`, `docs/privacy-model.md`
+- Beads workflow: run `bd prime`, then `bd show translation-2np`
