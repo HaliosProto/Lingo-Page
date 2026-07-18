@@ -6,11 +6,11 @@ Mixed Persian/Arabic/Hebrew and Latin text can reorder URLs, numbers, punctuatio
 
 ## Current state and risks
 
-- Popup and Options roots use `dir="auto"`; independent comparison source/translation paragraphs now establish their own direction, while host-page translated Text nodes still inherit the page element context.
+- Popup and Options roots use `dir="auto"`; independent full-page comparison panes establish source/target direction and each text unit uses plaintext isolation, while host-page translated Text nodes still inherit the page element context.
 - Logical CSS and Milestone 1 fixtures cover Persian/English, Arabic numerals, Hebrew URLs, table cells, a list, and a button; the complete form/clipboard/browser matrix remains unfinished.
 - Provider output is inserted as plain text, preserving XSS safety. The extension does not alter unrelated host direction attributes.
 - Exact text restoration is implemented; direction-related DOM attributes are not currently added, so restore does not need to unwind them.
-- Comparison copy uses the exact logical string, but automated clipboard equality, table cells, selection-card direction, screen-reader order, and branded-browser differences remain unverified.
+- Comparison rendering preserves the exact logical string and independently covers LTR source/RTL translation and RTL source/LTR translation. Automated clipboard equality, selection-card direction, screen-reader order, and branded-browser differences remain unverified.
 
 ## BiDi Safety Engine contract
 
@@ -39,4 +39,4 @@ No critical identifier is visually reordered ambiguously; source/translation con
 
 ## Milestone 1 implementation status
 
-Popup content and comparison pairs use content-boundary `dir="auto"`; comparison text uses `unicode-bidi: plaintext` and logical layout without changing stored/copied strings or host ancestors. Managed Chromium covers English to Persian, Persian to English, Arabic with Arabic numerals, Hebrew with a URL, technical model numbers, Persian digits, a list, table cells, a button, original/translated switching, copy-tab application, dark theme, and narrow comparison. Clipboard equality, screen-reader order, zoom, high contrast, broader forms, and branded Chrome remain manual release evidence.
+Popup content and both comparison documents use content-boundary direction; comparison text uses `unicode-bidi: plaintext` and logical layout without changing stored strings or host ancestors. Managed Chromium covers English to Persian, Persian to English, Arabic with Arabic numerals, Hebrew with a URL, technical model numbers, Persian digits, lists, table cells, buttons, original/translated switching, copy-tab application, light/dark themes, 200% zoom, and narrow stacked comparison. Clipboard equality, screen-reader order, 400% zoom, high contrast, broader forms, and branded Chrome remain manual release evidence.

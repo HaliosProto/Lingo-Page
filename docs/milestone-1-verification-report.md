@@ -13,6 +13,25 @@ Showing the original page no longer ends or clears a translation session. Comple
 
 Milestone 2 was not started. The branch was not merged, deployed, published, or connected to a live provider.
 
+## Post-merge acceptance-fix addendum
+
+- Fix branch: `fix/milestone-1-acceptance-bugs`
+- Starting commit: `474f9597e2b699ca8191195e87bd7424988af196` (`origin/main` after the Milestone 1 merge)
+- Beads parent: `translation-1mp.2.11`; bugs `.11.1`, `.11.2`, and `.11.3`
+- Provider path: deterministic loopback mock only; no live provider call
+
+Manual acceptance found three defects after merge. First, translated-copy setup deleted the only handoff during retrieval and explicitly removed the newly created user-visible tab from its broad exception path. Direct import also raced page readiness, redirects, injection, and initialization. The corrected lifecycle creates one visible blank destination, stores and binds the cloned bundle before navigation, validates the top-frame destination, leaves retrieval non-destructive, and removes central page-text data only after idempotent acknowledgment. Failure removes temporary page-text data, retains bounded metadata, leaves the requested tab open, preserves the source, and shows a privacy-safe destination status.
+
+Second, the comparison implementation intentionally rendered one card per segment, so it could not resemble two versions of the same page. The corrected comparison captures a bounded allowlisted structural snapshot and reconstructs it twice without parsing source HTML: Original on the left and cached Translation with original fallback on the right. Desktop defaults to compact full-height 50/50 panes. Proportional linked scrolling uses `requestAnimationFrame` with a recursion guard; users can unlink/relink, drag or keyboard-adjust the divider, reset, and swap. Narrow view stacks two usable panes. Scripts, event handlers, source styles, forms, editable content, field values, frames, embeds, objects, and unsafe URLs are excluded.
+
+Third, successful change scans updated internal progress but the popup rendered a result only when changes existed, making a valid no-change scan indistinguishable from no action. Progress now retains an explicit `no-changes`, `changes-found`, or `updated` result. The popup exposes a visible checking state, detailed counts, an up-to-date message, and a retry action for failure. Scans work in Original and Translated views and create no translation request; only Update changed sections sends confident new/modified eligible text.
+
+Managed Chromium verifies successful copy reuse, duplicate claim/acknowledgment, redirected mismatch with the destination retained, cached-match zero-call behavior, unmatched original fallback, source/copy independence, and central handoff cleanup. It also verifies two structural comparison documents, no default segment cards, unsafe-node removal, no source-script execution, 50/50 layout, two-way linked scrolling, independent scrolling, deterministic relink, pointer/keyboard divider, reset, swap, partial fallback, light/dark themes, reduced motion, 200% zoom, 390 px stacking, and RTL/LTR combinations. Change tests cover explicit no-change, new, modified, removed, reordered, uncertain/duplicate, updated, partial, and both display modes with provider-request deltas.
+
+The final refreshed 2,206-segment performance result records 82 ms first visible, 448 ms complete, 28 ms Original, 28 ms Translation, 209 ms for ten full switches, zero switch calls, and zero long tasks. Copy matched/applied 2,205 segments in 283 ms; comparison loaded in 413 ms; both made zero provider calls. Dynamic insertion completed in 790 ms. These runs are deterministic managed-browser indicators, not forced-GC leak proof.
+
+Ignored visual evidence includes `translated-copy.png`, `comparison-default-50-50.png`, `comparison-synchronized-scrolled.png`, `comparison-unlinked-scroll.png`, `comparison-adjusted-divider.png`, `comparison-swapped-sides.png`, `comparison-partial.png`, `comparison-rtl-ltr.png`, `comparison-narrow.png`, `no-page-changes.png`, `changed-sections.png`, and `changed-sections-updated.png`. The requested persistent interactive browser console was unavailable, so branded-Chrome Wikipedia, real-site redirect/canonicalization, screen-reader, 400% zoom, high-contrast, and owner acceptance remain unverified and must not be inferred from managed Chromium.
+
 ## Root cause and session design
 
 The previous restore path combined two different intentions: it rewrote original text and also cancelled work, cleared segment maps, removed mutation/session state, and reset progress. Once that state was destroyed, showing translated text again required a new translation request.
@@ -37,17 +56,17 @@ Matching combines normalized source fingerprint, bounded structural context, liv
 
 ### Translated copy and comparison
 
-Open translated copy exports a versioned bundle capped at 2,500 segments and 2 MB, opens the exact HTTP(S) source URL, waits for the new top-level page, validates navigation/content, and imports only confident matches. The copy owns an independent cloned session; matched text makes zero provider calls and ending the source does not alter the copy.
+Open translated copy exports a versioned bundle capped at 2,500 segments and 2 MB, binds it to one destination tab before navigation, validates the compatible top-level navigation/content, and imports only confident matches. The destination acknowledges its independent cloned session before central page-text cleanup. Failure leaves the visible destination open. Matched text makes zero provider calls and ending the source does not alter the copy.
 
-Open comparison places a single-use 128-bit token in the extension-page fragment. The corresponding validated bundle lives temporarily in `chrome.storage.session`, is bound to the owning comparison tab, and is removed after retrieval or tab cleanup. Source HTML and scripts are never loaded or interpreted. React text nodes render aligned original/translation pairs with status, copy controls, Previous/Next navigation, safe source navigation, responsive columns, theme/reduced-motion handling, `dir="auto"`, and Unicode isolation.
+Open comparison places a single-use 128-bit token in the extension-page fragment. The corresponding validated bundle lives temporarily in `chrome.storage.session`, is bound to the owning comparison tab, and is removed after retrieval or tab cleanup. Source HTML and scripts are never loaded or interpreted. React reconstructs the same sanitized structural snapshot twice in full-height Original/Translation panes with linked or independent scrolling, adjustable/resettable split, swap, safe source/copy actions, responsive stacking, theme/reduced-motion handling, independent direction, and Unicode isolation.
 
 ## Frontend, accessibility, and BiDi
 
-The 360 px popup now provides a semantic Original/Translated segmented control, lifecycle badge, changed-content summary/action, copy/comparison actions, and progressive advanced Refresh/End actions with confirmation. State is not communicated by color alone. Popup, Options, and comparison apply both saved and system reduced-motion preferences. Controls are labeled and keyboard operable; comparison Previous/Next and copy actions passed managed tests.
+The 360 px popup now provides a semantic Original/Translated segmented control, lifecycle badge, explicit scan result/action, copy/comparison actions, and progressive advanced Refresh/End actions with confirmation. State is not communicated by color alone. Popup, Options, and comparison apply both saved and system reduced-motion preferences. Controls are labeled and keyboard operable; comparison skip links, scroll toggle, divider, reset, swap, source/copy, and close actions passed managed tests.
 
-Managed fixtures cover English to Persian, Persian to English, Arabic with Arabic numerals, Hebrew with a URL, mixed Persian/English text, technical model identifiers, Persian digits, a list, table cells, and a button. Comparison content uses paragraph-level automatic direction and inline isolation without changing host-page ancestor direction. Dark desktop and 390 px narrow comparison layouts were visually inspected and remained readable.
+Managed fixtures cover English to Persian, Persian to English, Arabic with Arabic numerals, Hebrew with a URL, mixed Persian/English text, technical model identifiers, Persian digits, a list, table cells, and a button. Comparison panes independently apply source/target direction and text-unit isolation without changing host-page ancestor direction. Light RTL/LTR, dark desktop, 200% zoom, and 390 px narrow stacked layouts were inspected and remained usable.
 
-Formal screen-reader, 200% zoom, contrast-tool, OS-level motion, broad real-site RTL, and branded-Chrome checks remain owner/manual release evidence.
+Formal screen-reader, 400% zoom, contrast-tool/high contrast, OS-level motion, broad real-site RTL, and branded-Chrome checks remain owner/manual release evidence.
 
 ## Security and privacy review
 
@@ -55,11 +74,11 @@ The ordinary single-pass review covered new schemas, sender/tab/frame authorizat
 
 No confirmed critical or high-severity vulnerability was established. One plausible sender-authorization gap was found and remediated: privileged popup/comparison commands previously relied on schema validation and extension ID without an explicit extension-page URL check. The background router now requires its own extension origin for privileged UI commands; content-script messages retain top-frame tab/frame validation. A direct fake-sender router unit test remains recommended once the router has an injectable seam.
 
-Existing page-shell eligibility gaps for inherited/variant editability, hidden ancestors, and excluded descendant context were remediated. Bundles fail closed when stale, mismatched, invalid, replayed, or oversized. Comparison/copy text never enters URLs, diagnostics, analytics, or long-term history. Provider keys and endpoints remain backend-only.
+Existing page-shell eligibility gaps for inherited/variant editability, hidden ancestors, and excluded descendant context were remediated. Bundles fail closed when stale, mismatched, invalid, replayed, or oversized. Copy retrieval is acknowledgment-gated and its visible tab survives failure. Comparison schemas reject cyclic/forward parents, unsafe URL schemes, and oversized structure; active and sensitive nodes are excluded. Comparison/copy text never enters URLs, diagnostics, analytics, or long-term history. Provider keys and endpoints remain backend-only.
 
 Production permissions remain `activeTab`, `contextMenus`, `scripting`, and `storage`, with only `http://127.0.0.1:8787/*`. The E2E build alone adds `http://127.0.0.1:4173/*`. No `<all_urls>` permission was added. The existing defensive scan passed. Manual artifact patterns found no credential-like values. Production extension source maps are absent; the ignored Worker dry-run map embeds expected source content. `apps/api/.dev.vars` is ignored and untracked.
 
-The production advisory refresh could not be completed without prohibited registry access. An offline audit attempt did not complete and was terminated; it is not reported as passing. Remaining security follow-ups are recorded in `docs/security-baseline.md`.
+The 2026-07-18 production dependency audit completed and reported one high advisory in `adm-zip@0.5.18`, reached through WXT → `web-ext-run` → `firefox-profile`. The affected path is build/development tooling and does not appear in the produced Chrome extension, but the lockfile remains affected. A WXT-chain update or explicitly approved compatible override to `adm-zip >=0.6.0` requires separate dependency work and is not reported as fixed. Remaining security follow-ups are recorded in `docs/security-baseline.md` and `docs/known-limitations.md`.
 
 ## Performance evidence
 
@@ -77,10 +96,10 @@ Dynamic insertion completed in 844 ms. A same-navigation copy confidently applie
 ## Automated and runtime evidence
 
 - Static/full gate: formatting, ESLint, strict type checks, 98 unit tests, 21 API integration tests, production extension build, and Worker dry-run build passed.
-- Managed Chromium E2E: full and five repeated switches, partial cancellation/switch/continue, exact originals, new/modified/removed/reordered/uncertain detection, changed-only requests, copy reuse/isolation, comparison keyboard/theme/narrow/motion, explicit end cleanup, selected text, popup, and Options passed.
-- Request inspection: view cycles, copy matched content, and comparison produced zero additional `/v1/translate` requests. Changed updates increased the request count only for the changed batch.
+- Managed Chromium E2E: full and five repeated switches, partial cancellation/switch/continue, exact originals, explicit scan results in both views, new/modified/removed/reordered/uncertain detection, changed-only requests, acknowledged/duplicate/redirected-failure copy behavior, full-page comparison sanitization/scroll/divider/reset/swap/theme/zoom/narrow/motion, explicit end cleanup, selected text, popup, and Options passed.
+- Request inspection: view cycles, scans, confident copy matches, and comparison produced zero additional `/v1/translate` requests. Changed updates increased the request count only for the changed batch.
 - Console inspection: the final managed run asserted no page, popup, Options, comparison, or service-worker errors. The assertion first exposed a fixture-only missing favicon 404; a data-URL fixture favicon removed it and the rerun passed.
-- Visual inspection: completed translated popup/page, retained original, reapplied translated, partial session, changed sections, translated copy, mixed RTL/LTR page, dark comparison, and narrow comparison artifacts were refreshed under ignored `artifacts/milestone-1-visual-baseline/`.
+- Visual inspection: completed translated popup/page, retained original, reapplied translated, partial session, explicit no-change/changed/updated states, translated copy, mixed RTL/LTR page, light/dark comparison, linked/unlinked scrolling, adjusted/reset/swapped panes, and narrow comparison artifacts were refreshed under ignored `artifacts/milestone-1-visual-baseline/`.
 
 ## Commands and notable failures
 
@@ -94,13 +113,15 @@ Observed failures were resolved or bounded:
 - The fixture server initially treated query strings as part of the file path; URL pathname parsing fixed copy/performance fixtures.
 - The console gate found a fixture favicon 404; the fixture now supplies a data-URL icon.
 - Two manual bundle-regex invocations initially failed because of shell quoting/leading-hyphen parsing; corrected file-only scans returned no matches.
-- The offline production dependency audit remained incomplete without registry access and was terminated rather than allowed external access.
+- The production dependency audit completed and reported the high `adm-zip@0.5.18` WXT/Firefox-tooling advisory described above; no dependency change was mixed into this acceptance fix.
+- `pnpm verify` and `pnpm build:release-candidate` stopped at the same pre-existing Prettier baseline in 14 files unchanged by this branch. A focused check over every acceptance-fix file passed, as did lint, strict types, 98 unit tests, 21 API integration tests, production builds, managed E2E, performance E2E, and the repository security scan. No release-candidate artifact was created.
 
 ## Documentation and decisions
 
 - `docs/milestone-1-specification.md` is the accepted implementation specification.
 - ADR 0007 records page-owned lifecycle/display separation and BiDi boundaries.
-- ADR 0009 records bounded copy/comparison handoff.
+- ADR 0009 records acknowledgment-gated translated-copy handoff and visible-tab retention.
+- ADR 0010 records bounded sanitized structural comparison and full-page split behavior.
 - Architecture, privacy, data retention, security, threat, accessibility, BiDi, testing, performance, acceptance, verification, roadmap, tasks, changelog, README, UAT, known limitations, and project memory were reconciled.
 - Beads tasks `translation-1mp.2.1` through `.10` provide the specification-to-evidence graph. The cross-milestone release/owner-acceptance epic `translation-12l` remains open under the program root rather than blocking or being falsely closed as Milestone 1 implementation work.
 

@@ -6,6 +6,9 @@ Run `pnpm local:test`, load `artifacts/translation-extension-local-rc/extension`
 - [ ] An ordinary HTTP(S) page reports ready and translates only eligible visible text.
 - [ ] Links, images, controls, forms, layout, and page behavior remain intact.
 - [ ] Restore returns the original text exactly.
+- [ ] Checking for new or changed content always shows no-change, changes-found, updated, or retryable-error feedback and makes no translation request until Update/Refresh is chosen.
+- [ ] One translated-copy tab remains open on success and reuse failure; its summary, cached matches, original fallbacks, and independence from the source are correct.
+- [ ] Comparison defaults to a 50/50 full-page Original/Translation split; linked/unlinked scrolling, divider keyboard/pointer control, Reset, Swap, narrow layout, themes, reduced motion, and 200% zoom remain usable.
 - [ ] Cancel stops work without applying stale or partial unsafe replacements.
 - [ ] Progress reports discovery and translation state; failure shows a retry action.
 - [ ] Dynamic content is translated when enabled and remains untouched when disabled.

@@ -76,7 +76,7 @@ Permission audit, dependency audit, secret scan, bundle scan, schema-fuzz tests,
 
 - Every new session/view/update/copy/comparison payload is runtime validated and session-bound.
 - Normal view changes stay inside the page shell and cannot initiate a provider request.
-- Copy handoff requires exact navigation compatibility, a cloned session ID, bounded payload, top-frame injection, and confident content matching.
+- Copy handoff requires compatible protocol/host/port/path identity, a cloned session ID, bounded payload, owning-tab and top-frame validation, and confident content matching. The handoff is stored before the visible tab navigates, is not consumed on retrieval, and is removed only after idempotent acknowledgment or safe failure cleanup. Failure never removes the user-visible tab.
 - Comparison handoff uses a 128-bit single-use token bound to the owning extension tab; text never enters the fragment or source page.
-- Comparison uses React text rendering only; no source HTML, scripts, handlers, fields, or remote code are imported.
+- Comparison captures an allowlisted parent-before-child structural model capped at 15,000 nodes inside the 2 MB bundle. Runtime validation rejects malformed trees and unsafe URLs. React reconstructs inert semantic elements and text without parsing HTML; scripts, handlers, source CSS, frames, embeds, forms, editable regions, hidden content, fields, and remote code are excluded. Captured buttons are disabled, and safe HTTP(S) links/images use referrer suppression.
 - Uncertain/duplicate matches remain original, invalid handoffs fail closed, and end-session cleanup is tab-local.

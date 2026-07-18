@@ -20,7 +20,7 @@ This roadmap supersedes the old implementation-order interpretation of Milestone
 
 ## Milestone 1 exact gate
 
-Milestone 1 was approved on 2026-07-18. Its gate is the implemented contract in `docs/milestone-1-specification.md`: retained page-owned sessions, zero-call repeated view switches, changed-only updates, isolated translated copies, safe comparison, explicit end-session cleanup, 2,206-segment reuse measurements, saved/OS reduced motion, accessibility/BiDi checks, least privilege, and browser evidence separated between managed Chromium and branded Chrome. Full restart persistence, viewport-first scheduling, adaptive batching, and SPA/infinite-scroll certification remain later work.
+Milestone 1 was approved and merged on 2026-07-18. Its post-merge acceptance gate is the implemented contract in `docs/milestone-1-specification.md`: retained page-owned sessions, zero-call repeated view switches and scans, acknowledged independently controlled translated copies whose visible tabs survive failure, sanitized full-page split comparison with linked scrolling, changed-only updates with explicit results, explicit end-session cleanup, 2,206-segment reuse measurements, saved/OS reduced motion, accessibility/BiDi checks, least privilege, and browser evidence separated between managed Chromium and branded Chrome. Full restart persistence, viewport-first scheduling, adaptive batching, and SPA/infinite-scroll certification remain later work; Milestone 2 has not begun.
 
 ## Cross-cutting research and marketing
 

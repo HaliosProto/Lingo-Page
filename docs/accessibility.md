@@ -6,7 +6,7 @@ React surfaces use semantic controls and accessible labels; status content exist
 
 ## Milestone 1 implementation status
 
-The saved `reducedMotion` setting now applies a runtime attribute to popup, Options, and comparison surfaces while the operating-system media query remains active. Managed Chromium verifies persistence and runtime application. Session controls use buttons, pressed-state segmented controls, status regions, confirmation, visible focus, and progressive disclosure. Comparison pairs are keyboard focusable with Previous/Next navigation and responsive one/two-column layouts. Formal screen-reader, 200/400% zoom, contrast/high-contrast, OS-level visual motion, and branded-Chrome evidence remain open.
+The saved `reducedMotion` setting now applies a runtime attribute to popup, Options, and comparison surfaces while the operating-system media query remains active. Managed Chromium verifies persistence and runtime application. Session controls use buttons, pressed-state segmented controls, status regions, retry actions, confirmation, visible focus, and progressive disclosure. The full-page comparison has skip links to both labeled panes, a pressed-state synchronized-scroll control with live status, logical toolbar order, keyboard and pointer divider control, reset/swap actions, and a stacked narrow fallback. Managed Chromium verifies 200% comparison zoom without horizontal document overflow. Formal screen-reader, 400% zoom, contrast/high-contrast, OS-level visual motion, and branded-Chrome evidence remain open.
 
 ## Release-blocking criteria
 

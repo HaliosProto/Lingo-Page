@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Fixed translated-copy tabs closing on handoff errors by binding storage before navigation, retaining the visible tab on every failure, and deleting central page-text data only after destination acknowledgment.
+- Replaced the default segment-card comparison with a bounded sanitized full-page Original/Translation split, synchronized or independent scrolling, adjustable/resettable divider, swap, responsive stacking, themes, reduced motion, and BiDi isolation.
+- Made page-change checks always show no-change, changes-found, updated, or retryable-error feedback while keeping scans provider-free.
 - Added Milestone 1 page-owned translation sessions with instant zero-call original/translated switching, changed-only updates, explicit end-session cleanup, isolated translated-copy tabs, and a safe plain-text comparison page.
 - Added bounded runtime-validated session handoff, saved reduced-motion runtime behavior, mixed-direction comparison treatment, and 2,206-segment session-reuse performance/request evidence.
 
