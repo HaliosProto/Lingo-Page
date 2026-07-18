@@ -329,6 +329,26 @@ export const translationFailureSchema = z.object({
   metadata: translationFailureMetadataSchema,
 });
 
+const translatedCopyApplicationStatusSchema = z.enum([
+  'applying',
+  'ready',
+  'partial',
+  'no-matches',
+  'import-failed',
+  'session-stale',
+]);
+
+const translatedCopyApplicationSummarySchema = z.object({
+  status: translatedCopyApplicationStatusSchema,
+  discoveredSegments: z.number().int().nonnegative().max(5_000),
+  matchedSegments: z.number().int().nonnegative().max(5_000),
+  appliedSegments: z.number().int().nonnegative().max(5_000),
+  unmatchedSegments: z.number().int().nonnegative().max(5_000),
+  uncertainSegments: z.number().int().nonnegative().max(5_000),
+  changedSegments: z.number().int().nonnegative().max(5_000),
+  providerRequests: z.literal(0),
+});
+
 export const translationProgressSchema = z.object({
   sessionId: sessionIdSchema.optional(),
   status: z.enum([
@@ -379,6 +399,7 @@ export const translationProgressSchema = z.object({
       updatedSegments: z.number().int().nonnegative().max(5_000).optional(),
     })
     .optional(),
+  translatedCopy: translatedCopyApplicationSummarySchema.optional(),
   pageDiverged: z.boolean().optional(),
 });
 
@@ -568,6 +589,7 @@ export const translatedCopyHandoffRecordSchema = z.object({
   version: z.literal(1),
   token: translatedCopyTokenSchema,
   tabId: z.number().int().nonnegative(),
+  sourceTabId: z.number().int().nonnegative().optional(),
   createdAt: z.number().int().nonnegative(),
   expiresAt: z.number().int().nonnegative(),
   bundle: translationSessionBundleSchema,
@@ -578,12 +600,20 @@ export const translatedCopyHandoffIndexSchema = z.discriminatedUnion('status', [
     version: z.literal(1),
     status: z.literal('pending'),
     token: translatedCopyTokenSchema,
+    sourceTabId: z.number().int().nonnegative().optional(),
     expiresAt: z.number().int().nonnegative(),
   }),
   z.object({
     version: z.literal(1),
     status: z.literal('acknowledged'),
     token: translatedCopyTokenSchema,
+    sourceTabId: z.number().int().nonnegative().optional(),
+    applicationStatus: z.enum(['ready', 'partial', 'no-matches']),
+    applicationStage: z.literal('destination-ready'),
+    discoveredSegments: z.number().int().nonnegative().max(5_000),
+    appliedSegments: z.number().int().nonnegative().max(5_000),
+    changedSegments: z.number().int().nonnegative().max(5_000),
+    providerRequests: z.literal(0),
     matchedSegments: z.number().int().nonnegative().max(5_000),
     unmatchedSegments: z.number().int().nonnegative().max(5_000),
     uncertainSegments: z.number().int().nonnegative().max(5_000),
@@ -592,6 +622,7 @@ export const translatedCopyHandoffIndexSchema = z.discriminatedUnion('status', [
     version: z.literal(1),
     status: z.literal('failed'),
     token: translatedCopyTokenSchema,
+    sourceTabId: z.number().int().nonnegative().optional(),
     message: z.string().min(1).max(300),
   }),
 ]);
@@ -698,6 +729,12 @@ export const extensionRequestSchema = z.discriminatedUnion('type', [
     type: z.literal('ACK_TRANSLATED_COPY_HANDOFF'),
     payload: z.object({
       token: translatedCopyTokenSchema,
+      applicationStatus: z.enum(['ready', 'partial', 'no-matches']),
+      applicationStage: z.literal('destination-ready'),
+      discoveredSegments: z.number().int().nonnegative().max(5_000),
+      appliedSegments: z.number().int().nonnegative().max(5_000),
+      changedSegments: z.number().int().nonnegative().max(5_000),
+      providerRequests: z.literal(0),
       matchedSegments: z.number().int().nonnegative().max(5_000),
       unmatchedSegments: z.number().int().nonnegative().max(5_000),
       uncertainSegments: z.number().int().nonnegative().max(5_000),
@@ -705,6 +742,14 @@ export const extensionRequestSchema = z.discriminatedUnion('type', [
   }),
   messageBaseSchema.extend({
     type: z.literal('REJECT_TRANSLATED_COPY_HANDOFF'),
+    payload: z.object({ token: translatedCopyTokenSchema }),
+  }),
+  messageBaseSchema.extend({
+    type: z.literal('TRANSLATE_IMPORTED_SECTIONS'),
+    payload: z.object({ sessionId: sessionIdSchema }),
+  }),
+  messageBaseSchema.extend({
+    type: z.literal('FOCUS_TRANSLATED_COPY_SOURCE'),
     payload: z.object({ token: translatedCopyTokenSchema }),
   }),
   messageBaseSchema.extend({
@@ -865,6 +910,12 @@ export const extensionResponseSchema = z.discriminatedUnion('type', [
     type: z.literal('TRANSLATED_COPY_OPENED'),
     payload: z.object({
       tabId: z.number().int().nonnegative(),
+      applicationStatus: z.enum(['ready', 'partial', 'no-matches']),
+      applicationStage: z.literal('destination-ready'),
+      discoveredSegments: z.number().int().nonnegative(),
+      appliedSegments: z.number().int().nonnegative(),
+      changedSegments: z.number().int().nonnegative(),
+      providerRequests: z.literal(0),
       matchedSegments: z.number().int().nonnegative(),
       unmatchedSegments: z.number().int().nonnegative(),
       uncertainSegments: z.number().int().nonnegative(),
@@ -882,6 +933,12 @@ export const extensionResponseSchema = z.discriminatedUnion('type', [
     payload: z.object({
       status: z.enum(['none', 'already-applied', 'failed']),
       message: z.string().min(1).max(300).optional(),
+      applicationStatus: z.enum(['ready', 'partial', 'no-matches']).optional(),
+      applicationStage: z.literal('destination-ready').optional(),
+      discoveredSegments: z.number().int().nonnegative().max(5_000).optional(),
+      appliedSegments: z.number().int().nonnegative().max(5_000).optional(),
+      changedSegments: z.number().int().nonnegative().max(5_000).optional(),
+      providerRequests: z.literal(0).optional(),
       matchedSegments: z.number().int().nonnegative().max(5_000).optional(),
       unmatchedSegments: z.number().int().nonnegative().max(5_000).optional(),
       uncertainSegments: z.number().int().nonnegative().max(5_000).optional(),

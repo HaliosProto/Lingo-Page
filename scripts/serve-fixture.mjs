@@ -13,6 +13,11 @@ const server = createServer((request, response) => {
     response.end();
     return;
   }
+  if (pathname === '/redirect-copy-wrong-site') {
+    response.writeHead(302, { location: 'http://localhost:4173/fixture.html' });
+    response.end();
+    return;
+  }
   const requestedPath = pathname === '/' ? '/fixture.html' : pathname;
   const filePath = resolve(root, `.${requestedPath}`);
   if (!filePath.startsWith(root) || !existsSync(filePath)) {

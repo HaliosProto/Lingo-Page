@@ -69,6 +69,14 @@ body,
   gap: 6px;
 }
 
+.comparison-permission-note {
+  flex-basis: 100%;
+  color: var(--translation-muted);
+  font-size: 10px;
+  line-height: 1.35;
+  text-align: end;
+}
+
 .comparison-actions button,
 .comparison-actions a {
   min-height: 34px;

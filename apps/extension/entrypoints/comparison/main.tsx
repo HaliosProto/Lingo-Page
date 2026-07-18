@@ -16,6 +16,11 @@ import { createRequestId } from '@translation/shared-config';
 import type { TranslationSessionBundle } from '@translation/shared-types';
 import { extensionResponseSchema } from '@translation/shared-validation';
 import { ErrorBoundary } from '../../src/ui/ErrorBoundary';
+import {
+  beginTranslatedCopySiteAccessRequest,
+  TRANSLATED_COPY_ACCESS_DENIED,
+  TRANSLATED_COPY_ACCESS_EXPLANATION,
+} from '../../src/translated-copy-access';
 import '../../src/ui/global.css';
 import './style.css';
 
@@ -125,6 +130,7 @@ function ComparisonApp() {
   const requestedSession = useRef(false);
   const syncing = useRef(false);
   const dragging = useRef(false);
+  const deniedTranslatedCopyOrigins = useRef(new Set<string>());
   const lastScrolled = useRef<'original' | 'translation'>('original');
   const animationFrame = useRef<number | undefined>(undefined);
 
@@ -274,8 +280,27 @@ function ComparisonApp() {
 
   async function openTranslatedCopy(): Promise<void> {
     if (!bundle) return;
+    const access = beginTranslatedCopySiteAccessRequest(
+      bundle.navigationUrl,
+      browser.permissions,
+      deniedTranslatedCopyOrigins.current,
+    );
+    if (access.status === 'unsupported') {
+      setStatusMessage('Translated copies are available only for HTTP or HTTPS pages.');
+      return;
+    }
+    if (access.status === 'previously-denied') {
+      setStatusMessage(TRANSLATED_COPY_ACCESS_DENIED);
+      return;
+    }
+    const siteAccessRequest = access.request;
     setStatusMessage('Opening translated copy…');
     try {
+      const siteAccess = await siteAccessRequest;
+      if (!siteAccess.granted) {
+        setStatusMessage(TRANSLATED_COPY_ACCESS_DENIED);
+        return;
+      }
       const response = extensionResponseSchema.parse(
         await browser.runtime.sendMessage({
           version: 1,
@@ -398,6 +423,7 @@ function ComparisonApp() {
           <a href={bundle.navigationUrl} target="_blank" rel="noreferrer">
             Open source page
           </a>
+          <span className="comparison-permission-note">{TRANSLATED_COPY_ACCESS_EXPLANATION}</span>
           <button type="button" onClick={() => void openTranslatedCopy()}>
             Open translated copy
           </button>

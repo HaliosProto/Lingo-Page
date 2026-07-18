@@ -35,6 +35,7 @@ import {
   translatedCopyHandoffRecordSchema,
   type ExtensionResponse,
 } from '@translation/shared-validation';
+import { hasTranslatedCopySiteAccess } from '../src/translated-copy-access';
 
 type CacheEntry = { translatedText: string; createdAt: number };
 type CacheStore = Record<string, CacheEntry>;
@@ -51,6 +52,12 @@ const COPY_HANDOFF_TAB_PREFIX = 'translatedCopyTab:';
 const COPY_HANDOFF_TTL_MS = 30_000;
 const MAX_SESSION_BUNDLE_BYTES = 2_000_000;
 type CopyHandoffSummary = {
+  applicationStatus: 'ready' | 'partial' | 'no-matches';
+  applicationStage: 'destination-ready';
+  discoveredSegments: number;
+  appliedSegments: number;
+  changedSegments: number;
+  providerRequests: 0;
   matchedSegments: number;
   unmatchedSegments: number;
   uncertainSegments: number;
@@ -248,6 +255,24 @@ function navigationCompatible(source: string, destination: string): boolean {
   }
 }
 
+function redirectedNavigationCompatible(source: string, destination: string): boolean {
+  try {
+    const sourceUrl = new URL(source);
+    const destinationUrl = new URL(destination);
+    const protocolCompatible =
+      sourceUrl.protocol === destinationUrl.protocol ||
+      (sourceUrl.protocol === 'http:' && destinationUrl.protocol === 'https:');
+    const portCompatible =
+      sourceUrl.protocol === destinationUrl.protocol
+        ? sourceUrl.port === destinationUrl.port
+        : (!sourceUrl.port || sourceUrl.port === '80') &&
+          (!destinationUrl.port || destinationUrl.port === '443');
+    return protocolCompatible && portCompatible && sourceUrl.hostname === destinationUrl.hostname;
+  } catch {
+    return false;
+  }
+}
+
 async function copyHandoffIndex(tabId: number) {
   const key = copyHandoffTabKey(tabId);
   const stored = await browser.storage.session.get(key);
@@ -263,6 +288,9 @@ async function failCopyHandoff(tabId: number, token: string, message: string): P
       version: 1,
       status: 'failed',
       token,
+      ...(current.success && current.data.sourceTabId !== undefined
+        ? { sourceTabId: current.data.sourceTabId }
+        : {}),
       message,
     }),
   });
@@ -309,6 +337,12 @@ async function waitForCopyAcknowledgement(
       if (!current.success || current.data.token !== token) return;
       if (current.data.status === 'acknowledged') {
         settle.resolve({
+          applicationStatus: current.data.applicationStatus,
+          applicationStage: current.data.applicationStage,
+          discoveredSegments: current.data.discoveredSegments,
+          appliedSegments: current.data.appliedSegments,
+          changedSegments: current.data.changedSegments,
+          providerRequests: current.data.providerRequests,
           matchedSegments: current.data.matchedSegments,
           unmatchedSegments: current.data.unmatchedSegments,
           uncertainSegments: current.data.uncertainSegments,
@@ -323,10 +357,14 @@ async function waitForCopyAcknowledgement(
 async function openTranslatedCopyFromBundle(
   sourceBundle: TranslationSessionBundle,
   requestId: string,
+  sourceTabId?: number,
 ): Promise<ExtensionResponse> {
   const validatedSource = translationSessionBundleSchema.parse(sourceBundle);
   if (bundleByteLength(validatedSource) > MAX_SESSION_BUNDLE_BYTES) {
     throw new Error('The translation session is too large to transfer safely.');
+  }
+  if (!(await hasTranslatedCopySiteAccess(validatedSource.navigationUrl, browser.permissions))) {
+    throw new Error('Site access is required before opening an automatically translated copy.');
   }
   const now = Date.now();
   const clonedBundle = translationSessionBundleSchema.parse({
@@ -344,6 +382,7 @@ async function openTranslatedCopyFromBundle(
       version: 1,
       token,
       tabId: copyTab.id,
+      ...(sourceTabId === undefined ? {} : { sourceTabId }),
       createdAt: now,
       expiresAt,
       bundle: clonedBundle,
@@ -352,6 +391,7 @@ async function openTranslatedCopyFromBundle(
       version: 1,
       status: 'pending',
       token,
+      ...(sourceTabId === undefined ? {} : { sourceTabId }),
       expiresAt,
     }),
   });
@@ -359,6 +399,13 @@ async function openTranslatedCopyFromBundle(
   try {
     await browser.tabs.update(copyTab.id, { url: validatedSource.navigationUrl });
     await waitForTabComplete(copyTab.id);
+    const destinationTab = await browser.tabs.get(copyTab.id);
+    if (
+      !destinationTab.url ||
+      !(await hasTranslatedCopySiteAccess(destinationTab.url, browser.permissions))
+    ) {
+      throw new Error('The destination site does not have translated-copy access.');
+    }
     await ensurePageShell(copyTab.id);
     const summary = await waitForCopyAcknowledgement(copyTab.id, token);
     return extensionResponseSchema.parse({
@@ -389,7 +436,7 @@ async function openTranslatedCopy(
   if (!sourceTab.url || !navigationCompatible(sourceBundle.navigationUrl, sourceTab.url)) {
     throw new Error('The source tab navigation changed before the copy could open.');
   }
-  return await openTranslatedCopyFromBundle(sourceBundle, requestId);
+  return await openTranslatedCopyFromBundle(sourceBundle, requestId, sourceTabId);
 }
 
 async function openComparisonView(
@@ -1124,7 +1171,11 @@ export default defineBackground(() => {
             requestId,
           );
         case 'OPEN_TRANSLATED_COPY_FROM_BUNDLE':
-          return await openTranslatedCopyFromBundle(parsed.data.payload.bundle, requestId);
+          return await openTranslatedCopyFromBundle(
+            parsed.data.payload.bundle,
+            requestId,
+            sender.tab?.id,
+          );
         case 'GET_TRANSLATED_COPY_HANDOFF': {
           const tabId = sender.tab?.id;
           const senderUrl = sender.url ?? sender.tab?.url;
@@ -1165,6 +1216,12 @@ export default defineBackground(() => {
               type: 'TRANSLATED_COPY_HANDOFF_STATUS',
               payload: {
                 status: 'already-applied',
+                applicationStatus: index.data.applicationStatus,
+                applicationStage: index.data.applicationStage,
+                discoveredSegments: index.data.discoveredSegments,
+                appliedSegments: index.data.appliedSegments,
+                changedSegments: index.data.changedSegments,
+                providerRequests: index.data.providerRequests,
                 matchedSegments: index.data.matchedSegments,
                 unmatchedSegments: index.data.unmatchedSegments,
                 uncertainSegments: index.data.uncertainSegments,
@@ -1195,7 +1252,7 @@ export default defineBackground(() => {
             handoff.data.tabId !== tabId ||
             handoff.data.token !== index.data.token ||
             bundleByteLength(handoff.data.bundle) > MAX_SESSION_BUNDLE_BYTES ||
-            !navigationCompatible(handoff.data.bundle.navigationUrl, senderUrl)
+            !redirectedNavigationCompatible(handoff.data.bundle.navigationUrl, senderUrl)
           ) {
             await failCopyHandoff(
               tabId,
@@ -1260,13 +1317,37 @@ export default defineBackground(() => {
               false,
             );
           }
+          const application = parsed.data.payload;
+          const expectedApplicationStatus =
+            application.matchedSegments === 0
+              ? 'no-matches'
+              : application.unmatchedSegments + application.uncertainSegments > 0
+                ? 'partial'
+                : 'ready';
+          if (
+            application.applicationStage !== 'destination-ready' ||
+            application.applicationStatus !== expectedApplicationStatus ||
+            application.appliedSegments !== application.matchedSegments ||
+            application.providerRequests !== 0 ||
+            application.discoveredSegments !==
+              application.matchedSegments +
+                application.unmatchedSegments +
+                application.uncertainSegments
+          ) {
+            return createErrorResponse(
+              requestId,
+              'INVALID_MESSAGE',
+              'The translated-copy application summary is invalid.',
+              false,
+            );
+          }
           const key = copyHandoffStorageKey(index.data.token);
           const stored = await browser.storage.session.get(key);
           const handoff = translatedCopyHandoffRecordSchema.safeParse(stored[key]);
           if (
             !handoff.success ||
             handoff.data.tabId !== tabId ||
-            !navigationCompatible(handoff.data.bundle.navigationUrl, senderUrl)
+            !redirectedNavigationCompatible(handoff.data.bundle.navigationUrl, senderUrl)
           ) {
             await failCopyHandoff(
               tabId,
@@ -1281,6 +1362,12 @@ export default defineBackground(() => {
             );
           }
           const summary: CopyHandoffSummary = {
+            applicationStatus: parsed.data.payload.applicationStatus,
+            applicationStage: parsed.data.payload.applicationStage,
+            discoveredSegments: parsed.data.payload.discoveredSegments,
+            appliedSegments: parsed.data.payload.appliedSegments,
+            changedSegments: parsed.data.payload.changedSegments,
+            providerRequests: parsed.data.payload.providerRequests,
             matchedSegments: parsed.data.payload.matchedSegments,
             unmatchedSegments: parsed.data.payload.unmatchedSegments,
             uncertainSegments: parsed.data.payload.uncertainSegments,
@@ -1291,6 +1378,9 @@ export default defineBackground(() => {
               version: 1,
               status: 'acknowledged',
               token: index.data.token,
+              ...(index.data.sourceTabId === undefined
+                ? {}
+                : { sourceTabId: index.data.sourceTabId }),
               ...summary,
             }),
           });
@@ -1321,6 +1411,60 @@ export default defineBackground(() => {
               'The saved translation did not match this page safely.',
             );
           }
+          return extensionResponseSchema.parse({
+            version: CONTRACT_VERSION,
+            requestId,
+            type: 'TRANSLATED_COPY_ACKNOWLEDGED',
+            payload: { acknowledged: true },
+          });
+        }
+        case 'TRANSLATE_IMPORTED_SECTIONS': {
+          const tabId = sender.tab?.id;
+          if (sender.id !== browser.runtime.id || tabId === undefined || sender.frameId !== 0) {
+            return createErrorResponse(
+              requestId,
+              'INVALID_MESSAGE',
+              'The translated-copy action is invalid.',
+              false,
+            );
+          }
+          const settings = await getSettings();
+          return await sendContentMessage(tabId, {
+            version: CONTRACT_VERSION,
+            requestId,
+            type: 'CONTINUE_PAGE_TRANSLATION',
+            payload: {
+              sessionId: parsed.data.payload.sessionId,
+              providerId: settings.providerId,
+              modelId: settings.modelId,
+              useSmallerBatches: false,
+            },
+          });
+        }
+        case 'FOCUS_TRANSLATED_COPY_SOURCE': {
+          const tabId = sender.tab?.id;
+          if (sender.id !== browser.runtime.id || tabId === undefined || sender.frameId !== 0) {
+            return createErrorResponse(
+              requestId,
+              'INVALID_MESSAGE',
+              'The translated-copy source action is invalid.',
+              false,
+            );
+          }
+          const index = await copyHandoffIndex(tabId);
+          if (
+            !index.success ||
+            index.data.token !== parsed.data.payload.token ||
+            index.data.sourceTabId === undefined
+          ) {
+            return createErrorResponse(
+              requestId,
+              'STALE_SESSION',
+              'The source tab is no longer available.',
+              false,
+            );
+          }
+          await browser.tabs.update(index.data.sourceTabId, { active: true });
           return extensionResponseSchema.parse({
             version: CONTRACT_VERSION,
             requestId,

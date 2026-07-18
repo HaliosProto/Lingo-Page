@@ -48,4 +48,4 @@ Beads is the operational task/dependency graph; run `bd prime` and `bd ready` fo
 
 ## Next proposed milestone
 
-Milestone 1 was merged into `main`. Post-merge acceptance defects for translated-copy acknowledgment, full-page split comparison, and explicit page-change scan results are tracked under Beads parent `translation-1mp.2.11` on `fix/milestone-1-acceptance-bugs`. See `docs/milestone-1-specification.md`, ADRs 0009/0010, and the dedicated verification report. Milestone 2 has not begun.
+Milestone 1 was merged into `main`. Post-merge acceptance defects for translated-copy acknowledgment, full-page split comparison, and explicit page-change scan results are tracked under Beads parent `translation-1mp.2.11`; the translated-copy optional-permission and delayed-hydration follow-up is `translation-1mp.2.12`. Work remains confined to `fix/milestone-1-acceptance-bugs`. See `docs/milestone-1-specification.md`, ADRs 0009/0010, and the dedicated verification report. Milestone 2 has not begun.

@@ -30,7 +30,9 @@ Records combine normalized source fingerprints, bounded structural context, exis
 
 ## Translated copy
 
-The service worker exports a bounded source bundle, creates exactly one visible destination tab, binds the temporary handoff to its tab ID before navigating it to the exact source URL, and waits for top-frame acknowledgment. Retrieval is non-destructive; central page-text data is removed only after the destination validates and clones its local session. Duplicate startup is safe and returns explicit already-applied/idempotent results. Matched content causes no translation call; unmatched/uncertain content stays original. A failed, expired, redirected, malformed, unsupported, or timed-out handoff leaves the user-visible tab open with a privacy-safe status. Copies own independent sessions, so ending the source does not affect them.
+The production manifest declares optional HTTP and HTTPS host patterns without granting them automatically. Directly from **Open translated copy**, the popup explains the need and requests only the current page origin. Denial leaves the source unchanged, avoids repeated prompting from the same view, and explains the manual duplicate-and-invoke fallback. `activeTab` remains the normal page-translation grant; no required all-site host permission is added.
+
+After access is granted, the service worker exports a bounded source bundle, rechecks the source grant, creates exactly one visible destination tab, binds the temporary handoff to its tab ID before navigating it to the exact source URL, and rechecks the final destination origin before injection. Retrieval is non-destructive. The destination applies confident cached matches, waits for bounded readiness, runs one bounded hydration reconciliation pass, and acknowledges only after the final translated DOM is ready; central page-text data is then removed. Duplicate startup is safe and returns explicit already-applied/idempotent results. Matched content causes no translation call; unmatched/uncertain content stays original. A failed, expired, redirected, revoked, malformed, unsupported, or timed-out handoff leaves the user-visible tab open with a privacy-safe status. Copies own independent sessions, so ending the source does not affect them.
 
 ## Full-page comparison
 
@@ -42,7 +44,7 @@ The extension reconstructs the same inert snapshot twice: original text on the l
 
 - Normal sessions remain page-memory-only; no history or cloud store was added.
 - Copy/comparison transfer is explicit, bounded, validated, same-navigation constrained, top-frame scoped, and isolated per tab.
-- Provider keys/endpoints remain backend-only. Permissions remain `activeTab`, `contextMenus`, `scripting`, and `storage`; no broad host access was added.
+- Provider keys/endpoints remain backend-only. Required permissions remain `activeTab`, `contextMenus`, `scripting`, and `storage`; optional HTTP/HTTPS host declarations support explicit current-origin translated-copy grants. No required `<all_urls>` or all-site grant is added.
 - Translated output uses `nodeValue`/`textContent`; no untrusted HTML is inserted.
 - Eligibility rejects inherited/variant editability and hidden ancestors; provider context no longer includes excluded descendant text.
 

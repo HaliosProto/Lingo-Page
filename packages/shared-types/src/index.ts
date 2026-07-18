@@ -95,6 +95,20 @@ export type TranslationChangeScanResult = {
   updatedSegments?: number;
 };
 
+export type TranslatedCopyApplicationStatus =
+  'applying' | 'ready' | 'partial' | 'no-matches' | 'import-failed' | 'session-stale';
+
+export type TranslatedCopyApplicationSummary = {
+  status: TranslatedCopyApplicationStatus;
+  discoveredSegments: number;
+  matchedSegments: number;
+  appliedSegments: number;
+  unmatchedSegments: number;
+  uncertainSegments: number;
+  changedSegments: number;
+  providerRequests: 0;
+};
+
 export type TranslationComparisonElementTag =
   | 'main'
   | 'article'
@@ -347,6 +361,7 @@ export type TranslationProgress = {
   lifecycle?: TranslationSessionLifecycle;
   changed?: TranslationChangeSummary;
   changeScan?: TranslationChangeScanResult;
+  translatedCopy?: TranslatedCopyApplicationSummary;
   pageDiverged?: boolean;
 };
 

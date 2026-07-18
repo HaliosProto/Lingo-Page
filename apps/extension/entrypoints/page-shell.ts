@@ -21,6 +21,8 @@ import type {
   TranslationSessionBundle,
   TranslationSessionLifecycle,
   TranslationSegmentStatus,
+  TranslatedCopyApplicationStatus,
+  TranslatedCopyApplicationSummary,
 } from '@translation/shared-types';
 import { CONTRACT_VERSION, TRANSLATION_SESSION_VERSION } from '@translation/shared-types';
 import {
@@ -100,6 +102,9 @@ const MAX_SESSION_SEGMENTS = 2_500;
 const MAX_SESSION_BUNDLE_BYTES = 2_000_000;
 const MAX_COMPARISON_SNAPSHOT_NODES = 15_000;
 const MAX_COMPARISON_SNAPSHOT_DEPTH = 40;
+const COPY_INITIAL_STABILITY_MS = 150;
+const COPY_INITIAL_STABILITY_TIMEOUT_MS = 1_200;
+const COPY_RECONCILIATION_WINDOW_MS = 1_600;
 const comparisonElementTags = new Set<TranslationComparisonElementTag>([
   'main',
   'article',
@@ -195,6 +200,8 @@ export default defineUnlistedScript(() => {
   let observerTimer: ReturnType<typeof setTimeout> | undefined;
   let nextOrdinal = 0;
   let progress: TranslationProgress = idleProgress();
+  let translatedCopyBundle: TranslationSessionBundle | undefined;
+  let translatedCopyToken: string | undefined;
 
   function idleProgress(): TranslationProgress {
     return {
@@ -1212,7 +1219,6 @@ export default defineUnlistedScript(() => {
     try {
       const sourceUrl = new URL(source);
       const destinationUrl = new URL(destination);
-      const normalizePath = (value: string) => value.replace(/\/+$/u, '') || '/';
       const protocolCompatible =
         sourceUrl.protocol === destinationUrl.protocol ||
         (sourceUrl.protocol === 'http:' && destinationUrl.protocol === 'https:');
@@ -1221,12 +1227,7 @@ export default defineUnlistedScript(() => {
           ? sourceUrl.port === destinationUrl.port
           : (!sourceUrl.port || sourceUrl.port === '80') &&
             (!destinationUrl.port || destinationUrl.port === '443');
-      return (
-        protocolCompatible &&
-        portCompatible &&
-        sourceUrl.hostname === destinationUrl.hostname &&
-        normalizePath(sourceUrl.pathname) === normalizePath(destinationUrl.pathname)
-      );
+      return protocolCompatible && portCompatible && sourceUrl.hostname === destinationUrl.hostname;
     } catch {
       return false;
     }
@@ -1272,6 +1273,25 @@ export default defineUnlistedScript(() => {
   }
 
   function importSessionBundle(bundle: TranslationSessionBundle): {
+    discoveredSegments: number;
+    matchedSegments: number;
+    unmatchedSegments: number;
+    uncertainSegments: number;
+  };
+  function importSessionBundle(
+    bundle: TranslationSessionBundle,
+    observeDynamicContent?: boolean,
+  ): {
+    discoveredSegments: number;
+    matchedSegments: number;
+    unmatchedSegments: number;
+    uncertainSegments: number;
+  };
+  function importSessionBundle(
+    bundle: TranslationSessionBundle,
+    observeDynamicContent = true,
+  ): {
+    discoveredSegments: number;
     matchedSegments: number;
     unmatchedSegments: number;
     uncertainSegments: number;
@@ -1297,7 +1317,10 @@ export default defineUnlistedScript(() => {
     let uncertainSegments = 0;
     for (const record of records) {
       const candidates = (sourceByFingerprint.get(record.sourceFingerprint) ?? []).filter(
-        (candidate) => !usedSourceIds.has(candidate.id) && candidate.translatedText,
+        (candidate) =>
+          !usedSourceIds.has(candidate.id) &&
+          candidate.translatedText &&
+          (!candidate.elementRole || candidate.elementRole === record.segment.elementRole),
       );
       const structuralMatches = candidates.filter(
         (candidate) => candidate.structuralFingerprint === record.structuralFingerprint,
@@ -1330,7 +1353,12 @@ export default defineUnlistedScript(() => {
       cancellationEpoch: 0,
       createdAt: now,
       lastActivityAt: now,
-      displayMode: matchedSegments === records.length ? 'translated' : 'mixed-partial',
+      displayMode:
+        matchedSegments === 0
+          ? 'original'
+          : matchedSegments === records.length
+            ? 'translated'
+            : 'mixed-partial',
       lifecycle: unmatchedSegments + uncertainSegments === 0 ? 'complete' : 'partial',
       changed: {
         ...emptyChangeSummary(),
@@ -1338,6 +1366,7 @@ export default defineUnlistedScript(() => {
         uncertainSegments,
       },
     };
+    const existingTranslatedCopy = progress.translatedCopy;
     progress = {
       sessionId: bundle.sessionId,
       status: unmatchedSegments + uncertainSegments === 0 ? 'completed' : 'partial',
@@ -1348,10 +1377,16 @@ export default defineUnlistedScript(() => {
       waitingSegments: 0,
       retryingSegments: 0,
       targetLanguage: bundle.targetLanguage,
+      ...(existingTranslatedCopy ? { translatedCopy: existingTranslatedCopy } : {}),
     };
-    setDisplayMode('translated');
-    startObserver();
-    return { matchedSegments, unmatchedSegments, uncertainSegments };
+    setDisplayMode(matchedSegments === 0 ? 'original' : 'translated');
+    if (observeDynamicContent) startObserver();
+    return {
+      discoveredSegments: records.length,
+      matchedSegments,
+      unmatchedSegments,
+      uncertainSegments,
+    };
   }
 
   async function refreshTranslation(
@@ -1432,12 +1467,16 @@ export default defineUnlistedScript(() => {
 
   function showTranslatedCopyStatus(
     tone: 'success' | 'warning',
+    status: TranslatedCopyApplicationStatus,
     titleText: string,
     messageText: string,
+    actions: Array<{ label: string; run: () => void }> = [],
   ): void {
     document.getElementById('lingo-page-copy-status')?.remove();
     const host = document.createElement('div');
     host.id = 'lingo-page-copy-status';
+    host.dataset.copyStatus = status;
+    host.dataset.actions = actions.map((action) => action.label).join('|');
     host.style.all = 'initial';
     const shadow = host.attachShadow({ mode: 'closed' });
     const style = document.createElement('style');
@@ -1446,6 +1485,7 @@ export default defineUnlistedScript(() => {
       .status { position: fixed; z-index: 2147483647; inset: 16px 16px auto auto; width: min(380px, calc(100vw - 32px)); padding: 14px 16px; border: 1px solid ${tone === 'success' ? '#78b48a' : '#e1ad63'}; border-radius: 12px; background: #fff; color: #172033; box-shadow: 0 16px 42px rgba(20, 29, 48, .2); font: 14px/1.45 system-ui, sans-serif; }
       .top { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
       strong { display: block; margin-bottom: 4px; font-size: 14px; } p { margin: 0; color: #4b5568; }
+      .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
       button { border: 0; border-radius: 8px; padding: 6px 8px; background: #edf1ff; color: #2744a0; cursor: pointer; font: 600 12px system-ui, sans-serif; }
       @media (prefers-color-scheme: dark) { .status { background: #17212f; color: #f5f7fb; } p { color: #c3cad6; } button { background: #263653; color: #a9c2ff; } }
       @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; } }
@@ -1466,10 +1506,212 @@ export default defineUnlistedScript(() => {
     close.setAttribute('aria-label', 'Dismiss translated-copy status');
     close.addEventListener('click', () => host.remove());
     copy.append(title, message);
+    if (actions.length > 0) {
+      const actionRow = document.createElement('div');
+      actionRow.className = 'actions';
+      for (const action of actions) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = action.label;
+        button.addEventListener('click', action.run);
+        actionRow.append(button);
+      }
+      copy.append(actionRow);
+    }
     top.append(copy, close);
     card.append(top);
     shadow.append(style, card);
     document.documentElement.append(host);
+  }
+
+  function translatedCopyProgress(
+    status: TranslatedCopyApplicationStatus,
+    summary?: Partial<TranslatedCopyApplicationSummary>,
+  ): TranslatedCopyApplicationSummary {
+    return {
+      status,
+      discoveredSegments: summary?.discoveredSegments ?? 0,
+      matchedSegments: summary?.matchedSegments ?? 0,
+      appliedSegments: summary?.appliedSegments ?? 0,
+      unmatchedSegments: summary?.unmatchedSegments ?? 0,
+      uncertainSegments: summary?.uncertainSegments ?? 0,
+      changedSegments: summary?.changedSegments ?? 0,
+      providerRequests: 0,
+    };
+  }
+
+  async function waitForDocumentReady(): Promise<void> {
+    if (document.readyState !== 'loading' && document.body) return;
+    await new Promise<void>((resolve) => {
+      const timeout = setTimeout(resolve, COPY_INITIAL_STABILITY_TIMEOUT_MS);
+      const finish = () => {
+        clearTimeout(timeout);
+        resolve();
+      };
+      document.addEventListener('DOMContentLoaded', finish, { once: true });
+    });
+  }
+
+  async function waitForDomQuiet(maximumMs: number): Promise<void> {
+    if (!document.body) return;
+    await new Promise<void>((resolve) => {
+      let quietTimer: ReturnType<typeof setTimeout> | undefined;
+      const deadline = setTimeout(finish, maximumMs);
+      const observer = new MutationObserver(scheduleQuietFinish);
+      function finish() {
+        observer.disconnect();
+        clearTimeout(deadline);
+        if (quietTimer !== undefined) clearTimeout(quietTimer);
+        resolve();
+      }
+      function scheduleQuietFinish() {
+        if (quietTimer !== undefined) clearTimeout(quietTimer);
+        quietTimer = setTimeout(finish, COPY_INITIAL_STABILITY_MS);
+      }
+      observer.observe(document.body!, { childList: true, characterData: true, subtree: true });
+      scheduleQuietFinish();
+    });
+  }
+
+  async function observeInitialDomChanges(): Promise<boolean> {
+    if (!document.body) return false;
+    return await new Promise<boolean>((resolve) => {
+      let changed = false;
+      const observer = new MutationObserver(() => {
+        changed = true;
+      });
+      observer.observe(document.body!, { childList: true, characterData: true, subtree: true });
+      setTimeout(() => {
+        observer.disconnect();
+        resolve(changed);
+      }, COPY_RECONCILIATION_WINDOW_MS);
+    });
+  }
+
+  function applicationStatus(summary: {
+    matchedSegments: number;
+    unmatchedSegments: number;
+    uncertainSegments: number;
+  }): 'ready' | 'partial' | 'no-matches' {
+    if (summary.matchedSegments === 0) return 'no-matches';
+    return summary.unmatchedSegments + summary.uncertainSegments > 0 ? 'partial' : 'ready';
+  }
+
+  async function applyTranslatedCopyBundle(bundle: TranslationSessionBundle): Promise<
+    TranslatedCopyApplicationSummary & {
+      applicationStatus: 'ready' | 'partial' | 'no-matches';
+      applicationStage: 'destination-ready';
+    }
+  > {
+    await waitForDocumentReady();
+    await waitForDomQuiet(COPY_INITIAL_STABILITY_TIMEOUT_MS);
+    const initial = importSessionBundle(bundle, false);
+    const changed = await observeInitialDomChanges();
+    let final = initial;
+    if (changed) {
+      await waitForDomQuiet(COPY_INITIAL_STABILITY_TIMEOUT_MS);
+      final = importSessionBundle(bundle, false);
+    }
+    startObserver();
+    const status = applicationStatus(final);
+    const summary = translatedCopyProgress(status, {
+      ...final,
+      appliedSegments: final.matchedSegments,
+      changedSegments: changed ? final.discoveredSegments : 0,
+    });
+    progress = { ...progress, translatedCopy: summary };
+    return {
+      ...summary,
+      applicationStatus: status,
+      applicationStage: 'destination-ready',
+    };
+  }
+
+  function translateImportedSections(): void {
+    const session = currentSession;
+    if (!session) return;
+    void browser.runtime.sendMessage({
+      version: CONTRACT_VERSION,
+      requestId: `req_copy_translate_${crypto.randomUUID().replaceAll('-', '')}`,
+      type: 'TRANSLATE_IMPORTED_SECTIONS',
+      payload: { sessionId: session.id },
+    });
+  }
+
+  function focusTranslatedCopySource(): void {
+    if (!translatedCopyToken) return;
+    void browser.runtime.sendMessage({
+      version: CONTRACT_VERSION,
+      requestId: `req_copy_source_${crypto.randomUUID().replaceAll('-', '')}`,
+      type: 'FOCUS_TRANSLATED_COPY_SOURCE',
+      payload: { token: translatedCopyToken },
+    });
+  }
+
+  function renderTranslatedCopySummary(summary: TranslatedCopyApplicationSummary): void {
+    const attachSummary = () => {
+      const host = document.getElementById('lingo-page-copy-status');
+      if (!host) return;
+      host.dataset.matchedSegments = String(summary.matchedSegments);
+      host.dataset.unmatchedSegments = String(summary.unmatchedSegments);
+      host.dataset.uncertainSegments = String(summary.uncertainSegments);
+      host.dataset.changedSegments = String(summary.changedSegments);
+      host.dataset.providerRequests = '0';
+    };
+    const commonMessage = `${summary.matchedSegments} sections reused, ${summary.unmatchedSegments} unmatched, ${summary.uncertainSegments} uncertain, and 0 provider requests.`;
+    if (summary.status === 'ready') {
+      showTranslatedCopyStatus('success', 'ready', 'Translated copy ready', commonMessage);
+      attachSummary();
+      return;
+    }
+    if (summary.status === 'partial') {
+      showTranslatedCopyStatus(
+        'warning',
+        'partial',
+        'Translated copy partially applied',
+        commonMessage,
+        [{ label: 'Translate unmatched sections', run: translateImportedSections }],
+      );
+      attachSummary();
+      return;
+    }
+    showTranslatedCopyStatus(
+      'warning',
+      'no-matches',
+      'No safe cached matches',
+      'The original page remains visible. No provider request was made.',
+      [
+        {
+          label: 'Retry matching',
+          run: () => {
+            if (!translatedCopyBundle) return;
+            showTranslatedCopyStatus(
+              'warning',
+              'applying',
+              'Applying cached translation',
+              'Waiting for the destination page to settle. No provider request will be made.',
+            );
+            void applyTranslatedCopyBundle(translatedCopyBundle)
+              .then(renderTranslatedCopySummary)
+              .catch(() => {
+                progress = {
+                  ...progress,
+                  translatedCopy: translatedCopyProgress('import-failed'),
+                };
+                showTranslatedCopyStatus(
+                  'warning',
+                  'import-failed',
+                  'Translation import failed',
+                  'The cached translation could not be applied safely.',
+                );
+              });
+          },
+        },
+        { label: 'Translate this page', run: translateImportedSections },
+        { label: 'Return to source tab', run: focusTranslatedCopySource },
+      ],
+    );
+    attachSummary();
   }
 
   async function claimTranslatedCopyHandoff(): Promise<void> {
@@ -1484,8 +1726,13 @@ export default defineUnlistedScript(() => {
       );
       if (response.type === 'TRANSLATED_COPY_HANDOFF_STATUS') {
         if (response.payload.status === 'failed') {
+          const status = response.payload.message?.includes('expired')
+            ? 'session-stale'
+            : 'import-failed';
+          progress = { ...progress, translatedCopy: translatedCopyProgress(status) };
           showTranslatedCopyStatus(
             'warning',
+            status,
             'Translation reuse unavailable',
             response.payload.message ??
               'This tab remains open, but its saved translation could not be reused safely.',
@@ -1495,7 +1742,21 @@ export default defineUnlistedScript(() => {
       }
       if (response.type !== 'TRANSLATED_COPY_HANDOFF') return;
       try {
-        const summary = importSessionBundle(response.payload.bundle);
+        translatedCopyBundle = response.payload.bundle;
+        translatedCopyToken = response.payload.token;
+        progress = {
+          ...progress,
+          status: 'discovering',
+          targetLanguage: response.payload.bundle.targetLanguage,
+          translatedCopy: translatedCopyProgress('applying'),
+        };
+        showTranslatedCopyStatus(
+          'warning',
+          'applying',
+          'Applying cached translation',
+          'Waiting for the destination page to settle. No provider request will be made.',
+        );
+        const summary = await applyTranslatedCopyBundle(response.payload.bundle);
         const acknowledgement = extensionResponseSchema.parse(
           await browser.runtime.sendMessage({
             version: CONTRACT_VERSION,
@@ -1507,12 +1768,13 @@ export default defineUnlistedScript(() => {
         if (acknowledgement.type !== 'TRANSLATED_COPY_ACKNOWLEDGED') {
           throw new Error('The translated-copy acknowledgment was rejected.');
         }
-        showTranslatedCopyStatus(
-          'success',
-          'Saved translation reused',
-          `${summary.matchedSegments} sections reused, ${summary.unmatchedSegments} left original, and ${summary.uncertainSegments} left uncertain.`,
-        );
+        renderTranslatedCopySummary(summary);
       } catch {
+        progress = {
+          ...progress,
+          status: currentSession ? progress.status : 'error',
+          translatedCopy: translatedCopyProgress('import-failed'),
+        };
         await browser.runtime
           .sendMessage({
             version: CONTRACT_VERSION,
@@ -1523,6 +1785,7 @@ export default defineUnlistedScript(() => {
           .catch(() => undefined);
         showTranslatedCopyStatus(
           'warning',
+          'import-failed',
           'Translation reuse unavailable',
           'This tab remains open, but the saved translation did not match this page safely.',
         );

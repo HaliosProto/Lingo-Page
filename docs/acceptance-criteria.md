@@ -17,12 +17,12 @@ The original local-MVP acceptance history remains below where useful. The active
 - Display mode is independent from lifecycle; original and translated values remain reusable after full, partial, and cancelled translation.
 - Original/translation switching repeats with zero backend/provider calls; exact originals and page interaction remain intact.
 - Changed scans distinguish confident new/modified/removed/reordered records from uncertain duplicates; updates transmit only confident changed eligible text.
-- Translated copies clone bounded validated sessions, confidently match the same navigation, make zero provider calls for matches, and remain isolated from the source.
+- Translated copies request only an explicitly approved current HTTP(S) origin from the open-copy gesture, clone bounded validated sessions, recheck final-origin access, confidently match the same navigation, reconcile one bounded hydration pass, acknowledge only after the final translated DOM, make zero provider calls for matches, and remain isolated from the source. Denial and revocation preserve the source and fail closed without repeated prompting or an all-site grant.
 - Comparison renders aligned plain text without source HTML/scripts, supports keyboard/copy/responsive/BiDi states, and fails safely for invalid or expired handoff.
 - End session is separately confirmed, restores originals, cancels work, stops observers/timers, and clears only the owning tab session.
 - The 2,206-segment managed fixture records switch/copy/comparison time, request deltas, long tasks, and directional memory evidence against the Milestone 0 baseline.
 - Saved and OS reduced motion, semantic controls, narrow/dark layouts, and mixed RTL/LTR content have managed evidence; branded Chrome and screen-reader evidence are reported separately.
-- Permissions, plain-text output, backend-only keys, runtime validation, bounds, and privacy defaults are preserved; deferred restart/SPA/viewport work is not claimed.
+- Required permissions retain `activeTab` without `<all_urls>`; optional HTTP/HTTPS patterns are granted only per current origin. Plain-text output, backend-only keys, runtime validation, bounds, and privacy defaults are preserved; deferred restart/SPA/viewport work is not claimed.
 
 ## Milestone 2
 

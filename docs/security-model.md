@@ -24,7 +24,7 @@
 ## Extension controls
 
 - Manifest V3 service worker; no remotely hosted executable code.
-- Start with `activeTab` and `scripting`; add no persistent `<all_urls>` permission unless a later requirement proves it necessary.
+- Retain `activeTab` and `scripting` for normal translation. Translated-copy support may declare optional HTTP/HTTPS host patterns, but it requests only the current page origin directly from the explicit open-copy gesture. It never requests an all-site grant or adds required `<all_urls>` access.
 - Use isolated-world content scripts and avoid main-world injection.
 - Validate every message at runtime. Never trust a TypeScript cast.
 - Treat `sender.tab.id`, frame ID, URL identity, and navigation token as required context.
@@ -76,7 +76,7 @@ Permission audit, dependency audit, secret scan, bundle scan, schema-fuzz tests,
 
 - Every new session/view/update/copy/comparison payload is runtime validated and session-bound.
 - Normal view changes stay inside the page shell and cannot initiate a provider request.
-- Copy handoff requires compatible protocol/host/port/path identity, a cloned session ID, bounded payload, owning-tab and top-frame validation, and confident content matching. The handoff is stored before the visible tab navigates, is not consumed on retrieval, and is removed only after idempotent acknowledgment or safe failure cleanup. Failure never removes the user-visible tab.
+- Copy handoff requires an explicit current-origin optional permission grant plus compatible protocol/host/port/path identity, a cloned session ID, bounded payload, owning-tab and top-frame validation, and confident content matching. The grant is checked before tab creation and again against the final URL before injection, covering revocation and cross-origin redirects. The handoff is stored before the visible tab navigates, is not consumed on retrieval, and is removed only after bounded hydration reconciliation and idempotent final-DOM acknowledgment or safe failure cleanup. Failure never removes the user-visible tab or changes the source session.
 - Comparison handoff uses a 128-bit single-use token bound to the owning extension tab; text never enters the fragment or source page.
 - Comparison captures an allowlisted parent-before-child structural model capped at 15,000 nodes inside the 2 MB bundle. Runtime validation rejects malformed trees and unsafe URLs. React reconstructs inert semantic elements and text without parsing HTML; scripts, handlers, source CSS, frames, embeds, forms, editable regions, hidden content, fields, and remote code are excluded. Captured buttons are disabled, and safe HTTP(S) links/images use referrer suppression.
 - Uncertain/duplicate matches remain original, invalid handoffs fail closed, and end-session cleanup is tab-local.

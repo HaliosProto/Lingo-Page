@@ -120,6 +120,17 @@
       if (Number.isInteger(initialBulkCount) && initialBulkCount > 0 && initialBulkCount <= 2200) {
         window.addBulkText(initialBulkCount);
       }
+      const hydrationDelay = Number(new URLSearchParams(location.search).get('hydrateDelay') ?? 0);
+      if (Number.isInteger(hydrationDelay) && hydrationDelay > 0 && hydrationDelay <= 5000) {
+        const initialMainMarkup = document.querySelector('main').innerHTML;
+        window.setTimeout(() => {
+          const currentMain = document.querySelector('main');
+          const hydratedMain = document.createElement('main');
+          hydratedMain.innerHTML = initialMainMarkup;
+          hydratedMain.dataset.hydrated = 'true';
+          currentMain.replaceWith(hydratedMain);
+        }, hydrationDelay);
+      }
     </script>
   </body>
 </html>

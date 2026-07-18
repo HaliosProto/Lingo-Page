@@ -1,4 +1,4 @@
-import { StrictMode, useCallback, useEffect, useState } from 'react';
+import { StrictMode, useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { browser } from 'wxt/browser';
 import {
@@ -23,6 +23,12 @@ import {
   type FailureActionId,
 } from '../../src/translation-failures';
 import { ErrorBoundary } from '../../src/ui/ErrorBoundary';
+import {
+  beginTranslatedCopySiteAccessRequest,
+  TRANSLATED_COPY_ACCESS_DENIED,
+  TRANSLATED_COPY_ACCESS_EXPLANATION,
+  type TranslatedCopySiteAccess,
+} from '../../src/translated-copy-access';
 import '../../src/ui/global.css';
 
 async function sendMessage(message: unknown): Promise<ExtensionResponse> {
@@ -90,6 +96,7 @@ function PopupApp() {
   const [activeSessionCommand, setActiveSessionCommand] = useState<SessionCommandType>();
   const [retrySessionCommand, setRetrySessionCommand] = useState<SessionCommandType>();
   const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
+  const deniedTranslatedCopyOrigins = useRef(new Set<string>());
 
   const refreshProgress = useCallback(async (activeTabId: number) => {
     const response = await sendMessage({
@@ -272,9 +279,33 @@ function PopupApp() {
 
   async function openSessionView(type: 'OPEN_TRANSLATED_COPY' | 'OPEN_COMPARISON_VIEW') {
     if (tabId === undefined || !progress.sessionId) return;
+    let siteAccessRequest: Promise<TranslatedCopySiteAccess> | undefined;
+    if (type === 'OPEN_TRANSLATED_COPY') {
+      const access = beginTranslatedCopySiteAccessRequest(
+        tabStatus?.url ?? '',
+        browser.permissions,
+        deniedTranslatedCopyOrigins.current,
+      );
+      if (access.status === 'unsupported') {
+        setError('Translated copies are available only for HTTP or HTTPS pages.');
+        return;
+      }
+      if (access.status === 'previously-denied') {
+        setError(TRANSLATED_COPY_ACCESS_DENIED);
+        return;
+      }
+      siteAccessRequest = access.request;
+    }
     setWorking(true);
     setError(undefined);
     try {
+      if (siteAccessRequest) {
+        const siteAccess = await siteAccessRequest;
+        if (!siteAccess.granted) {
+          setError(TRANSLATED_COPY_ACCESS_DENIED);
+          return;
+        }
+      }
       const response = await sendMessage({
         version: 1,
         requestId: createRequestId(),
@@ -408,6 +439,7 @@ function PopupApp() {
   const hasSession = Boolean(progress.sessionId && progress.status !== 'idle');
   const activeView = progress.displayMode === 'original' ? 'original' : 'translated';
   const changeSummary = progress.changeScan?.summary ?? progress.changed;
+  const translatedCopy = progress.translatedCopy;
   const changedCount = changeSummary
     ? changeSummary.newSegments +
       changeSummary.modifiedSegments +
@@ -571,6 +603,27 @@ function PopupApp() {
         </div>
       </section>
 
+      {translatedCopy && !hasSession && (
+        <section
+          className="session-panel"
+          aria-label="Translated copy status"
+          data-translated-copy-status={translatedCopy.status}
+        >
+          <div className="session-heading">
+            <div>
+              <strong>
+                {translatedCopy.status === 'applying'
+                  ? 'Applying cached translation'
+                  : translatedCopy.status === 'session-stale'
+                    ? 'Saved translation is stale'
+                    : 'Translation import failed'}
+              </strong>
+              <p>No provider request was made automatically.</p>
+            </div>
+          </div>
+        </section>
+      )}
+
       {hasSession && (
         <section className="session-panel" aria-label="Translation session controls">
           <div className="session-heading">
@@ -601,6 +654,45 @@ function PopupApp() {
               Translated
             </button>
           </div>
+          {translatedCopy && (
+            <div
+              className="change-summary"
+              role="status"
+              aria-live="polite"
+              data-translated-copy-status={translatedCopy.status}
+            >
+              <strong>
+                {translatedCopy.status === 'applying'
+                  ? 'Applying cached translation'
+                  : translatedCopy.status === 'ready'
+                    ? 'Translated copy ready'
+                    : translatedCopy.status === 'partial'
+                      ? 'Translated copy partially applied'
+                      : translatedCopy.status === 'no-matches'
+                        ? 'No safe cached matches'
+                        : translatedCopy.status === 'session-stale'
+                          ? 'Saved translation is stale'
+                          : 'Translation import failed'}
+              </strong>
+              <span>
+                {translatedCopy.matchedSegments} reused · {translatedCopy.unmatchedSegments}{' '}
+                unmatched · {translatedCopy.uncertainSegments} uncertain ·{' '}
+                {translatedCopy.providerRequests} provider requests
+              </span>
+              {(translatedCopy.status === 'partial' || translatedCopy.status === 'no-matches') && (
+                <button
+                  className="primary-button compact-button"
+                  type="button"
+                  disabled={working || busy}
+                  onClick={() => void continueTranslation()}
+                >
+                  {translatedCopy.status === 'partial'
+                    ? 'Translate unmatched sections'
+                    : 'Translate this page'}
+                </button>
+              )}
+            </div>
+          )}
           {progress.changeScan && (
             <div className="change-summary" role="status" aria-live="polite">
               {progress.changeScan.status === 'no-changes' ? (
@@ -642,6 +734,7 @@ function PopupApp() {
               )}
             </div>
           )}
+          <p className="site-access-note">{TRANSLATED_COPY_ACCESS_EXPLANATION}</p>
           <div className="session-actions">
             <button
               type="button"

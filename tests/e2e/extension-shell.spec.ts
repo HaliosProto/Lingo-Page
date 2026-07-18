@@ -514,7 +514,18 @@ test('translates, explains exclusions and cancellation, continues pending work, 
       .find((page) => page.url() === 'http://127.0.0.1:4173/fixture.html' && page !== fixture);
     expect(copyPage).toBeDefined();
     await expect(copyPage!.locator('#heading')).toHaveText('[en] Stable fixture heading');
-    await expect(copyPage!.locator('#lingo-page-copy-status')).toBeAttached();
+    await expect(copyPage!.locator('#lingo-page-copy-status')).toHaveAttribute(
+      'data-copy-status',
+      'partial',
+    );
+    await expect(copyPage!.locator('#lingo-page-copy-status')).toHaveAttribute(
+      'data-provider-requests',
+      '0',
+    );
+    await expect(copyPage!.locator('#lingo-page-copy-status')).toHaveAttribute(
+      'data-actions',
+      'Translate unmatched sections',
+    );
     const copyHandoffState = await serviceWorker.evaluate(async (copyTabId) => {
       const stored = await chrome.storage.session.get(null);
       const tabEntry = stored[`translatedCopyTab:${copyTabId}`];
@@ -543,26 +554,34 @@ test('translates, explains exclusions and cancellation, continues pending work, 
       payload: { status: 'already-applied' },
     });
     const duplicateAck = await serviceWorker.evaluate(
-      async ({ tabId, token, matchedSegments, unmatchedSegments, uncertainSegments }) => {
+      async ({ tabId, token, summary }) => {
         const [result] = await chrome.scripting.executeScript({
           target: { tabId },
-          func: async ({ token, matchedSegments, unmatchedSegments, uncertainSegments }) =>
+          func: async ({ token, summary }) =>
             chrome.runtime.sendMessage({
               version: 1,
               requestId: 'req_e2e_duplicate_copy_ack_12345',
               type: 'ACK_TRANSLATED_COPY_HANDOFF',
-              payload: { token, matchedSegments, unmatchedSegments, uncertainSegments },
+              payload: { token, ...summary },
             }),
-          args: [{ token, matchedSegments, unmatchedSegments, uncertainSegments }],
+          args: [{ token, summary }],
         });
         return result?.result;
       },
       {
         tabId: copyResponse.payload.tabId,
         token: copyHandoffState.tabEntry.token as string,
-        matchedSegments: copyHandoffState.tabEntry.matchedSegments as number,
-        unmatchedSegments: copyHandoffState.tabEntry.unmatchedSegments as number,
-        uncertainSegments: copyHandoffState.tabEntry.uncertainSegments as number,
+        summary: {
+          applicationStatus: copyHandoffState.tabEntry.applicationStatus as string,
+          applicationStage: 'destination-ready' as const,
+          discoveredSegments: copyHandoffState.tabEntry.discoveredSegments as number,
+          appliedSegments: copyHandoffState.tabEntry.appliedSegments as number,
+          changedSegments: copyHandoffState.tabEntry.changedSegments as number,
+          providerRequests: 0 as const,
+          matchedSegments: copyHandoffState.tabEntry.matchedSegments as number,
+          unmatchedSegments: copyHandoffState.tabEntry.unmatchedSegments as number,
+          uncertainSegments: copyHandoffState.tabEntry.uncertainSegments as number,
+        },
       },
     );
     expect(duplicateAck).toMatchObject({
@@ -653,11 +672,18 @@ test('translates, explains exclusions and cancellation, continues pending work, 
     const zeroMatchResponse = await zeroMatchResponsePromise;
     expect(zeroMatchResponse).toMatchObject({
       type: 'TRANSLATED_COPY_OPENED',
-      payload: { matchedSegments: 0 },
+      payload: { applicationStatus: 'no-matches', matchedSegments: 0, providerRequests: 0 },
     });
     await expect(zeroMatchPage).toHaveURL('http://127.0.0.1:4173/fixture.html');
     await expect(zeroMatchPage.locator('#heading')).toHaveText('Stable fixture heading');
-    await expect(zeroMatchPage.locator('#lingo-page-copy-status')).toBeAttached();
+    await expect(zeroMatchPage.locator('#lingo-page-copy-status')).toHaveAttribute(
+      'data-copy-status',
+      'no-matches',
+    );
+    await expect(zeroMatchPage.locator('#lingo-page-copy-status')).toHaveAttribute(
+      'data-actions',
+      'Retry matching|Translate this page|Return to source tab',
+    );
     await zeroMatchPage.close();
     await expect(fixture.locator('#heading')).toHaveText('[en] Stable fixture heading');
 
@@ -676,12 +702,40 @@ test('translates, explains exclusions and cancellation, continues pending work, 
       });
     }, exportedBundle.payload.bundle);
     const redirectedCopy = await redirectPagePromise;
-    const failedCopyResponse = await failedCopyResponsePromise;
-    expect(failedCopyResponse).toMatchObject({ type: 'MESSAGE_ERROR' });
+    const redirectedCopyResponse = await failedCopyResponsePromise;
+    expect(redirectedCopyResponse).toMatchObject({
+      type: 'TRANSLATED_COPY_OPENED',
+      payload: { applicationStatus: 'partial', matchedSegments: expect.any(Number) },
+    });
     await expect(redirectedCopy).toHaveURL('http://127.0.0.1:4173/fixture.html');
-    await expect(redirectedCopy.locator('#heading')).toHaveText('Stable fixture heading');
-    await expect(redirectedCopy.locator('#lingo-page-copy-status')).toBeAttached();
+    await expect(redirectedCopy.locator('#heading')).toHaveText('[en] Stable fixture heading');
+    await expect(redirectedCopy.locator('#lingo-page-copy-status')).toHaveAttribute(
+      'data-copy-status',
+      'partial',
+    );
     expect(context.pages()).toContain(redirectedCopy);
+
+    const wrongSitePagePromise = context.waitForEvent('page');
+    const wrongSiteResponsePromise = popup.evaluate(async (bundle) => {
+      return chrome.runtime.sendMessage({
+        version: 1,
+        requestId: 'req_e2e_open_wrong_site_copy_12345',
+        type: 'OPEN_TRANSLATED_COPY_FROM_BUNDLE',
+        payload: {
+          bundle: {
+            ...bundle,
+            navigationUrl: 'http://127.0.0.1:4173/redirect-copy-wrong-site',
+          },
+        },
+      });
+    }, exportedBundle.payload.bundle);
+    const wrongSiteCopy = await wrongSitePagePromise;
+    const wrongSiteResponse = await wrongSiteResponsePromise;
+    expect(wrongSiteResponse).toMatchObject({ type: 'MESSAGE_ERROR' });
+    await expect(wrongSiteCopy).toHaveURL('http://localhost:4173/fixture.html');
+    await expect(wrongSiteCopy.locator('#heading')).toHaveText('Stable fixture heading');
+    await expect(wrongSiteCopy.locator('#lingo-page-copy-status')).toHaveCount(0);
+    await wrongSiteCopy.close();
     if (captureMilestoneOne) {
       await copyPage!.screenshot({
         path: join(milestoneOneScreenshotRoot, 'translated-copy.png'),
