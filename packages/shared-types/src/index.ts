@@ -73,6 +73,51 @@ export type TranslationStatus =
   | 'cancelled'
   | 'error';
 
+export const TRANSLATION_SESSION_VERSION = 1 as const;
+
+export type TranslationDisplayMode = 'original' | 'translated' | 'mixed-partial';
+export type TranslationSessionLifecycle =
+  'active' | 'translating' | 'partial' | 'complete' | 'stale' | 'ended' | 'invalidated';
+export type TranslationSegmentStatus =
+  'pending' | 'translated' | 'failed' | 'changed' | 'uncertain' | 'removed';
+
+export type TranslationChangeSummary = {
+  newSegments: number;
+  modifiedSegments: number;
+  removedSegments: number;
+  reorderedSegments: number;
+  uncertainSegments: number;
+};
+
+export type TranslationSessionSegment = {
+  id: string;
+  sourceFingerprint: string;
+  structuralFingerprint: string;
+  originalText: string;
+  sourceText: string;
+  translatedText?: string;
+  elementRole?: string;
+  status: TranslationSegmentStatus;
+};
+
+export type TranslationSessionBundle = {
+  version: typeof TRANSLATION_SESSION_VERSION;
+  sessionId: string;
+  navigationUrl: string;
+  pageFingerprint: string;
+  pageTitle: string;
+  sourceLanguage: string;
+  targetLanguage: string;
+  providerId: ProviderId;
+  modelId: string;
+  createdAt: number;
+  lastActivityAt: number;
+  displayMode: TranslationDisplayMode;
+  lifecycle: TranslationSessionLifecycle;
+  partial: boolean;
+  segments: TranslationSessionSegment[];
+};
+
 export type TranslationFailureReason =
   | 'LOCAL_RATE_LIMIT'
   | 'UPSTREAM_RATE_LIMIT'
@@ -206,6 +251,10 @@ export type TranslationProgress = {
   error?: string;
   failure?: TranslationFailure;
   notices?: TranslationFailure[];
+  displayMode?: TranslationDisplayMode;
+  lifecycle?: TranslationSessionLifecycle;
+  changed?: TranslationChangeSummary;
+  pageDiverged?: boolean;
 };
 
 export type LanguageDetectionResult = {

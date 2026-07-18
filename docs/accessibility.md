@@ -4,9 +4,9 @@
 
 React surfaces use semantic controls and accessible labels; status content exists; shared CSS provides visible focus; layouts are compact/responsive; `dir="auto"` is present; OS `prefers-reduced-motion` is handled.
 
-## Confirmed implementation gap
+## Milestone 1 implementation status
 
-The saved `reducedMotion` setting is validated, stored, and shown in Options, but no verified runtime class/attribute applies it to popup, Options, or the page-owned result. Only the operating-system media query currently has evidence. This is a Milestone 1 defect, not a Milestone 0 code change.
+The saved `reducedMotion` setting now applies a runtime attribute to popup, Options, and comparison surfaces while the operating-system media query remains active. Managed Chromium verifies persistence and runtime application. Session controls use buttons, pressed-state segmented controls, status regions, confirmation, visible focus, and progressive disclosure. Comparison pairs are keyboard focusable with Previous/Next navigation and responsive one/two-column layouts. Formal screen-reader, 200/400% zoom, contrast/high-contrast, OS-level visual motion, and branded-Chrome evidence remain open.
 
 ## Release-blocking criteria
 

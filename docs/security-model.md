@@ -71,3 +71,12 @@ For each response: request ID must match; translation IDs must be unique, expect
 ## Release gates
 
 Permission audit, dependency audit, secret scan, bundle scan, schema-fuzz tests, error-path tests, manual CSP review, browser console review, and privacy-document review are mandatory before store-readiness milestone completion.
+
+## Milestone 1 session controls
+
+- Every new session/view/update/copy/comparison payload is runtime validated and session-bound.
+- Normal view changes stay inside the page shell and cannot initiate a provider request.
+- Copy handoff requires exact navigation compatibility, a cloned session ID, bounded payload, top-frame injection, and confident content matching.
+- Comparison handoff uses a 128-bit single-use token bound to the owning extension tab; text never enters the fragment or source page.
+- Comparison uses React text rendering only; no source HTML, scripts, handlers, fields, or remote code are imported.
+- Uncertain/duplicate matches remain original, invalid handoffs fail closed, and end-session cleanup is tab-local.

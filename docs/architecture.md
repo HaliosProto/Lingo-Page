@@ -64,7 +64,9 @@ Hono provides small route composition and Web-standard request/response handling
 
 ## Storage model
 
-Milestone 1 stores only settings needed by the shell. MVP translation content remains memory-only by default. Future account data is separate from local settings. Any persistent translation memory must have explicit opt-in, size limits, clear action, and cache-key versioning.
+Normal translation sessions remain memory-only in the top-frame page shell. The shell owns exact originals/translations, live bindings, lifecycle, display mode, and changed-state reconciliation; the service worker owns routing, request cancellation, and privacy-safe progress. Explicit translated-copy actions clone a bounded session into a new page shell. Explicit comparison actions use a single-use owning-tab token and a temporary `chrome.storage.session` bundle deleted after retrieval or cleanup. Future account data and translation memory remain separate and require explicit approval.
+
+See `docs/milestone-1-specification.md`, ADR 0007, and ADR 0009 for the session, copy, comparison, bounds, and rollback contracts.
 
 The local release-candidate workflow builds an unpacked production extension, starts the API on `127.0.0.1`, and lets the extension select only backend-enabled provider/model IDs. Credentials, endpoints, capability policy, and model allowlists remain backend-owned. The extension can export metadata-only diagnostics without page text or URLs.
 

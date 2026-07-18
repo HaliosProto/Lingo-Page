@@ -57,6 +57,15 @@ function diagnosticLabel(key: string): string {
   );
 }
 
+function sessionStateLabel(progress: TranslationProgress): string {
+  if (progress.lifecycle === 'stale') return 'Changed';
+  if (progress.lifecycle === 'complete') return 'Complete';
+  if (progress.lifecycle === 'partial') return 'Partial';
+  if (progress.lifecycle === 'invalidated') return 'Unavailable';
+  if (progress.lifecycle === 'translating') return 'Translating';
+  return progress.status === 'cancelled' ? 'Paused' : 'Active';
+}
+
 function PopupApp() {
   const [tabId, setTabId] = useState<number>();
   const [tabStatus, setTabStatus] = useState<TabStatus | null>(null);
@@ -87,6 +96,11 @@ function PopupApp() {
     if (settings.theme === 'system') delete document.documentElement.dataset.theme;
     else document.documentElement.dataset.theme = settings.theme;
   }, [settings.theme]);
+
+  useEffect(() => {
+    if (settings.reducedMotion) document.documentElement.dataset.reducedMotion = 'true';
+    else delete document.documentElement.dataset.reducedMotion;
+  }, [settings.reducedMotion]);
 
   useEffect(() => {
     let active = true;
@@ -213,6 +227,68 @@ function PopupApp() {
     if (response.type === 'TRANSLATION_PROGRESS') setProgress(response.payload.progress);
   }
 
+  async function runSessionCommand(
+    type:
+      | 'SET_PAGE_VIEW'
+      | 'SCAN_PAGE_CHANGES'
+      | 'UPDATE_CHANGED_SECTIONS'
+      | 'REFRESH_TRANSLATION'
+      | 'END_TRANSLATION_SESSION',
+    extra: Record<string, unknown> = {},
+  ): Promise<void> {
+    if (tabId === undefined || !progress.sessionId) return;
+    setWorking(true);
+    setError(undefined);
+    try {
+      const response = await sendMessage({
+        version: 1,
+        requestId: createRequestId(),
+        type,
+        payload: { tabId, sessionId: progress.sessionId, ...extra },
+      });
+      if (response.type === 'TRANSLATION_PROGRESS') setProgress(response.payload.progress);
+      if (response.type === 'MESSAGE_ERROR') setError(response.payload.message);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The session action could not finish.');
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function openSessionView(type: 'OPEN_TRANSLATED_COPY' | 'OPEN_COMPARISON_VIEW') {
+    if (tabId === undefined || !progress.sessionId) return;
+    setWorking(true);
+    setError(undefined);
+    try {
+      const response = await sendMessage({
+        version: 1,
+        requestId: createRequestId(),
+        type,
+        payload: { tabId, sessionId: progress.sessionId },
+      });
+      if (response.type === 'MESSAGE_ERROR') setError(response.payload.message);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The new view could not be opened.');
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  function confirmEndSession(): void {
+    if (
+      !window.confirm('End this translation session? Stored page translations will be discarded.')
+    ) {
+      return;
+    }
+    void runSessionCommand('END_TRANSLATION_SESSION');
+  }
+
+  function confirmRefresh(): void {
+    if (!window.confirm('Refresh the entire page translation? This may use provider quota.'))
+      return;
+    void runSessionCommand('REFRESH_TRANSLATION', { scope: 'entire-page' });
+  }
+
   async function continueTranslation(useSmallerBatches = false): Promise<void> {
     if (tabId === undefined || !progress.sessionId) return;
     setWorking(true);
@@ -314,6 +390,14 @@ function PopupApp() {
   const supported =
     tabStatus?.support.status === 'supported' || tabStatus?.support.status === 'warning';
   const busy = ['discovering', 'translating', 'paused', 'retrying'].includes(progress.status);
+  const hasSession = Boolean(progress.sessionId && progress.status !== 'idle');
+  const activeView = progress.displayMode === 'original' ? 'original' : 'translated';
+  const changedCount = progress.changed
+    ? progress.changed.newSegments +
+      progress.changed.modifiedSegments +
+      progress.changed.removedSegments +
+      progress.changed.uncertainSegments
+    : 0;
   const selectableProviders = providers.filter(
     (provider) => provider.enabled && provider.configured,
   );
@@ -470,6 +554,97 @@ function PopupApp() {
         </div>
       </section>
 
+      {hasSession && (
+        <section className="session-panel" aria-label="Translation session controls">
+          <div className="session-heading">
+            <div>
+              <strong>Translation available</strong>
+              <p>
+                Showing the original keeps this translation. Switching views uses no provider
+                request.
+              </p>
+            </div>
+            <span className="session-state">{sessionStateLabel(progress)}</span>
+          </div>
+          <div className="segmented-control" role="group" aria-label="Page view">
+            <button
+              type="button"
+              aria-pressed={activeView === 'original'}
+              disabled={working}
+              onClick={() => void runSessionCommand('SET_PAGE_VIEW', { displayMode: 'original' })}
+            >
+              Original
+            </button>
+            <button
+              type="button"
+              aria-pressed={activeView === 'translated'}
+              disabled={working}
+              onClick={() => void runSessionCommand('SET_PAGE_VIEW', { displayMode: 'translated' })}
+            >
+              Translated
+            </button>
+          </div>
+          {progress.pageDiverged && progress.changed && (
+            <div className="change-summary" role="status">
+              <strong>{changedCount} page changes found</strong>
+              <span>
+                {progress.changed.newSegments} new · {progress.changed.modifiedSegments} modified ·{' '}
+                {progress.changed.removedSegments} removed · {progress.changed.uncertainSegments}{' '}
+                uncertain
+              </span>
+              <button
+                className="primary-button compact-button"
+                type="button"
+                disabled={working || busy}
+                onClick={() => void runSessionCommand('UPDATE_CHANGED_SECTIONS')}
+              >
+                Update changed sections
+              </button>
+            </div>
+          )}
+          <div className="session-actions">
+            <button
+              type="button"
+              disabled={working}
+              onClick={() => void openSessionView('OPEN_TRANSLATED_COPY')}
+            >
+              Open translated copy
+            </button>
+            <button
+              type="button"
+              disabled={working}
+              onClick={() => void openSessionView('OPEN_COMPARISON_VIEW')}
+            >
+              Open comparison view
+            </button>
+            <button
+              type="button"
+              disabled={working}
+              onClick={() => void runSessionCommand('SCAN_PAGE_CHANGES')}
+            >
+              Check for page changes
+            </button>
+          </div>
+          <details className="advanced-actions">
+            <summary>Advanced actions</summary>
+            <p>Refreshing may use provider quota. Ending discards this session only.</p>
+            <div>
+              <button type="button" disabled={working || busy} onClick={confirmRefresh}>
+                Refresh translation
+              </button>
+              <button
+                className="danger-text"
+                type="button"
+                disabled={working}
+                onClick={confirmEndSession}
+              >
+                End translation session
+              </button>
+            </div>
+          </details>
+        </section>
+      )}
+
       {failure && failureDetails && (
         <section className="failure-panel" role="alert" aria-live="assertive">
           <p className="failure-message">{failureDetails.message}</p>
@@ -530,7 +705,7 @@ function PopupApp() {
         >
           Cancel translation
         </button>
-      ) : !failure ? (
+      ) : !failure && !hasSession ? (
         <button
           className="primary-button"
           type="button"
@@ -540,14 +715,11 @@ function PopupApp() {
           {working ? 'Starting…' : 'Translate page'}
         </button>
       ) : null}
-      <button
-        className="secondary-button"
-        type="button"
-        disabled={progress.translatedSegments === 0}
-        onClick={() => void restorePage()}
-      >
-        Restore original page
-      </button>
+      {!hasSession && progress.translatedSegments > 0 && (
+        <button className="secondary-button" type="button" onClick={() => void restorePage()}>
+          Show original
+        </button>
+      )}
 
       <section className="connection-row" aria-live="polite">
         <span

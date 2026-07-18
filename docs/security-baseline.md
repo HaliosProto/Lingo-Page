@@ -47,6 +47,20 @@ No confirmed critical or high-severity vulnerability was established by this bou
 - Production identity, durable quotas, retention, deletion, and trusted-client CORS/auth design.
 - Current production dependency advisory result while offline.
 
+## Milestone 1 addendum
+
+The 2026-07-18 durable-session change received a bounded defensive review using the repository scan and normal source/artifact inspection. No specialized security workspace, external scanning, credential testing, active validation, or exploit work was used.
+
+- New message and bundle payloads are runtime validated. Bundles are versioned, capped at 2,500 segments and 2 MB, and restricted to HTTP(S) navigation identities.
+- Privileged popup/comparison commands now require the extension's own page origin in addition to the extension ID. Content-script progress/translation messages retain top-frame tab checks. This closes a plausible sender-authorization gap discovered during review; legitimate flows passed managed Chromium E2E. Add a direct fake-sender router test when the background router gains an injectable test seam.
+- Comparison handoff uses an unguessable fragment token, `chrome.storage.session`, an owning-tab binding, and single-use retrieval/cleanup. Invalid, stale, mismatched, or oversized payloads fail closed.
+- Copy import validates navigation and applies only confident plain-text matches. Uncertain content remains original. Ending one page-owned session does not clear another tab.
+- Production permissions remain `activeTab`, `contextMenus`, `scripting`, and `storage`, with only the loopback application API host. No `<all_urls>` or new host permission was introduced.
+- Generated extension and Worker bundles were scanned without displaying configured values. No credential-pattern match was found. Production extension source maps are absent; the Worker dry-run source map embeds expected source content and is confined to ignored build output.
+- The production dependency advisory refresh was unavailable because registry access was prohibited. An offline attempt did not complete and was terminated; it is not reported as a pass.
+
+The earlier editable/hidden-ancestor/context-construction findings are remediated in the page-shell eligibility and bounded structural-context paths and covered by regression fixtures. The backend body cap, provider-body timeout/size, custom-endpoint network policy, release provenance, local PID ownership, durable production identity/quota, and cache-collision items remain separate follow-up work.
+
 ## Recommended dedicated follow-up
 
 Handle the confirmed context-construction issue and the body/timeout/release gates as narrow Milestone 1 or release-readiness tasks after validation. Re-run the ordinary dependency audit when approved registry access is available. A future dedicated security milestone should validate identity, durable accounting, custom-provider network policy, and release provenance after those architectures exist; it should remain scoped and evidence-based.

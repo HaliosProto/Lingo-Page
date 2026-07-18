@@ -2,14 +2,15 @@
 
 ## Current data lifecycle
 
-| Data                                 | Location                                            | Default          | Bound / deletion                                                 | External recipient                        |
-| ------------------------------------ | --------------------------------------------------- | ---------------- | ---------------------------------------------------------------- | ----------------------------------------- |
-| Eligible page segments and originals | Page/service-worker memory during an active session | Transient        | Lost on lifecycle end; restore/cleanup where supported           | Selected provider through application API |
-| Translated-text cache                | `chrome.storage.local` key `translationCache`       | Off              | Maximum 200 entries; clearable; removed/disabled by privacy mode | None beyond the original active request   |
-| Settings and glossary                | `chrome.storage.local` key `appSettings`            | Local            | Until clear/uninstall; schema validated                          | No sync                                   |
-| Progress/session metadata            | Page/service-worker memory                          | Transient        | Lost on worker/browser lifecycle                                 | Application API receives request metadata |
-| API rate/quota counters              | Worker process memory                               | Development only | Reset on restart                                                 | None                                      |
-| Diagnostics                          | User-generated local export                         | Off              | User controls the file                                           | Only if user explicitly shares it         |
+| Data                            | Location                                           | Default          | Bound / deletion                                                 | External recipient                        |
+| ------------------------------- | -------------------------------------------------- | ---------------- | ---------------------------------------------------------------- | ----------------------------------------- |
+| Eligible originals/translations | Owning top-frame page-shell memory                 | Transient        | End session, navigation invalidation, tab close, or script loss  | Selected provider through application API |
+| Explicit comparison bundle      | `chrome.storage.session` under random owning token | Off              | Single retrieval, tab cleanup, invalid data, or browser session  | None                                      |
+| Translated-text cache           | `chrome.storage.local` key `translationCache`      | Off              | Maximum 200 entries; clearable; removed/disabled by privacy mode | None beyond the original active request   |
+| Settings and glossary           | `chrome.storage.local` key `appSettings`           | Local            | Until clear/uninstall; schema validated                          | No sync                                   |
+| Progress/session metadata       | Page/service-worker memory                         | Transient        | Lost on worker/browser lifecycle                                 | Application API receives request metadata |
+| API rate/quota counters         | Worker process memory                              | Development only | Reset on restart                                                 | None                                      |
+| Diagnostics                     | User-generated local export                        | Off              | User controls the file                                           | Only if user explicitly shares it         |
 
 ## Future translation memory, glossary, feedback, and analytics
 
@@ -22,3 +23,5 @@
 ## Persistence approval checklist
 
 Purpose, data classification, minimum fields, owner/controller, storage region, encryption/access, retention clock, deletion semantics, export/portability, corruption/migration behavior, offline behavior, sync conflicts, child/enterprise considerations, observability redaction, incident response, and tests must be approved before implementation.
+
+Translated-copy bundles are transferred directly between extension contexts and cloned into independent page-shell memory. They are not a durable store and ending one copy cannot clear another. Bundle validation limits a session to 2,500 segments and 2 MB; invalid, oversized, stale, or mismatched data is rejected and cleaned up.

@@ -3,6 +3,7 @@ import {
   extensionRequestSchema,
   extensionResponseSchema,
   healthResponseSchema,
+  translationSessionBundleSchema,
   translationProgressSchema,
 } from './index';
 
@@ -103,5 +104,70 @@ describe('shared runtime validation', () => {
       automaticRetry: true,
       requestId: 'req_safe_failure123',
     });
+  });
+
+  it('validates bounded translation-session bundles and rejects unsafe navigation', () => {
+    const bundle = {
+      version: 1,
+      sessionId: 'session_bundle_test123',
+      navigationUrl: 'https://example.test/article',
+      pageFingerprint: 'fp_page123',
+      pageTitle: 'Example article',
+      sourceLanguage: 'en',
+      targetLanguage: 'fa',
+      providerId: 'mock',
+      modelId: 'mock-deterministic',
+      createdAt: 1,
+      lastActivityAt: 2,
+      displayMode: 'translated',
+      lifecycle: 'complete',
+      partial: false,
+      segments: [
+        {
+          id: 'seg_0_example',
+          sourceFingerprint: 'fp_source',
+          structuralFingerprint: 'fp_structure',
+          originalText: 'Hello',
+          sourceText: 'Hello',
+          translatedText: 'سلام',
+          elementRole: 'p',
+          status: 'translated',
+        },
+      ],
+    };
+
+    expect(translationSessionBundleSchema.safeParse(bundle).success).toBe(true);
+    expect(
+      translationSessionBundleSchema.safeParse({ ...bundle, navigationUrl: 'javascript:alert(1)' })
+        .success,
+    ).toBe(false);
+    expect(
+      translationSessionBundleSchema.safeParse({
+        ...bundle,
+        segments: Array.from({ length: 2_501 }, () => bundle.segments[0]),
+      }).success,
+    ).toBe(false);
+  });
+
+  it('requires a session identity for every view-changing command', () => {
+    const valid = extensionRequestSchema.safeParse({
+      version: 1,
+      requestId: 'req_view_switch123',
+      type: 'SET_PAGE_VIEW',
+      payload: {
+        tabId: 8,
+        sessionId: 'session_view_switch123',
+        displayMode: 'original',
+      },
+    });
+    const forged = extensionRequestSchema.safeParse({
+      version: 1,
+      requestId: 'req_view_switch124',
+      type: 'SET_PAGE_VIEW',
+      payload: { tabId: 8, displayMode: 'translated' },
+    });
+
+    expect(valid.success).toBe(true);
+    expect(forged.success).toBe(false);
   });
 });

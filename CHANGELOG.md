@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added Milestone 1 page-owned translation sessions with instant zero-call original/translated switching, changed-only updates, explicit end-session cleanup, isolated translated-copy tabs, and a safe plain-text comparison page.
+- Added bounded runtime-validated session handoff, saved reduced-motion runtime behavior, mixed-direction comparison treatment, and 2,206-segment session-reuse performance/request evidence.
+
 ### Program foundation and audit - 2026-07-18
 
 - Added the product constitution/vision, post-MVP roadmap, current/platform architecture audit, risk/data-lifecycle policy, and workflow/memory governance.

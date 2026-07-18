@@ -27,6 +27,9 @@ type Metric = {
   firstVisibleMs: number;
   completionMs: number;
   restoreMs: number;
+  translatedSwitchMs: number;
+  repeatedSwitchMs: number;
+  switchProviderCalls: number;
   longTaskCount: number;
   longestTaskMs: number;
   heapBeforeBytes?: number;
@@ -183,11 +186,49 @@ test('records deterministic browser translation baselines', async () => {
       await commandForFixture(control, tabId, {
         version: 1,
         requestId: `req_perf_restore_${fixture.name}`,
-        type: 'RESTORE_PAGE',
-        payload: {},
+        type: 'SET_PAGE_VIEW',
+        payload: { sessionId: `session_perf_${fixture.name}`, displayMode: 'original' },
       });
       await expect(page.locator('#bulk-0')).toHaveText('Bulk section 0 remains stable.');
       const restoreMs = performance.now() - restoreStarted;
+      const requestsBeforeSwitching = requests.length;
+      const translatedSwitchStarted = performance.now();
+      await commandForFixture(control, tabId, {
+        version: 1,
+        requestId: `req_perf_translated_${fixture.name}`,
+        type: 'SET_PAGE_VIEW',
+        payload: { sessionId: `session_perf_${fixture.name}`, displayMode: 'translated' },
+      });
+      await expect(page.locator('#bulk-0')).toHaveText(
+        `[${fixture.targetLanguage}] Bulk section 0 remains stable.`,
+      );
+      const translatedSwitchMs = performance.now() - translatedSwitchStarted;
+      const repeatedSwitchStarted = performance.now();
+      for (let cycle = 0; cycle < 10; cycle += 1) {
+        await commandForFixture(control, tabId, {
+          version: 1,
+          requestId: `req_perf_cycle_original_${fixture.name}_${cycle}`,
+          type: 'SET_PAGE_VIEW',
+          payload: { sessionId: `session_perf_${fixture.name}`, displayMode: 'original' },
+        });
+        await commandForFixture(control, tabId, {
+          version: 1,
+          requestId: `req_perf_cycle_translated_${fixture.name}_${cycle}`,
+          type: 'SET_PAGE_VIEW',
+          payload: { sessionId: `session_perf_${fixture.name}`, displayMode: 'translated' },
+        });
+      }
+      const repeatedSwitchMs = performance.now() - repeatedSwitchStarted;
+      await expect(page.locator('#bulk-0')).toHaveText(
+        `[${fixture.targetLanguage}] Bulk section 0 remains stable.`,
+      );
+      expect(requests.length).toBe(requestsBeforeSwitching);
+      await commandForFixture(control, tabId, {
+        version: 1,
+        requestId: `req_perf_final_original_${fixture.name}`,
+        type: 'SET_PAGE_VIEW',
+        payload: { sessionId: `session_perf_${fixture.name}`, displayMode: 'original' },
+      });
       const heapAfterRestore = await heapBytes(page);
       const longTasks = await page.evaluate(
         () => (window as Window & { __longTasks?: number[] }).__longTasks ?? [],
@@ -209,6 +250,9 @@ test('records deterministic browser translation baselines', async () => {
         firstVisibleMs: Math.round(firstVisibleMs),
         completionMs: Math.round(completionMs),
         restoreMs: Math.round(restoreMs),
+        translatedSwitchMs: Math.round(translatedSwitchMs),
+        repeatedSwitchMs: Math.round(repeatedSwitchMs),
+        switchProviderCalls: requests.length - requestsBeforeSwitching,
         longTaskCount: longTasks.length,
         longestTaskMs: Math.round(Math.max(0, ...longTasks)),
         heapBeforeBytes: heapBefore,
@@ -256,8 +300,92 @@ test('records deterministic browser translation baselines', async () => {
       '[de] New content arrived after initial translation.',
     );
     const dynamicTranslationMs = Math.round(performance.now() - dynamicStarted);
-    console.log(`LINGO_PERFORMANCE_BASELINE=${JSON.stringify({ metrics, dynamicTranslationMs })}`);
     await dynamic.close();
+
+    const copySource = await context.newPage();
+    await copySource.goto('http://127.0.0.1:4173/fixture.html?bulk=2200');
+    await copySource.bringToFront();
+    const copySourceTabId = await activeTabId(worker);
+    let reuseProviderCalls = 0;
+    const reuseRequestListener = (request: { url(): string }) => {
+      if (request.url().endsWith('/v1/translate')) reuseProviderCalls += 1;
+    };
+    context.on('request', reuseRequestListener);
+    await commandForFixture(control, copySourceTabId, {
+      version: 1,
+      requestId: 'req_perf_copy_source',
+      type: 'START_PAGE_TRANSLATION',
+      payload: {
+        sessionId: 'session_perf_copy_source',
+        providerId: 'mock',
+        modelId: 'mock-deterministic',
+        sourceLanguage: 'auto',
+        targetLanguage: 'fa',
+        glossaryVersion: 0,
+        glossary: [],
+        autoTranslateDynamicContent: false,
+      },
+    });
+    await expect(copySource.locator('#bulk-2199')).toHaveText(
+      '[fa] Bulk section 2199 remains stable.',
+    );
+    const callsBeforeCopy = reuseProviderCalls;
+    const copyStarted = performance.now();
+    const copyResult = (await commandForFixture(control, copySourceTabId, {
+      version: 1,
+      requestId: 'req_perf_copy_open',
+      type: 'OPEN_TRANSLATED_COPY',
+      payload: { sessionId: 'session_perf_copy_source' },
+    })) as { payload: { tabId: number; matchedSegments: number; unmatchedSegments: number } };
+    const translatedCopy = context
+      .pages()
+      .find(
+        (page) =>
+          page !== copySource && page.url() === 'http://127.0.0.1:4173/fixture.html?bulk=2200',
+      );
+    expect(translatedCopy).toBeDefined();
+    await expect(translatedCopy!.locator('#bulk-2199')).toHaveText(
+      '[fa] Bulk section 2199 remains stable.',
+    );
+    const copyMatchAndApplyMs = Math.round(performance.now() - copyStarted);
+    expect(copyResult.payload.matchedSegments).toBeGreaterThanOrEqual(2_200);
+    expect(copyResult.payload.unmatchedSegments).toBe(0);
+    expect(reuseProviderCalls).toBe(callsBeforeCopy);
+
+    const comparisonStarted = performance.now();
+    await commandForFixture(control, copySourceTabId, {
+      version: 1,
+      requestId: 'req_perf_comparison_open',
+      type: 'OPEN_COMPARISON_VIEW',
+      payload: { sessionId: 'session_perf_copy_source' },
+    });
+    const comparisonPage =
+      context.pages().find((page) => page.url().includes('comparison.html')) ??
+      (await context.waitForEvent('page', {
+        predicate: (page) => page.url().includes('comparison.html'),
+      }));
+    await expect(
+      comparisonPage.getByRole('heading', { name: 'Translation Extension Fixture' }),
+    ).toBeVisible();
+    const comparisonLoadMs = Math.round(performance.now() - comparisonStarted);
+    expect(reuseProviderCalls).toBe(callsBeforeCopy);
+    context.off('request', reuseRequestListener);
+
+    console.log(
+      `LINGO_PERFORMANCE_BASELINE=${JSON.stringify({
+        metrics,
+        dynamicTranslationMs,
+        sessionReuse: {
+          eligibleSegments: copyResult.payload.matchedSegments,
+          copyMatchAndApplyMs,
+          comparisonLoadMs,
+          providerCallsDuringCopyAndComparison: reuseProviderCalls - callsBeforeCopy,
+        },
+      })}`,
+    );
+    await comparisonPage.close();
+    await translatedCopy!.close();
+    await copySource.close();
   } finally {
     await context.close();
   }

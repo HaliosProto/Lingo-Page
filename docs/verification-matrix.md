@@ -29,14 +29,14 @@ Legend: `U` unit, `I` integration, `E` browser E2E, `M` manual browser, `S` secu
 
 ## Active program additions
 
-| Area               | Milestone 0 evidence                                          | Milestone 1 gate                                                               |
-| ------------------ | ------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Program authority  | Constitution, vision, roadmap, ADRs, Beads/memory workflow    | Approved M1 spec and synchronized tasks                                        |
-| Lifecycle          | Current state-survival matrix and known gaps                  | Popup/worker/tab/navigation/sleep/backend recovery evidence                    |
-| Performance        | Managed-Chromium mock 25/400/1,000/2,200-node baseline        | Repeated p50/p95, trace/long-task/memory/mutation/cache/failure evidence       |
-| BiDi/accessibility | Code/plan audit and release fixture matrix                    | Managed visual/semantic/clipboard tests plus branded-browser/manual evidence   |
-| Security/privacy   | Ordinary scan, source review, manifest/bundle/ignore evidence | Validated findings fixed or accepted; session persistence threat/privacy tests |
-| Process            | Spec CLI safe plan, Beads hierarchy, memory policy            | Spec-to-code convergence and issue closure evidence                            |
+| Area               | Milestone 0 evidence                                          | Milestone 1 gate                                                                |
+| ------------------ | ------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Program authority  | Constitution, vision, roadmap, ADRs, Beads/memory workflow    | Approved M1 spec and synchronized tasks                                         |
+| Lifecycle          | Current state-survival matrix and known gaps                  | View/lifecycle separation, end cleanup, tab isolation; restart limits explicit  |
+| Performance        | Managed-Chromium mock 25/400/1,000/2,200-node baseline        | Switch/copy/comparison timings, zero-call deltas, long tasks, heap direction    |
+| BiDi/accessibility | Code/plan audit and release fixture matrix                    | Managed semantic, dark/narrow, mixed-script, motion tests; manual gaps explicit |
+| Security/privacy   | Ordinary scan, source review, manifest/bundle/ignore evidence | Bundle/message bounds, owning-tab handoff, plain-text comparison, ordinary scan |
+| Process            | Spec CLI safe plan, Beads hierarchy, memory policy            | Spec-to-code convergence and issue closure evidence                             |
 
 ## Required final evidence format
 

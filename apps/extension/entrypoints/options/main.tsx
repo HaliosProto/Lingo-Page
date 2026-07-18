@@ -87,6 +87,11 @@ function OptionsApp() {
     else document.documentElement.dataset.theme = settings.theme;
   }, [settings.theme]);
 
+  useEffect(() => {
+    if (settings.reducedMotion) document.documentElement.dataset.reducedMotion = 'true';
+    else delete document.documentElement.dataset.reducedMotion;
+  }, [settings.reducedMotion]);
+
   function update<K extends keyof AppSettings>(key: K, value: AppSettings[K]): void {
     setSaved(false);
     setSettings((current) => ({ ...current, [key]: value }));
