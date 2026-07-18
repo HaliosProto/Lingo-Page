@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added bounded provider-aware incomplete-response recovery that preserves valid stable-ID records, retries unresolved IDs only through smaller subsets, continues queued work, and exposes privacy-safe recovery diagnostics and honest partial actions.
+- Added a metadata-only translated-copy permission intent so one click continues after grant even if the popup closes, while callback/event races remain idempotent and denial, expiry, wrong origin, revocation, and navigation mismatch fail closed.
 - Added explicit current-origin HTTP/HTTPS permission requests for translated copies, with denial guidance, redirect/revocation enforcement, final-DOM hydration reconciliation, and zero-call cached reuse.
 - Fixed translated-copy tabs closing on handoff errors by binding storage before navigation, retaining the visible tab on every failure, and deleting central page-text data only after destination acknowledgment.
 - Replaced the default segment-card comparison with a bounded sanitized full-page Original/Translation split, synchronized or independent scrolling, adjustable/resettable divider, swap, responsive stacking, themes, reduced motion, and BiDi isolation.

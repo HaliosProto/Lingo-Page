@@ -23,6 +23,8 @@ The original local-MVP acceptance history remains below where useful. The active
 - The 2,206-segment managed fixture records switch/copy/comparison time, request deltas, long tasks, and directional memory evidence against the Milestone 0 baseline.
 - Saved and OS reduced motion, semantic controls, narrow/dark layouts, and mixed RTL/LTR content have managed evidence; branded Chrome and screen-reader evidence are reported separately.
 - Required permissions retain `activeTab` without `<all_urls>`; optional HTTP/HTTPS patterns are granted only per current origin. Plain-text output, backend-only keys, runtime validation, bounds, and privacy defaults are preserved; deferred restart/SPA/viewport work is not claimed.
+- Incomplete provider batches preserve every valid stable-ID record, retry unresolved IDs only through bounded adaptive splitting, reduce only the current session's safe batch target, continue the later queue, and report honest final unresolved state without recursively retrying authentication, quota, refusal, model, or configuration failures.
+- One translated-copy click records a metadata-only expiring intent, requests the exact origin directly from the gesture, and resumes idempotently from either the permission callback or exact-origin permission event. Grant creates exactly one destination; denial, expiry, wrong origin, redirect mismatch, and revocation never mutate the source or apply the bundle to another site.
 
 ## Milestone 2
 

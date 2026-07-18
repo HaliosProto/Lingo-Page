@@ -31,9 +31,11 @@ The custom compatible provider is backend-only. Its URL cannot be supplied by ex
 
 ## Normalized result and validation
 
-All adapters return request/session/provider/model identity, exact segment IDs, plain translated text, optional detected language, character usage, and token usage when reported. LLM prompts place page segments in a serialized untrusted-data payload. Output is rejected for malformed JSON, Markdown fences, refusal/truncation, stale IDs, missing/duplicate/unknown IDs, protected-token changes, empty text, suspicious markup, excessive expansion, or partial sets.
+All adapters return request/session/provider/model identity, stable segment IDs, plain translated text, optional detected language, character usage, and token usage when reported. LLM prompts place page segments in a serialized untrusted-data payload. Response reconciliation classifies complete, valid-partial, truncated/malformed JSON, invalid structure, missing, duplicate, unknown, and empty records. Valid records whose identity, protected tokens, length, and plain-text safety pass are preserved; invalid or unresolved records are never applied. A truncated JSON tail may contribute only independently complete, validated record objects.
 
-Best-effort compatible profiles may retry one malformed response. Authentication, billing/quota, policy, invalid request, and provider selection failures are never retried or routed elsewhere. Native strict-schema adapters and DeepL do not perform an application retry.
+The page engine retries unresolved IDs only. It recursively halves retryable incomplete/timeout work within split-depth, per-segment attempt, total-attempt, duration, cancellation, and Retry-After bounds. Completed IDs are never resent. Authentication, billing/quota, policy/refusal, invalid configuration/request, unsupported model, and provider-selection failures are never recursively split or routed elsewhere. An incomplete result lowers only the current page session's safe batch target; unrelated sessions retain their own sizing state.
+
+Initial and subsequent batches are constrained by segment count, total characters, estimated input/output tokens, provider profile, language expansion estimate, segment-length distribution, and the current session-safe target. The deterministic test provider can emit complete, partial, truncated/malformed, missing/alternating, duplicate, unknown, empty, reordered, threshold-failing, first-N, and single-stubborn-segment results.
 
 ## Cost and emergency controls
 
