@@ -1,133 +1,322 @@
-body {
+html,
+body,
+#root {
   min-width: 0;
+  width: 100%;
+  height: 100%;
   max-height: none;
+  overflow: hidden;
 }
 
-.comparison-shell,
-.comparison-loading,
-.comparison-error {
-  width: min(1120px, 100%);
-  margin: 0 auto;
-  padding: clamp(20px, 4vw, 48px);
+.comparison-shell {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  padding: 12px;
+  gap: 8px;
 }
 
-.comparison-header,
-.comparison-summary,
-.comparison-nav,
-.segment-heading {
-  display: flex;
+.comparison-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto minmax(340px, 1.4fr);
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--translation-border);
+  border-radius: var(--translation-radius-medium);
+  background: var(--translation-surface);
 }
 
-.comparison-header {
-  align-items: flex-start;
+.comparison-identity,
+.comparison-identity h1,
+.comparison-identity p,
+.comparison-status {
+  min-width: 0;
+  margin: 0;
+}
+
+.comparison-identity h1 {
+  overflow: hidden;
+  font-size: clamp(16px, 2vw, 20px);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .comparison-source {
-  margin: 8px 0 0;
+  margin-top: 2px !important;
+  overflow: hidden;
   color: var(--translation-muted);
-  overflow-wrap: anywhere;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.secondary-link,
-.comparison-nav button,
-.segment-heading button {
-  min-height: 38px;
-  padding: 8px 12px;
+.comparison-summary {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 10px;
+  color: var(--translation-muted);
+  font-size: 12px;
+}
+
+.comparison-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.comparison-actions button,
+.comparison-actions a {
+  min-height: 34px;
+  padding: 6px 9px;
   border: 1px solid var(--translation-border);
   border-radius: var(--translation-radius-small);
   background: var(--translation-surface);
   color: var(--translation-accent);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
   font-weight: 700;
+  line-height: 20px;
   text-decoration: none;
 }
 
-.comparison-summary,
-.comparison-nav {
-  flex-wrap: wrap;
-  margin-top: 24px;
-  padding: 14px 16px;
-  border: 1px solid var(--translation-border);
-  border-radius: var(--translation-radius-medium);
+.comparison-actions button[aria-pressed='true'] {
+  border-color: var(--translation-accent);
+  background: color-mix(in srgb, var(--translation-accent) 12%, var(--translation-surface));
+}
+
+.comparison-status {
+  padding-inline: 4px;
   color: var(--translation-muted);
-  font-size: 13px;
-}
-
-.comparison-list {
-  display: grid;
-  gap: 14px;
-  margin-top: 20px;
-}
-
-.segment-pair {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1px;
-  overflow: hidden;
-  border: 1px solid var(--translation-border);
-  border-radius: var(--translation-radius-medium);
-  background: var(--translation-border);
-}
-
-.segment-pair:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--translation-accent) 45%, transparent);
-  outline-offset: 3px;
-}
-
-.segment-pair > section {
-  min-width: 0;
-  padding: 18px;
-  background: var(--translation-surface);
-}
-
-.segment-heading h2 {
-  margin: 0;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.segment-heading button {
-  min-height: 30px;
-  padding: 4px 8px;
-  cursor: pointer;
   font-size: 11px;
 }
 
-.segment-pair p {
-  margin: 14px 0 0;
+.comparison-workspace {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.comparison-pane-wrap {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--translation-border);
+  border-radius: var(--translation-radius-medium);
+  background: var(--translation-surface);
+}
+
+.comparison-pane-wrap > h2 {
+  margin: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--translation-border);
+  color: var(--translation-muted);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.comparison-pane {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  contain: paint;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  background: color-mix(in srgb, var(--translation-surface) 96%, var(--translation-border));
+}
+
+.comparison-divider {
+  display: grid;
+  place-items: center;
+  min-width: 10px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.comparison-divider > span {
+  width: 3px;
+  height: 48px;
+  border-radius: 999px;
+  background: var(--translation-border);
+}
+
+.comparison-divider:hover > span,
+.comparison-divider:focus-visible > span {
+  background: var(--translation-accent);
+}
+
+.snapshot-document {
+  width: min(920px, 100%);
+  min-height: 100%;
+  margin-inline: auto;
+  padding: clamp(18px, 3vw, 40px);
+  color: var(--translation-text);
+  font:
+    15px/1.65 system-ui,
+    sans-serif;
+}
+
+.snapshot-document :where(h1, h2, h3, h4, h5, h6) {
+  margin-block: 1.4em 0.55em;
+  line-height: 1.25;
+}
+
+.snapshot-document h1 {
+  margin-block-start: 0;
+  font-size: clamp(26px, 4vw, 42px);
+}
+
+.snapshot-document :where(p, ul, ol, dl, blockquote, figure, table) {
+  margin-block: 0.85em;
+}
+
+.snapshot-document :where(ul, ol) {
+  padding-inline-start: 1.5em;
+}
+
+.snapshot-document table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92em;
+}
+
+.snapshot-document :where(th, td) {
+  padding: 7px 9px;
+  border: 1px solid var(--translation-border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.snapshot-document th {
+  background: color-mix(in srgb, var(--translation-border) 30%, transparent);
+}
+
+.snapshot-document img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin-inline: auto;
+  border-radius: var(--translation-radius-small);
+}
+
+.snapshot-document a {
+  color: var(--translation-accent);
+  overflow-wrap: anywhere;
+}
+
+.snapshot-document button {
+  padding: 6px 9px;
+  border: 1px solid var(--translation-border);
+  border-radius: var(--translation-radius-small);
+  background: color-mix(in srgb, var(--translation-border) 28%, transparent);
+  color: var(--translation-text);
+}
+
+.snapshot-text {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  line-height: 1.65;
   unicode-bidi: plaintext;
 }
 
-.unavailable-copy {
-  color: var(--translation-muted);
-  font-style: italic;
+.skip-link {
+  position: fixed;
+  z-index: 10;
+  inset: 6px auto auto 6px;
+  transform: translateY(-180%);
+  padding: 8px 10px;
+  border-radius: var(--translation-radius-small);
+  background: var(--translation-accent);
+  color: white;
+}
+
+.skip-link-secondary {
+  inset-inline-start: 130px;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
 }
 
 .comparison-error,
 .comparison-loading {
-  min-height: 60vh;
+  min-height: 100%;
   display: grid;
   place-content: center;
+  padding: 24px;
   text-align: center;
 }
 
+@media (max-width: 1040px) {
+  .comparison-toolbar {
+    grid-template-columns: minmax(220px, 1fr) auto;
+  }
+
+  .comparison-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
+
 @media (max-width: 720px) {
-  .comparison-header {
-    align-items: stretch;
-    flex-direction: column;
+  html,
+  body,
+  #root {
+    overflow: auto;
   }
 
-  .secondary-link {
-    text-align: center;
+  .comparison-shell {
+    height: auto;
+    min-height: 100%;
+    grid-template-rows: auto auto auto;
   }
 
-  .segment-pair {
+  .comparison-toolbar {
     grid-template-columns: 1fr;
+    align-items: start;
   }
+
+  .comparison-summary,
+  .comparison-actions {
+    justify-content: flex-start;
+  }
+
+  .comparison-workspace {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: minmax(360px, 44vh) minmax(360px, 44vh);
+    gap: 10px;
+    overflow: visible;
+  }
+
+  .comparison-divider {
+    display: none;
+  }
+
+  .comparison-pane-wrap {
+    min-height: 360px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .comparison-shell *,
+  .comparison-shell *::before,
+  .comparison-shell *::after {
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+}
+
+html[data-reduced-motion='true'] .comparison-shell *,
+html[data-reduced-motion='true'] .comparison-shell *::before,
+html[data-reduced-motion='true'] .comparison-shell *::after {
+  scroll-behavior: auto !important;
+  transition: none !important;
 }

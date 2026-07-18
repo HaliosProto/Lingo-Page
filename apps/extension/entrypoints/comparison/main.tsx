@@ -1,4 +1,15 @@
-import { StrictMode, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  createElement,
+  StrictMode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type PointerEvent,
+  type ReactNode,
+} from 'react';
 import { createRoot } from 'react-dom/client';
 import { browser } from 'wxt/browser';
 import { createRequestId } from '@translation/shared-config';
@@ -13,13 +24,109 @@ function safeSourceLabel(value: string): string {
   return `${url.hostname}${url.pathname}`;
 }
 
+function directionForLanguage(language: string): 'auto' | 'ltr' | 'rtl' {
+  if (language === 'auto') return 'auto';
+  return /^(ar|fa|he|ur)(-|$)/u.test(language) ? 'rtl' : 'ltr';
+}
+
+function snapshotIsComplete(bundle: TranslationSessionBundle): boolean {
+  const segmentIds = new Set(bundle.segments.map((segment) => segment.id));
+  return bundle.comparisonSnapshot.nodes.every(
+    (node) => node.kind !== 'text' || !node.segmentId || segmentIds.has(node.segmentId),
+  );
+}
+
+function ComparisonDocument({
+  bundle,
+  translated,
+}: {
+  bundle: TranslationSessionBundle;
+  translated: boolean;
+}) {
+  const segments = useMemo(
+    () => new Map(bundle.segments.map((segment) => [segment.id, segment])),
+    [bundle],
+  );
+  const children = useMemo(() => {
+    const result = new Map<number, number[]>();
+    bundle.comparisonSnapshot.nodes.forEach((node, index) => {
+      if (node.parentIndex === undefined) return;
+      result.set(node.parentIndex, [...(result.get(node.parentIndex) ?? []), index]);
+    });
+    return result;
+  }, [bundle]);
+
+  const renderNode = (index: number): ReactNode => {
+    const node = bundle.comparisonSnapshot.nodes[index];
+    if (!node) return null;
+    if (node.kind === 'text') {
+      const segment = node.segmentId ? segments.get(node.segmentId) : undefined;
+      const value = segment
+        ? translated
+          ? (segment.translatedText ?? segment.originalText)
+          : segment.originalText
+        : (node.text ?? '');
+      return (
+        <span className="snapshot-text" dir="auto" key={`text-${index}`}>
+          {value}
+        </span>
+      );
+    }
+
+    const attributes = node.attributes;
+    const props: Record<string, unknown> = {
+      key: `element-${index}`,
+      className: `snapshot-${node.tag}`,
+    };
+    if (attributes?.dir) props.dir = attributes.dir;
+    if (attributes?.lang) props.lang = attributes.lang;
+    if (attributes?.title) props.title = attributes.title;
+    if (attributes?.ariaLabel) props['aria-label'] = attributes.ariaLabel;
+    if (node.tag === 'a' && attributes?.href) {
+      props.href = attributes.href;
+      props.target = '_blank';
+      props.rel = 'noreferrer';
+    }
+    if (node.tag === 'img') {
+      if (attributes?.src) props.src = attributes.src;
+      props.alt = attributes?.alt ?? '';
+      props.loading = 'lazy';
+      props.referrerPolicy = 'no-referrer';
+    }
+    if (node.tag === 'button') {
+      props.type = 'button';
+      props.disabled = true;
+      props['aria-disabled'] = 'true';
+    }
+    if (attributes?.rowSpan) props.rowSpan = attributes.rowSpan;
+    if (attributes?.colSpan) props.colSpan = attributes.colSpan;
+    if (node.tag === 'ol' && attributes?.listStart !== undefined) {
+      props.start = attributes.listStart;
+    }
+    return createElement(
+      node.tag,
+      props,
+      ...(children.get(index) ?? []).map((childIndex) => renderNode(childIndex)),
+    );
+  };
+
+  return <div className="snapshot-document">{renderNode(bundle.comparisonSnapshot.rootIndex)}</div>;
+}
+
 function ComparisonApp() {
   const [bundle, setBundle] = useState<TranslationSessionBundle>();
   const [error, setError] = useState<string>();
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [copied, setCopied] = useState<string>();
-  const segmentRefs = useRef<Array<HTMLElement | null>>([]);
+  const [syncEnabled, setSyncEnabled] = useState(true);
+  const [splitPercent, setSplitPercent] = useState(50);
+  const [swapped, setSwapped] = useState(false);
+  const [statusMessage, setStatusMessage] = useState('Synchronized scrolling is on.');
+  const originalPane = useRef<HTMLDivElement>(null);
+  const translationPane = useRef<HTMLDivElement>(null);
   const requestedSession = useRef(false);
+  const syncing = useRef(false);
+  const dragging = useRef(false);
+  const lastScrolled = useRef<'original' | 'translation'>('original');
+  const animationFrame = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     if (requestedSession.current) return;
@@ -39,9 +146,13 @@ function ComparisonApp() {
       })
       .then((raw) => extensionResponseSchema.parse(raw))
       .then((response) => {
-        if (response.type === 'COMPARISON_SESSION') setBundle(response.payload.bundle);
-        else if (response.type === 'MESSAGE_ERROR') setError(response.payload.message);
-        else setError('This comparison session is unavailable.');
+        if (response.type === 'COMPARISON_SESSION' && snapshotIsComplete(response.payload.bundle)) {
+          setBundle(response.payload.bundle);
+        } else if (response.type === 'MESSAGE_ERROR') {
+          setError(response.payload.message);
+        } else {
+          setError('This comparison session is unavailable.');
+        }
       })
       .catch(() => setError('This comparison session is unavailable.'));
   }, []);
@@ -66,26 +177,126 @@ function ComparisonApp() {
       .catch(() => undefined);
   }, []);
 
+  useEffect(
+    () => () => {
+      if (animationFrame.current !== undefined) cancelAnimationFrame(animationFrame.current);
+    },
+    [],
+  );
+
   const translatedCount = useMemo(
     () => bundle?.segments.filter((segment) => segment.translatedText).length ?? 0,
     [bundle],
   );
 
-  function move(delta: number): void {
-    if (!bundle?.segments.length) return;
-    const next = Math.min(bundle.segments.length - 1, Math.max(0, activeIndex + delta));
-    setActiveIndex(next);
-    segmentRefs.current[next]?.focus();
-    segmentRefs.current[next]?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  function alignPanes(source: HTMLDivElement, target: HTMLDivElement): void {
+    const sourceRange = Math.max(1, source.scrollHeight - source.clientHeight);
+    const targetRange = Math.max(0, target.scrollHeight - target.clientHeight);
+    target.scrollTop = (source.scrollTop / sourceRange) * targetRange;
   }
 
-  async function copy(id: string, value: string): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(id);
-    } catch {
-      setCopied(undefined);
+  function synchronize(from: 'original' | 'translation'): void {
+    lastScrolled.current = from;
+    if (!syncEnabled || syncing.current) return;
+    const source = from === 'original' ? originalPane.current : translationPane.current;
+    const target = from === 'original' ? translationPane.current : originalPane.current;
+    if (!source || !target) return;
+    syncing.current = true;
+    if (animationFrame.current !== undefined) cancelAnimationFrame(animationFrame.current);
+    animationFrame.current = requestAnimationFrame(() => {
+      alignPanes(source, target);
+      animationFrame.current = requestAnimationFrame(() => {
+        syncing.current = false;
+        animationFrame.current = undefined;
+      });
+    });
+  }
+
+  function toggleSynchronization(): void {
+    const next = !syncEnabled;
+    setSyncEnabled(next);
+    if (!next) {
+      setStatusMessage('Synchronized scrolling is off. Each pane now scrolls independently.');
+      return;
     }
+    const source =
+      lastScrolled.current === 'original' ? originalPane.current : translationPane.current;
+    const target =
+      lastScrolled.current === 'original' ? translationPane.current : originalPane.current;
+    if (source && target) alignPanes(source, target);
+    setStatusMessage('Synchronized scrolling is on. The panes were realigned.');
+  }
+
+  function updateDivider(clientX: number, container: HTMLElement): number {
+    const bounds = container.getBoundingClientRect();
+    const next = ((clientX - bounds.left) / bounds.width) * 100;
+    const bounded = Math.min(75, Math.max(25, Math.round(next)));
+    setSplitPercent(bounded);
+    return bounded;
+  }
+
+  function onDividerPointerDown(event: PointerEvent<HTMLDivElement>): void {
+    dragging.current = true;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    updateDivider(event.clientX, event.currentTarget.parentElement!);
+  }
+
+  function onDividerPointerMove(event: PointerEvent<HTMLDivElement>): void {
+    if (!dragging.current) return;
+    updateDivider(event.clientX, event.currentTarget.parentElement!);
+  }
+
+  function onDividerPointerUp(event: PointerEvent<HTMLDivElement>): void {
+    dragging.current = false;
+    const next = updateDivider(event.clientX, event.currentTarget.parentElement!);
+    event.currentTarget.releasePointerCapture(event.pointerId);
+    setStatusMessage(`Pane divider set to ${next}/${100 - next}.`);
+  }
+
+  function onDividerPointerCancel(event: PointerEvent<HTMLDivElement>): void {
+    dragging.current = false;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function onDividerKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
+    if (!['ArrowLeft', 'ArrowRight', 'Home'].includes(event.key)) return;
+    event.preventDefault();
+    setSplitPercent((current) => {
+      if (event.key === 'Home') return 50;
+      return Math.min(75, Math.max(25, current + (event.key === 'ArrowLeft' ? -2 : 2)));
+    });
+    setStatusMessage(
+      event.key === 'Home' ? 'Pane widths reset to 50/50.' : 'Pane divider adjusted with keyboard.',
+    );
+  }
+
+  async function openTranslatedCopy(): Promise<void> {
+    if (!bundle) return;
+    setStatusMessage('Opening translated copy…');
+    try {
+      const response = extensionResponseSchema.parse(
+        await browser.runtime.sendMessage({
+          version: 1,
+          requestId: createRequestId(),
+          type: 'OPEN_TRANSLATED_COPY_FROM_BUNDLE',
+          payload: { bundle },
+        }),
+      );
+      if (response.type === 'TRANSLATED_COPY_OPENED') {
+        setStatusMessage('Translated copy opened with the saved translation.');
+      } else if (response.type === 'MESSAGE_ERROR') {
+        setStatusMessage(response.payload.message);
+      }
+    } catch {
+      setStatusMessage('The translated copy could not reuse this comparison session.');
+    }
+  }
+
+  async function closeComparison(): Promise<void> {
+    const tab = await browser.tabs.getCurrent();
+    if (tab?.id !== undefined) await browser.tabs.remove(tab.id);
   }
 
   if (error) {
@@ -98,89 +309,128 @@ function ComparisonApp() {
   }
   if (!bundle) return <main className="comparison-loading">Loading comparison…</main>;
 
+  const original = (
+    <section className="comparison-pane-wrap" key="original">
+      <h2 id="original-pane-label">Original</h2>
+      <div
+        id="original-pane"
+        className="comparison-pane"
+        ref={originalPane}
+        role="region"
+        aria-labelledby="original-pane-label"
+        tabIndex={0}
+        dir={directionForLanguage(bundle.sourceLanguage)}
+        onScroll={() => synchronize('original')}
+      >
+        <ComparisonDocument bundle={bundle} translated={false} />
+      </div>
+    </section>
+  );
+  const translation = (
+    <section className="comparison-pane-wrap" key="translation">
+      <h2 id="translation-pane-label">Translation</h2>
+      <div
+        id="translation-pane"
+        className="comparison-pane"
+        ref={translationPane}
+        role="region"
+        aria-labelledby="translation-pane-label"
+        tabIndex={0}
+        dir={directionForLanguage(bundle.targetLanguage)}
+        onScroll={() => synchronize('translation')}
+      >
+        <ComparisonDocument bundle={bundle} translated />
+      </div>
+    </section>
+  );
+
+  const paneStyle = {
+    gridTemplateColumns: `${splitPercent}% 10px ${100 - splitPercent}%`,
+  } as CSSProperties;
+
   return (
     <main className="comparison-shell">
-      <header className="comparison-header">
-        <div>
-          <p className="eyebrow">Translation comparison</p>
+      <a className="skip-link" href="#original-pane">
+        Skip to original
+      </a>
+      <a className="skip-link skip-link-secondary" href="#translation-pane">
+        Skip to translation
+      </a>
+      <header className="comparison-toolbar">
+        <div className="comparison-identity">
+          <p className="eyebrow">Full-page translation comparison</p>
           <h1 dir="auto">{bundle.pageTitle || 'Translated page'}</h1>
           <p className="comparison-source" dir="ltr">
             {safeSourceLabel(bundle.navigationUrl)}
           </p>
         </div>
-        <a className="secondary-link" href={bundle.navigationUrl} target="_blank" rel="noreferrer">
-          Open source page
-        </a>
+        <div className="comparison-summary" aria-label="Translation summary">
+          <span>
+            {bundle.sourceLanguage.toUpperCase()} → {bundle.targetLanguage.toUpperCase()}
+          </span>
+          <span>
+            {translatedCount} of {bundle.segments.length} translated
+          </span>
+          <span>{bundle.partial ? 'Partial session' : 'Complete session'}</span>
+        </div>
+        <div className="comparison-actions" aria-label="Comparison controls">
+          <button type="button" aria-pressed={syncEnabled} onClick={toggleSynchronization}>
+            {syncEnabled ? 'Scrolling linked' : 'Scrolling unlinked'}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setSwapped((current) => !current);
+              setStatusMessage('Original and translation sides were swapped.');
+            }}
+          >
+            Swap sides
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setSplitPercent(50);
+              setStatusMessage('Pane widths reset to 50/50.');
+            }}
+          >
+            Reset layout
+          </button>
+          <a href={bundle.navigationUrl} target="_blank" rel="noreferrer">
+            Open source page
+          </a>
+          <button type="button" onClick={() => void openTranslatedCopy()}>
+            Open translated copy
+          </button>
+          <button type="button" onClick={() => void closeComparison()}>
+            Close comparison
+          </button>
+        </div>
       </header>
 
-      <section className="comparison-summary" aria-label="Translation summary">
-        <span>
-          {bundle.sourceLanguage.toUpperCase()} → {bundle.targetLanguage.toUpperCase()}
-        </span>
-        <span>
-          {translatedCount} of {bundle.segments.length} translated
-        </span>
-        <span>{bundle.partial ? 'Partial session' : 'Complete session'}</span>
-      </section>
+      <p className="comparison-status" role="status" aria-live="polite">
+        {statusMessage}
+      </p>
 
-      <nav className="comparison-nav" aria-label="Segment navigation">
-        <button type="button" onClick={() => move(-1)} disabled={activeIndex === 0}>
-          Previous
-        </button>
-        <span>
-          {activeIndex + 1} / {bundle.segments.length}
-        </span>
-        <button
-          type="button"
-          onClick={() => move(1)}
-          disabled={activeIndex >= bundle.segments.length - 1}
+      <div className="comparison-workspace" style={paneStyle}>
+        {swapped ? translation : original}
+        <div
+          className="comparison-divider"
+          role="separator"
+          aria-label="Resize comparison panes"
+          aria-orientation="vertical"
+          aria-valuemin={25}
+          aria-valuemax={75}
+          aria-valuenow={splitPercent}
+          tabIndex={0}
+          onPointerDown={onDividerPointerDown}
+          onPointerMove={onDividerPointerMove}
+          onPointerUp={onDividerPointerUp}
+          onPointerCancel={onDividerPointerCancel}
+          onKeyDown={onDividerKeyDown}
         >
-          Next
-        </button>
-      </nav>
-
-      <div className="comparison-list">
-        {bundle.segments.map((segment, index) => (
-          <article
-            className="segment-pair"
-            key={segment.id}
-            tabIndex={0}
-            ref={(node) => {
-              segmentRefs.current[index] = node;
-            }}
-            onFocus={() => setActiveIndex(index)}
-            aria-label={`Segment ${index + 1}: ${segment.status}`}
-          >
-            <section>
-              <div className="segment-heading">
-                <h2>Original</h2>
-                <button
-                  type="button"
-                  onClick={() => void copy(`${segment.id}:original`, segment.originalText)}
-                >
-                  {copied === `${segment.id}:original` ? 'Copied' : 'Copy'}
-                </button>
-              </div>
-              <p dir="auto">{segment.originalText}</p>
-            </section>
-            <section>
-              <div className="segment-heading">
-                <h2>Translation</h2>
-                {segment.translatedText && (
-                  <button
-                    type="button"
-                    onClick={() => void copy(`${segment.id}:translation`, segment.translatedText!)}
-                  >
-                    {copied === `${segment.id}:translation` ? 'Copied' : 'Copy'}
-                  </button>
-                )}
-              </div>
-              <p dir="auto" className={segment.translatedText ? undefined : 'unavailable-copy'}>
-                {segment.translatedText ?? `Not translated · ${segment.status}`}
-              </p>
-            </section>
-          </article>
-        ))}
+          <span aria-hidden="true" />
+        </div>
+        {swapped ? original : translation}
       </div>
     </main>
   );

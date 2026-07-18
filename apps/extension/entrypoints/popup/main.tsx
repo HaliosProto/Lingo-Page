@@ -66,6 +66,13 @@ function sessionStateLabel(progress: TranslationProgress): string {
   return progress.status === 'cancelled' ? 'Paused' : 'Active';
 }
 
+type SessionCommandType =
+  | 'SET_PAGE_VIEW'
+  | 'SCAN_PAGE_CHANGES'
+  | 'UPDATE_CHANGED_SECTIONS'
+  | 'REFRESH_TRANSLATION'
+  | 'END_TRANSLATION_SESSION';
+
 function PopupApp() {
   const [tabId, setTabId] = useState<number>();
   const [tabStatus, setTabStatus] = useState<TabStatus | null>(null);
@@ -80,6 +87,8 @@ function PopupApp() {
   });
   const [error, setError] = useState<string>();
   const [working, setWorking] = useState(false);
+  const [activeSessionCommand, setActiveSessionCommand] = useState<SessionCommandType>();
+  const [retrySessionCommand, setRetrySessionCommand] = useState<SessionCommandType>();
   const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
 
   const refreshProgress = useCallback(async (activeTabId: number) => {
@@ -228,16 +237,13 @@ function PopupApp() {
   }
 
   async function runSessionCommand(
-    type:
-      | 'SET_PAGE_VIEW'
-      | 'SCAN_PAGE_CHANGES'
-      | 'UPDATE_CHANGED_SECTIONS'
-      | 'REFRESH_TRANSLATION'
-      | 'END_TRANSLATION_SESSION',
+    type: SessionCommandType,
     extra: Record<string, unknown> = {},
   ): Promise<void> {
     if (tabId === undefined || !progress.sessionId) return;
     setWorking(true);
+    setActiveSessionCommand(type);
+    setRetrySessionCommand(undefined);
     setError(undefined);
     try {
       const response = await sendMessage({
@@ -247,11 +253,20 @@ function PopupApp() {
         payload: { tabId, sessionId: progress.sessionId, ...extra },
       });
       if (response.type === 'TRANSLATION_PROGRESS') setProgress(response.payload.progress);
-      if (response.type === 'MESSAGE_ERROR') setError(response.payload.message);
+      if (response.type === 'MESSAGE_ERROR') {
+        setError(response.payload.message);
+        if (type === 'SCAN_PAGE_CHANGES' || type === 'UPDATE_CHANGED_SECTIONS') {
+          setRetrySessionCommand(type);
+        }
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'The session action could not finish.');
+      if (type === 'SCAN_PAGE_CHANGES' || type === 'UPDATE_CHANGED_SECTIONS') {
+        setRetrySessionCommand(type);
+      }
     } finally {
       setWorking(false);
+      setActiveSessionCommand(undefined);
     }
   }
 
@@ -392,11 +407,13 @@ function PopupApp() {
   const busy = ['discovering', 'translating', 'paused', 'retrying'].includes(progress.status);
   const hasSession = Boolean(progress.sessionId && progress.status !== 'idle');
   const activeView = progress.displayMode === 'original' ? 'original' : 'translated';
-  const changedCount = progress.changed
-    ? progress.changed.newSegments +
-      progress.changed.modifiedSegments +
-      progress.changed.removedSegments +
-      progress.changed.uncertainSegments
+  const changeSummary = progress.changeScan?.summary ?? progress.changed;
+  const changedCount = changeSummary
+    ? changeSummary.newSegments +
+      changeSummary.modifiedSegments +
+      changeSummary.removedSegments +
+      changeSummary.reorderedSegments +
+      changeSummary.uncertainSegments
     : 0;
   const selectableProviders = providers.filter(
     (provider) => provider.enabled && provider.configured,
@@ -584,22 +601,45 @@ function PopupApp() {
               Translated
             </button>
           </div>
-          {progress.pageDiverged && progress.changed && (
-            <div className="change-summary" role="status">
-              <strong>{changedCount} page changes found</strong>
-              <span>
-                {progress.changed.newSegments} new · {progress.changed.modifiedSegments} modified ·{' '}
-                {progress.changed.removedSegments} removed · {progress.changed.uncertainSegments}{' '}
-                uncertain
-              </span>
-              <button
-                className="primary-button compact-button"
-                type="button"
-                disabled={working || busy}
-                onClick={() => void runSessionCommand('UPDATE_CHANGED_SECTIONS')}
-              >
-                Update changed sections
-              </button>
+          {progress.changeScan && (
+            <div className="change-summary" role="status" aria-live="polite">
+              {progress.changeScan.status === 'no-changes' ? (
+                <>
+                  <strong>No page changes found.</strong>
+                  <span>Your translation is up to date.</span>
+                </>
+              ) : progress.changeScan.status === 'updated' ? (
+                <>
+                  <strong>Changed sections updated.</strong>
+                  <span>
+                    {progress.changeScan.updatedSegments ?? 0} translated ·{' '}
+                    {progress.changeScan.summary.removedSegments} removed ·{' '}
+                    {progress.changeScan.summary.reorderedSegments} reordered ·{' '}
+                    {progress.changeScan.summary.uncertainSegments} uncertain and left original
+                  </span>
+                </>
+              ) : (
+                <>
+                  <strong>{changedCount} page changes found</strong>
+                  <span>
+                    {progress.changeScan.summary.newSegments} new ·{' '}
+                    {progress.changeScan.summary.modifiedSegments} modified ·{' '}
+                    {progress.changeScan.summary.removedSegments} removed ·{' '}
+                    {progress.changeScan.summary.reorderedSegments} reordered ·{' '}
+                    {progress.changeScan.summary.uncertainSegments} uncertain
+                  </span>
+                  <button
+                    className="primary-button compact-button"
+                    type="button"
+                    disabled={working || busy}
+                    onClick={() => void runSessionCommand('UPDATE_CHANGED_SECTIONS')}
+                  >
+                    {activeSessionCommand === 'UPDATE_CHANGED_SECTIONS'
+                      ? 'Updating…'
+                      : 'Update changed sections'}
+                  </button>
+                </>
+              )}
             </div>
           )}
           <div className="session-actions">
@@ -622,7 +662,9 @@ function PopupApp() {
               disabled={working}
               onClick={() => void runSessionCommand('SCAN_PAGE_CHANGES')}
             >
-              Check for page changes
+              {activeSessionCommand === 'SCAN_PAGE_CHANGES'
+                ? 'Checking…'
+                : 'Check for new or changed content'}
             </button>
           </div>
           <details className="advanced-actions">
@@ -733,7 +775,15 @@ function PopupApp() {
       {error && (
         <div className="error-banner" role="alert">
           <span>{error}</span>
-          <button className="text-button" type="button" onClick={() => window.location.reload()}>
+          <button
+            className="text-button"
+            type="button"
+            onClick={() =>
+              retrySessionCommand
+                ? void runSessionCommand(retrySessionCommand)
+                : window.location.reload()
+            }
+          >
             Retry
           </button>
         </div>

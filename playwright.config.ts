@@ -12,7 +12,7 @@ export default defineConfig({
       reuseExistingServer: true,
     },
     {
-      command: 'pnpm --filter @translation/api dev',
+      command: 'pnpm --filter @translation/api exec wrangler dev --var REQUESTS_PER_MINUTE:1000',
       url: 'http://127.0.0.1:8787/v1/health',
       reuseExistingServer: true,
       timeout: 30_000,
