@@ -135,7 +135,15 @@ importers:
         specifier: workspace:*
         version: link:../translation-core
 
-  packages/ui: {}
+  packages/ui:
+    dependencies:
+      react:
+        specifier: 19.2.7
+        version: 19.2.7
+    devDependencies:
+      '@types/react':
+        specifier: 19.2.17
+        version: 19.2.17
 
 packages:
 

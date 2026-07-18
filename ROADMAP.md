@@ -1,47 +1,152 @@
 # Lingo product roadmap
 
-This roadmap supersedes the old implementation-order interpretation of Milestones 0-6 without rewriting their history. The repository already contains that local MVP. The program milestones below start with a new foundation gate and then advance one approved milestone at a time.
+Status: CURRENT
 
-| Milestone                            | Objective and user value                                                           | Dependencies                     | Scope highlights                                                                                                                                                                                                                               | Explicitly out of scope                                                                      | Evidence and rollback                                                             |
-| ------------------------------------ | ---------------------------------------------------------------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| 0. Program foundation                | Establish one reliable source of truth for the existing product and future program | Existing local MVP               | Audit, specifications, architecture, security/privacy baseline, performance baseline, workflow, research, positioning, Beads graph                                                                                                             | Product feature implementation                                                               | Documentation/verification commit; revert documentation and tracking changes only |
-| 1. Durable browser foundation        | Reuse translated page state instantly and safely across user-controlled views      | M0 approval                      | Page-owned session model, no-call original/translated toggle, changed-section updates, independently cloned translated tabs, safe comparison foundation, measured long-page reuse, saved reduced motion, accessibility/BiDi regression harness | Restart persistence, viewport-first/adaptive scheduling, accounts, deployment, new platforms | Unit/integration/E2E/security/performance gates; explicit end-session rollback    |
-| 2. Reading workspace                 | Give users a controlled bilingual reading and comparison experience                | M1                               | Side panel, paragraph controls, bilingual modes, read-only comparison, translated duplicate-tab design                                                                                                                                         | Compose, synced history                                                                      | Browser UX/accessibility/performance evidence; retain popup path                  |
-| 3. Context and language intelligence | Improve meaning, terminology, dialect, tone, and transparency                      | M1 research registry             | Context inference, translation briefs, glossary evolution, explanations, quality estimation, steering experiments                                                                                                                              | Hidden production routing, autonomous learning                                               | Offline/mocked evaluation and human review; capability flags                      |
-| 4. Personal continuity               | Reuse user-approved knowledge without covert collection                            | M1 data lifecycle, M3 evaluation | Local-first history, translation memory, post-edit feedback, personal analytics design                                                                                                                                                         | Organization sync, billing                                                                   | Migration/deletion/privacy tests; local-only default and export/clear path        |
-| 5. Compose                           | Safely translate completed drafts before sending                                   | M1, M3                           | Preview/edit/undo flows, recipient/tone context, explicit activation                                                                                                                                                                           | Keylogging, automatic sending                                                                | Synthetic editor fixtures and permission review; feature disabled by default      |
-| 6. Vision and media                  | Translate images, screenshots, OCR regions, subtitles, and voice messages          | M3 research                      | OCR/image overlays, subtitle and audio-file pipelines, consent and retention                                                                                                                                                                   | Continuous screen/camera capture, meetings                                                   | Format fixtures and device-specific validation; independent modules               |
-| 7. Production identity and usage     | Provide secure sessions, durable quotas, deletion, and abuse protection            | M1 acceptance                    | Identity, revocation, durable usage, allowance, deletion architecture                                                                                                                                                                          | Payments, publication                                                                        | Concurrency/restart/privacy/security evidence; loopback mock remains available    |
-| 8. Release readiness                 | Prepare a strong Chrome release without publishing it                              | M1, M7, provider qualification   | Policy, store materials, support, signing/rollback plan, final security/accessibility/performance review                                                                                                                                       | Deployment or store submission without separate approval                                     | Release checklist; no public mutation                                             |
-| 9. Cross-browser                     | Support Edge and selected browser targets through explicit compatibility work      | M8                               | Chromium variants, Firefox/Safari investigations and adapters                                                                                                                                                                                  | Assuming MV3 parity                                                                          | Browser-specific suites; keep Chrome package intact                               |
-| 10. Meet                             | Add consent-based meetings, captions, speech translation, and summaries            | M6, M7                           | ASR, diarization, code-switching, live latency, meeting access                                                                                                                                                                                 | Covert recording                                                                             | Physical-device/platform tests; session-scoped recording controls                 |
-| 11. Studio                           | Serve professional translators and localization teams                              | M3, M4, M7                       | Projects, review, TM/glossary, XLIFF/TMX/TBX, websites/apps/games                                                                                                                                                                              | Blind text extraction/reinsertion                                                            | Format round-trip and role/audit tests; import/export isolation                   |
-| 12. Platform and enterprise          | Operate shared APIs, organizations, billing, integrations, and enterprise controls | M7, validated demand             | Sync, billing, SDKs, permissions, regional controls, collaboration, enterprise analytics                                                                                                                                                       | Premature infrastructure                                                                     | Tenant isolation, retention, billing, recovery, and compliance review             |
+Last approved sequence: 2026-07-18
 
-## Milestone 1 exact gate
+This is the sole authority for milestone order. The browser extension must be commercially launch-ready before desktop or mobile product implementation begins. Work advances one approved milestone at a time; planning does not authorize implementation.
 
-Milestone 1 was approved and merged on 2026-07-18. Its post-merge acceptance gate is the implemented contract in `docs/milestone-1-specification.md`: retained page-owned sessions, zero-call repeated view switches and scans, acknowledged independently controlled translated copies whose visible tabs survive failure, sanitized full-page split comparison with linked scrolling, changed-only updates with explicit results, explicit end-session cleanup, 2,206-segment reuse measurements, saved/OS reduced motion, accessibility/BiDi checks, least privilege, and browser evidence separated between managed Chromium and branded Chrome. Full restart persistence, viewport-first scheduling, adaptive batching, and SPA/infinite-scroll certification remain later work; Milestone 2 has not begun.
+## Program sequence
 
-## Cross-cutting research and marketing
+| Milestone | Outcome                                                          | Status    | Hard dependency                                             |
+| --------- | ---------------------------------------------------------------- | --------- | ----------------------------------------------------------- |
+| M1        | Durable translation sessions and comparison                      | COMPLETED | Accepted Milestone 1 specification and evidence             |
+| M1.5      | Repository cleanup, roadmap realignment, and frontend foundation | ACTIVE    | M1 acceptance fixes merged to `main`                        |
+| M2        | Reliability, lifecycle resilience, and performance               | PLANNED   | M1.5 accepted                                               |
+| M3        | Translation quality, context, and terminology                    | PLANNED   | M2 reliability baseline                                     |
+| M4        | Finished extension frontend and user experience                  | PLANNED   | M2 and M3 contracts                                         |
+| M5        | Advanced browser-extension capabilities                          | PLANNED   | M4 extension UX                                             |
+| M6        | Accounts, cloud services, and usage platform                     | PLANNED   | M2 privacy/reliability acceptance                           |
+| M7        | Payments, plans, subscriptions, and monetization                 | PLANNED   | M6 identity, entitlements, and metering                     |
+| M8        | Cross-browser production extension launch                        | BLOCKED   | M2-M7 accepted plus the GA gate below                       |
+| M9        | Desktop application                                              | BLOCKED   | M8 accepted                                                 |
+| M10       | Mobile applications                                              | BLOCKED   | M8 accepted                                                 |
+| M11       | Lingo Vision, audio, and meetings                                | BLOCKED   | M8 plus separately approved capture/consent architecture    |
+| M12       | Lingo Studio and enterprise localization                         | BLOCKED   | M8 plus validated professional demand and platform controls |
 
-Translation research, competitive tracking, design-system work, BiDi, accessibility, security, privacy, and positioning are continuous inputs with milestone-specific gates. They do not independently authorize product expansion or external data collection.
+## M1 — Durable translation sessions and comparison
 
-## Program planning attributes
+Status: COMPLETED after acceptance fixes.
 
-| Milestone | Frontend / backend / research work                                                | Automated and runtime evidence                                                       | Product-owner decision                                         | Complexity / major risk                              |
-| --------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | -------------------------------------------------------------- | ---------------------------------------------------- |
-| 0         | Documentation and local measurement only                                          | Full static/build/E2E/security/performance/docs/diff gates                           | Accept M0 and choose exact M1 scope                            | Medium / contradictory sources or false completeness |
-| 1         | Extension session/UI/scheduler; optional local storage schema; lifecycle research | Unit/schema/migration, API mock, E2E lifecycle/performance/visual, branded Chrome    | Persistence design, accepted budgets, M1 start/close           | High / privacy or stale-DOM corruption               |
-| 2         | Side-panel/bilingual UI; existing API; reading UX research                        | Component/a11y/BiDi/visual/E2E plus user study                                       | Approve workspace interaction and duplicate-tab behavior       | High / complexity and page interference              |
-| 3         | Brief/steering/explanation UI; bounded context/evaluation services; MT research   | Offline corpus metrics calibrated to blinded human review; mocked provider contracts | Languages, quality rubric, recipient/context policy            | High / misleading quality or context disclosure      |
-| 4         | History/TM/glossary/feedback UI; versioned local data services; privacy research  | Migration/corruption/sync-negative/deletion and quality tests                        | Opt-in, retention, export/deletion, later sync                 | High / durable sensitive data debt                   |
-| 5         | Composer preview/edit/undo; existing/new context API; editor safety research      | Synthetic editors, permissions, no-send assertions, accessibility/BiDi               | Supported editors and activation model                         | High / accidental disclosure or sending              |
-| 6         | Capture/overlay/media UI; OCR/audio pipelines; model/device research              | Licensed format/device corpora, latency/memory/privacy/a11y                          | Capture scopes, local/cloud processing, retention              | Very high / consent and platform limits              |
-| 7         | Account/usage UI; identity, durable counters/deletion; abuse research             | Concurrency/restart/revocation/replay/quota/deletion/security tests                  | Identity provider, allowance, retention; no payments           | Very high / auth, cost, deletion failure             |
-| 8         | Onboarding/store/support assets; production config/operations; policy research    | Full release matrix, rollback drill, branded browsers, policy review                 | Name/domain/provider/release scope; publication still separate | High / claims or release provenance                  |
-| 9         | Browser-specific UI/manifest adapters; same API; compatibility research           | Per-browser unit/E2E/manual/store/permission/lifecycle suites                        | Target/order and supported versions                            | High / false parity and permission drift             |
-| 10        | Meeting/caption UI; real-time speech/jobs; consent/ASR research                   | Device/platform latency, speaker, quality, consent, recovery tests                   | Platforms, recording/retention, live cost                      | Very high / covert capture or unreliable real time   |
-| 11        | Professional project/review UI; project/file/TM/QA backend; workflow research     | Format round-trip, roles/tenant, QA, recovery and practitioner review                | Initial formats/segments/market and data lifecycle             | Very high / document corruption or workflow mismatch |
-| 12        | Account/org/admin/billing dashboards; multi-tenant platform; enterprise research  | Tenant isolation, billing, regional, load, recovery, compliance-evidence tests       | Pricing, vendors, regions, enterprise commitments              | Very high / security, cost, premature platform       |
+Delivered page-owned session state, zero-call Original/Translated switching, explicit change scans and changed-only updates, adaptive incomplete-response recovery, acknowledged translated-copy handoff, a sanitized full-page comparison, explicit end-session cleanup, saved reduced-motion behavior, BiDi coverage, and deterministic long-page reuse evidence.
 
-Complexity is relative (medium/high/very high), not an hour estimate. Every milestone retains a safe fallback: disable its capability and preserve the last accepted browser/mock path or exportable data; migrations and public operations require explicit rollback procedures.
+The accepted contract and dated evidence are in `docs/milestones/milestone-1-specification.md` and `docs/milestones/milestone-1-verification-report.md`. Branded-browser, formal accessibility/BiDi, and owner acceptance gaps remain explicit; they do not erase the implemented M1 contract.
+
+## M1.5 — Repository cleanup, roadmap realignment, and frontend foundation
+
+Status: ACTIVE.
+
+- Establish one canonical document hierarchy and a searchable documentation index.
+- Keep task state in Beads and concise operational links in `TASKS.md`.
+- Preserve historical verification while removing active duplicate specifications.
+- Establish this extension-first sequence and the M8 commercial GA gate.
+- Define provider-neutral billing, entitlements, usage, and cost-control boundaries without selecting or configuring a payment provider.
+- Audit the running extension and implement a low-risk shared frontend foundation without changing translation behavior.
+
+M1.5 must not begin M2 features, accounts, payments, deployment, publication, desktop, mobile, Vision, meetings, or Studio implementation.
+
+## M2 — Reliability, lifecycle resilience, and performance
+
+- Browser restart and extension service-worker restart recovery.
+- Page reload reconstruction and sleep/wake recovery.
+- Complex SPA navigation, history transitions, infinite scroll, and mutation storms.
+- Large-page performance, viewport-aware work, adaptive provider batching, and memory-leak profiling.
+- Partial-response recovery, provider backoff/resilience, cancellation, offline, and degraded states.
+
+Acceptance requires bounded performance evidence, stale-session rejection, exact restore safety, lifecycle recovery tests, and no privacy regression.
+
+## M3 — Translation quality, context, and terminology
+
+- Translation briefs covering tone, dialect, formality, audience, slang, and terminology.
+- Page and section context with explicit disclosure and bounded collection.
+- Glossary, correction feedback, context-aware routing, and quality evaluation.
+- Focused quality work for Persian, Arabic, mixed-direction, and low-resource languages.
+
+No hidden provider routing, autonomous learning, or remote memory is authorized by this milestone description.
+
+## M4 — Finished extension frontend and user experience
+
+- Professional popup, browser side panel, Options/account UX, and comparison experience.
+- Coherent design system and component library.
+- Session, onboarding, error, permission, partial, recovery, and degraded-state UX.
+- Accessibility, keyboard, focus, responsive, dark/light, BiDi, zoom, and reduced-motion acceptance.
+- Visual regression coverage and browser-specific interaction evidence.
+
+## M5 — Advanced browser-extension capabilities
+
+Only browser-feasible, explicitly approved capabilities belong here:
+
+- Lingo Compose preview/edit/undo for completed drafts; never keylogging or automatic send.
+- Chat and form translation with explicit activation and protected-field exclusions.
+- Selected-text workflows and subtitle translation where browser APIs permit.
+- Bounded document and image workflows that preserve format and consent.
+- Saved translation sessions, export/sharing, and correction tools with approved retention.
+
+Desktop-only capture or operating-system integration does not belong in M5.
+
+## M6 — Accounts, cloud services, and usage platform
+
+- Authentication, user accounts, team accounts, revocation, and account deletion.
+- Secure settings sync and user-controlled translation-history/data controls.
+- Data export, privacy controls, retention enforcement, and audit events.
+- Usage metering, quotas, entitlement service, backend observability, and abuse protection.
+
+The backend is authoritative. Page text, history, glossary, or diagnostics must not silently sync.
+
+## M7 — Payments, plans, subscriptions, and monetization
+
+- Free, paid consumer, professional, team, and enterprise plans.
+- Monthly/annual subscriptions, trials, promotions, upgrades, downgrades, cancellation, refunds, failed-payment recovery, billing portal, receipts, and invoices.
+- Team seats, enterprise contract state, usage-based limits where appropriate, provider-cost protection, and administrative support tooling.
+- Server-authoritative entitlement enforcement separated from billing and usage metering.
+
+The provider-neutral architecture is defined in `docs/billing/architecture.md`. Provider selection and external configuration require separate approval after the company structure, operating jurisdiction, tax, sanctions, regional availability, and legal responsibilities are known.
+
+## M8 — Cross-browser production extension launch
+
+- Chrome production readiness and release acceptance.
+- Edge and Firefox support and release acceptance.
+- Safari feasibility, adapter plan, and honest availability decision.
+- Store assets/submissions, privacy policy, terms, support, and incident response.
+- Production monitoring, real-user beta, performance, security, accessibility, BiDi, billing, and cancellation acceptance.
+- Launch, rollback, and customer-support procedures.
+
+Store submission, deployment, public resources, or purchases still require the applicable product-owner approval.
+
+## Extension General Availability gate
+
+M8 is the hard gate for any desktop or mobile implementation. It is accepted only when all of the following have current evidence:
+
+- Reliable large-page translation and adaptive provider recovery.
+- Browser restart, service-worker restart, page reload, SPA, and sleep/wake resilience.
+- No known critical or high security issue; minimal justified permissions.
+- Accepted privacy model and data controls.
+- Formal accessibility and RTL/LTR/BiDi acceptance.
+- Finished extension UX across required states and supported viewports.
+- Accounts, deletion/export controls, usage metering, quotas, and server-authoritative entitlements.
+- Subscription management, cancellation/refund flows, billing acceptance, and provider-cost controls.
+- Chrome, Edge, and Firefox release acceptance plus Safari feasibility decision.
+- Store-submission readiness, production monitoring, incident response, support workflow, and real-user beta acceptance.
+- Documented launch rollback and recovery procedures.
+
+**No desktop or mobile application implementation may begin until M8 is accepted and the browser extension is commercially launch-ready.** Earlier planning or architecture is allowed only when necessary to avoid locking the extension into an incompatible design, and it must not create product implementation.
+
+## M9 — Desktop application
+
+After M8, a separately approved desktop milestone may reuse shared domain contracts while adding platform-native consent, accessibility APIs, capture/OCR, offline model management, and operating-system permission UX. Browser permissions are never a substitute for operating-system consent.
+
+## M10 — Mobile applications
+
+After M8, separately approved mobile milestones may evaluate share sheets, keyboards/input methods, Android accessibility integration, iOS extension constraints, camera/OCR, and offline translation. Compose remains explicit, previewable, undoable, and never auto-sends.
+
+## M11 — Lingo Vision, audio, and meetings
+
+Image, screenshot, camera, speech, captions, translation, summaries, and action items require explicit capture/recording consent, physical-device evidence, bounded retention, and platform-specific privacy review. Covert or continuous capture is prohibited.
+
+## M12 — Lingo Studio and enterprise localization
+
+Professional projects, review, terminology, translation memory, websites/apps/games, and format-aware DOCX/PPTX/XLSX/EPUB/PDF/XLIFF/TMX/TBX workflows require round-trip integrity, roles/audit, tenant isolation, retention, and validated customer demand. Blind text extraction and reinsertion is prohibited.
+
+## Cross-cutting rules
+
+Security, privacy, accessibility, BiDi, research, design, and performance are continuous inputs with milestone-specific acceptance. Research findings and market plans do not authorize implementation. Paid calls, new recipients, accounts, public deployment/publication, purchases, and legal claims require explicit approval.

@@ -1,30 +1,32 @@
-# Project memory index and Obsidian policy
+# Project memory index
 
-## Quick orientation
+Status: CURRENT
 
-- Product: Lingo Page, the first privacy-first browser client of the Lingo multilingual platform.
-- Current program state: Milestone 1 is implemented and locally verified on `milestone/01-durable-translation-sessions`; branch review and separate owner acceptance remain the active gate. Milestone 2 has not begun.
-- Starting source: `f011f6fb85c2f6e1a79541f1ee4ed4aac1c436c6`. The branch `HEAD` and `docs/milestone-1-verification-report.md` become authoritative after the milestone commit.
-- Canonical sources: `PRODUCT_CONSTITUTION.md`, `PRODUCT_VISION.md`, `ROADMAP.md`, `TASKS.md`, `AGENTS.md`, approved milestone specs, `docs/architecture.md`, contracts, security/privacy/threat documents, acceptance criteria, and verification reports.
-- Execution graph: Beads. Run `bd prime`; use `bd ready/show/update/close`; use `bd remember` for short durable facts.
-- Specification templates: repository workflow is active; CLI integration remains pending the safe plan in `docs/tooling-and-workflow.md`.
-- Handoffs: dated milestone verification reports in `docs/`, plus Beads issue comments/status.
-- Milestone 1 decisions: page-shell memory owns normal sessions; display mode is independent from lifecycle; translated copies clone bounded bundles; comparison uses an owning-tab single-use `chrome.storage.session` token; full restart persistence is deferred. Canonical sources are `docs/milestone-1-specification.md`, ADR 0007, and ADR 0009.
+Last reconciled: 2026-07-18
 
-## Memory and Obsidian role
+## Durable orientation
 
-An Obsidian vault may hold decision summaries, research/competitive notes, owner preferences, meeting notes, experiments, rejected alternatives, lessons, and handoffs. Every note links to the canonical repository source and carries one status: proposed, approved, implemented, superseded, or rejected.
+- Product: Lingo Page, the privacy-first browser translation client.
+- Canonical authority: `PRODUCT_CONSTITUTION.md`, `PRODUCT_VISION.md`, `ROADMAP.md`, approved milestone specifications, ADRs/contracts, then Beads execution state.
+- Current milestone: M1.5 repository cleanup, extension-first roadmap, and frontend foundation (`translation-2np`).
+- Current branch: `chore/repository-cleanup-roadmap-and-extension-ux`, based on `1a11629` after PR #2 merged.
+- Current review: [draft PR #3](https://github.com/HaliosProto/Translation-Extension/pull/3); do not merge automatically.
+- Current verification: automated/static, managed-Chromium, performance, security, documentation, packaging, and Git-hygiene evidence is recorded in `docs/milestones/milestone-1-5-verification-report.md`; owner review remains pending.
+- Next milestone: M2 reliability/lifecycle/performance, blocked until M1.5 review and acceptance.
+- Hard product gate: desktop/mobile implementation remains blocked until M8 extension General Availability acceptance.
+- Verified provider baseline: deterministic mock. Live calls require explicit approval, backend-only secrets, synthetic text, and cost/terms review.
+- Milestone 1 decisions: page-owned memory remains authoritative for active sessions; switching/scanning reuses it without provider calls; translated-copy and comparison handoffs are bounded, validated, acknowledged, and temporary.
+- Current limitations: branded-browser, formal accessibility/BiDi, owner acceptance, production identity/quotas, deployment/publication, and real-provider evidence remain open in `docs/known-limitations.md` and Beads.
 
-Capture -> link -> label status -> review at milestone close -> promote durable decisions into repository docs -> archive stale notes. A vault is optional and must never become the only copy of a critical decision or override repository specifications.
+## Where state belongs
 
-## Prohibited memory content
+- Durable product and architecture decisions: repository specifications and ADRs.
+- Issues, dependencies, ownership, and acceptance evidence: Beads.
+- Dated verification: milestone or archive reports.
+- This file and Beads memories: concise status and links only.
 
-Secrets, API keys, tokens, credential values, raw private user/page content, private provider endpoints, authorization headers, production logs, full source-file copies, unredacted diagnostics, and contradictory unlabeled instructions. Do not paste ignored environment files or generated bundles into notes.
+Do not store secrets, keys, tokens, raw page/user text, private endpoints, provider bodies, logs, full source files, ignored environment contents, or copied specifications in project memory.
 
 ## Owner gates
 
-External accounts/data recipients, paid calls, public resources, deployment/publication, purchases, repository visibility, legal/privacy/compliance claims, production retention, branding/pricing, physical-device access, irreversible platform choices, and material risk acceptance require product-owner approval.
-
-## Vault status
-
-No repository-tracked Obsidian vault is required or created. If the owner selects a private vault later, store only links and sanitized notes; keep vault configuration/caches private unless a separate review approves specific tracked templates.
+External recipients, paid calls, accounts, public resources, deployment/publication, purchases, repository visibility, legal/compliance claims, pricing, production retention, branding, irreversible platform decisions, and material risk acceptance require explicit product-owner approval.

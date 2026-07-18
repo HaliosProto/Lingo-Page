@@ -34,7 +34,7 @@ Managed headless Chromium with synthetic loopback fixtures and a 1 ms determinis
 | 1,000 / 1,006          | 21       | 64 ms         | 184 ms     | 19 ms   | 0          |
 | 2,200 / 2,206          | 45       | 72 ms         | 445 ms     | 31 ms   | 0          |
 
-Dynamic insertion translated in 834 ms; mixed Persian/English RTL text translated; form value was unchanged. Heap snapshots are directional, not leak proof. Real-provider latency, discovery/write separation, p50/p95 repetitions, cache ratios, mutation storms, GC-aware cleanup, lifecycle failures, and branded Chrome remain M1 gates. Full raw context is in `docs/v2-performance-baseline.md`.
+Dynamic insertion translated in 834 ms; mixed Persian/English RTL text translated; form value was unchanged. Heap snapshots are directional, not leak proof. Real-provider latency, discovery/write separation, p50/p95 repetitions, cache ratios, mutation storms, GC-aware cleanup, lifecycle failures, and branded Chrome remain M1 gates. Full raw context is in `docs/archive/v2-performance-baseline.md`.
 
 ## 5. Frontend, accessibility, and BiDi audit
 

@@ -9,6 +9,7 @@ import type {
   ProviderDefinition,
 } from '@translation/shared-types';
 import { extensionResponseSchema, type ExtensionResponse } from '@translation/shared-validation';
+import { Button, EmptyState, FormField } from '@translation/ui';
 import { ErrorBoundary } from '../../src/ui/ErrorBoundary';
 import '../../src/ui/global.css';
 
@@ -259,14 +260,13 @@ function OptionsApp() {
             {activeProvider.privacyNotice}
           </p>
         )}
-        <button
-          className="secondary-button"
-          type="button"
+        <Button
+          variant="secondary"
           disabled={!activeProvider?.enabled || testingProvider}
           onClick={() => void testSelectedProvider()}
         >
           {testingProvider ? 'Testing connection...' : 'Test selected provider'}
-        </button>
+        </Button>
         <small>
           Only backend-enabled, allowlisted providers and models are selectable. Keys never enter
           the extension.
@@ -359,8 +359,7 @@ function OptionsApp() {
           checked={settings.selectedTextEnabled}
           onChange={(value) => update('selectedTextEnabled', value)}
         />
-        <label>
-          Excluded domains
+        <FormField label="Excluded domains" hint="One hostname per line. Subdomains are included.">
           <textarea
             value={exclusions}
             placeholder={'example.com\ninternal.example.org'}
@@ -369,8 +368,7 @@ function OptionsApp() {
               setExclusions(event.target.value);
             }}
           />
-          <small>One hostname per line. Subdomains are included.</small>
-        </label>
+        </FormField>
       </section>
 
       <section className="settings-card">
@@ -379,15 +377,13 @@ function OptionsApp() {
             <h2>Personal glossary</h2>
             <p>Apply preferred terms or preserve names in translation requests.</p>
           </div>
-          <button
-            className="secondary-button compact-button"
-            type="button"
-            onClick={addGlossaryEntry}
-          >
+          <Button variant="secondary" className="compact-button" onClick={addGlossaryEntry}>
             Add term
-          </button>
+          </Button>
         </div>
-        {settings.glossary.length === 0 && <p className="empty-copy">No glossary terms yet.</p>}
+        {settings.glossary.length === 0 && (
+          <EmptyState className="empty-copy">No glossary terms yet.</EmptyState>
+        )}
         {settings.glossary.map((entry) => (
           <div className="glossary-row" key={entry.id}>
             <input
@@ -413,9 +409,9 @@ function OptionsApp() {
               />{' '}
               Preserve
             </label>
-            <button
-              className="text-button danger-text"
-              type="button"
+            <Button
+              variant="link"
+              className="danger-text"
               onClick={() =>
                 update(
                   'glossary',
@@ -424,18 +420,17 @@ function OptionsApp() {
               }
             >
               Remove
-            </button>
+            </Button>
           </div>
         ))}
       </section>
 
       <div className="settings-actions">
-        <button className="primary-button" type="button" onClick={() => void save()}>
+        <Button variant="primary" onClick={() => void save()}>
           Save settings
-        </button>
-        <button
-          className="secondary-button"
-          type="button"
+        </Button>
+        <Button
+          variant="secondary"
           onClick={() =>
             void sendMessage({
               version: 1,
@@ -446,10 +441,10 @@ function OptionsApp() {
           }
         >
           Clear translation cache
-        </button>
-        <button className="secondary-button" type="button" onClick={() => void exportDiagnostics()}>
+        </Button>
+        <Button variant="tertiary" onClick={() => void exportDiagnostics()}>
           Download privacy-safe diagnostics
-        </button>
+        </Button>
       </div>
       {saved && (
         <p className="success-copy" role="status">

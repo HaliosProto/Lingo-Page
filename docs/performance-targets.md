@@ -1,6 +1,6 @@
 # Performance targets
 
-The initial targets below are retained. The first reproducible post-MVP measurements and their limitations are in `docs/v2-performance-baseline.md`; Milestone 1 must recalibrate targets with repeated traces and lifecycle evidence.
+The initial targets below are retained. The first reproducible post-MVP measurements and their limitations are archived in `docs/archive/v2-performance-baseline.md`; Milestone 1 added repeated reuse evidence, while Milestone 2 owns further profiling and target recalibration.
 
 These are initial product targets for local representative fixtures; measure and revise after Milestone 2 profiling.
 

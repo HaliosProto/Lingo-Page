@@ -66,7 +66,7 @@ Hono provides small route composition and Web-standard request/response handling
 
 Normal translation sessions remain memory-only in the top-frame page shell. The shell owns exact originals/translations, live bindings, lifecycle, display mode, explicit change-scan result, and changed-state reconciliation; the service worker owns routing, request cancellation, and privacy-safe progress. Explicit translated-copy actions put a bounded cloned bundle in `chrome.storage.session`, bind it to one visible tab before navigation, and delete the central page-text copy only after destination acknowledgment or failure cleanup. The destination keeps its independent validated session in its own page-shell memory. Explicit comparison actions use a single-use owning-tab token and a temporary bundle containing a bounded allowlisted structural snapshot; the extension reconstructs two inert read-only trees and deletes transfer storage after retrieval or tab cleanup. Future account data and translation memory remain separate and require explicit approval.
 
-See `docs/milestone-1-specification.md`, ADR 0007, ADR 0009, and ADR 0010 for the session, acknowledged copy handoff, sanitized comparison, bounds, and rollback contracts.
+See `docs/milestones/milestone-1-specification.md`, ADR 0007, ADR 0009, and ADR 0010 for the session, acknowledged copy handoff, sanitized comparison, bounds, and rollback contracts.
 
 The local release-candidate workflow builds an unpacked production extension, starts the API on `127.0.0.1`, and lets the extension select only backend-enabled provider/model IDs. Credentials, endpoints, capability policy, and model allowlists remain backend-owned. The extension can export metadata-only diagnostics without page text or URLs.
 

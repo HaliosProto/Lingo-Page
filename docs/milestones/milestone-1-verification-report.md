@@ -131,7 +131,7 @@ Observed failures were resolved or bounded:
 
 ## Documentation and decisions
 
-- `docs/milestone-1-specification.md` is the accepted implementation specification.
+- `docs/milestones/milestone-1-specification.md` is the accepted implementation specification.
 - ADR 0007 records page-owned lifecycle/display separation and BiDi boundaries.
 - ADR 0009 records exact-origin optional access, final-origin checks, hydration reconciliation, acknowledgment-gated translated-copy handoff, and visible-tab retention.
 - ADR 0010 records bounded sanitized structural comparison and full-page split behavior.

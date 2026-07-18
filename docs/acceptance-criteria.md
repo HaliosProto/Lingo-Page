@@ -1,59 +1,78 @@
 # Acceptance criteria
 
-The original local-MVP acceptance history remains below where useful. The active program gates are the post-MVP Milestones 0 and 1 defined here and in `ROADMAP.md`.
+Status: CURRENT
 
-## Milestone 0
+`ROADMAP.md` defines milestone order. This document defines observable gates; implementation existence alone is not acceptance.
 
-- Repository/current/baseline commit, remote, ignored secret files, toolchain, architecture, and living-status contradictions are evidenced.
-- Product constitution/vision, complete roadmap, risks, current/platform architecture, 24-stage lifecycle, design/accessibility/BiDi, data lifecycle, research, competitive, marketing, workflow, project memory, user actions, and ADR decisions are coherent and linked.
-- Spec Kit is safely integrated or its missing prerequisite, exact official-only isolated plan, and non-blocking status are recorded.
-- Beads has one program parent, one epic per approved milestone, and an implementation-ready M1 graph without premature distant tasks.
-- Ordinary defensive security and reproducible deterministic performance baselines exist; findings/limitations are classified honestly.
-- Applicable format/lint/type/test/build/E2E/security/manifest/bundle checks pass or exact limitations are recorded.
-- Diff/staged content contains no secrets/generated clutter/unrelated user file; an authorized local commit is created; M1 implementation has not begun.
+## Global gate
 
-## Milestone 1
+- Scope remains within the approved milestone and preserves the product constitution.
+- Security/privacy, package boundaries, runtime validation, least privilege, plain-text DOM mutation, exact restore safety, and backend-only credentials remain intact.
+- Success, failure, boundary, cancellation/recovery, navigation, and adjacent regression cases have proportionate tests.
+- Applicable formatting, lint, strict types, unit/integration, production build, runtime, managed-browser, security, documentation, and diff checks pass.
+- Branded-browser, assistive-technology, persistence, provider, or external-system claims are made only from the exact evidence performed.
+- Living specifications, ADRs, limitations, tasks, changelog, and verification evidence are reconciled; historical reports remain historical.
+- The final diff contains only intentional files, no secrets/ignored environment data/generated clutter, and no concealed high-severity issue.
 
-- Display mode is independent from lifecycle; original and translated values remain reusable after full, partial, and cancelled translation.
-- Original/translation switching repeats with zero backend/provider calls; exact originals and page interaction remain intact.
-- Changed scans distinguish confident new/modified/removed/reordered records from uncertain duplicates; updates transmit only confident changed eligible text.
-- Translated copies request only an explicitly approved current HTTP(S) origin from the open-copy gesture, clone bounded validated sessions, recheck final-origin access, confidently match the same navigation, reconcile one bounded hydration pass, acknowledge only after the final translated DOM, make zero provider calls for matches, and remain isolated from the source. Denial and revocation preserve the source and fail closed without repeated prompting or an all-site grant.
-- Comparison renders aligned plain text without source HTML/scripts, supports keyboard/copy/responsive/BiDi states, and fails safely for invalid or expired handoff.
+## M1 — completed contract
+
+- Original/Translation switching and scans reuse retained page-owned state with zero provider calls after full, partial, or cancelled translation.
+- Change scans distinguish confident new/modified/removed/reordered records from uncertain duplicates; updates transmit only confident eligible changes.
+- Translated copies request only the explicit current HTTP(S) origin, validate/recheck navigation, reconcile one bounded hydration pass, acknowledge final translated DOM, preserve the visible destination on failure, and remain source-isolated.
+- Comparison reconstructs bounded allowlisted structure as inert read-only content, supports linked/unlinked scroll, keyboard/pointer divider, reset/swap, responsive/BiDi/motion states, and single-use handoff.
+- Adaptive recovery preserves valid stable-ID results, retries unresolved IDs only with bounded splitting, continues the queue, and reports honest unresolved state without unsafe recursive retries.
 - End session is separately confirmed, restores originals, cancels work, stops observers/timers, and clears only the owning tab session.
-- The 2,206-segment managed fixture records switch/copy/comparison time, request deltas, long tasks, and directional memory evidence against the Milestone 0 baseline.
-- Saved and OS reduced motion, semantic controls, narrow/dark layouts, and mixed RTL/LTR content have managed evidence; branded Chrome and screen-reader evidence are reported separately.
-- Required permissions retain `activeTab` without `<all_urls>`; optional HTTP/HTTPS patterns are granted only per current origin. Plain-text output, backend-only keys, runtime validation, bounds, and privacy defaults are preserved; deferred restart/SPA/viewport work is not claimed.
-- Incomplete provider batches preserve every valid stable-ID record, retry unresolved IDs only through bounded adaptive splitting, reduce only the current session's safe batch target, continue the later queue, and report honest final unresolved state without recursively retrying authentication, quota, refusal, model, or configuration failures.
-- One translated-copy click records a metadata-only expiring intent, requests the exact origin directly from the gesture, and resumes idempotently from either the permission callback or exact-origin permission event. Grant creates exactly one destination; denial, expiry, wrong origin, redirect mismatch, and revocation never mutate the source or apply the bundle to another site.
+- Managed long-page, accessibility, BiDi, permission, manifest, bundle, and security evidence is recorded in `docs/milestones/milestone-1-verification-report.md`; formal and branded-browser gaps remain explicit.
 
-## Milestone 2
+## M1.5 — active gate
 
-- Local fixtures prove safe eligibility and in-place mutation.
-- Original text restores without replacing page HTML.
-- Mock provider output is deterministic and visibly transformed.
-- Cancellation and stale navigation cannot corrupt the page.
-- Excluded content and extension-owned UI remain unchanged.
-- Browser scenarios and console checks pass.
+### Repository and documentation
 
-## Milestone 3
+- `docs/INDEX.md` identifies the canonical hierarchy, purpose, status, source of truth, related milestone, superseded replacements, and historical evidence locations.
+- Every pre-change document is classified in `docs/repository-cleanup-inventory.md` before structural changes.
+- Historical milestone evidence is preserved under `docs/milestones/` or `docs/archive/`; all active references are updated and valid.
+- `TASKS.md` is a concise current operational index; `AGENTS.md` contains durable repository instructions; Beads/memory hold concise execution state and links rather than copied specifications.
+- Duplicate roadmap material is consolidated into `ROADMAP.md`; confirmed junk is removed only after reference checks; no canonical information is lost.
 
-- Extension contacts only the API.
-- Provider key exists only in backend secret configuration and is absent from the extension bundle/source maps.
-- Request/response limits, auth, timeouts, safe retry, rate limits, usage, and normalized errors are tested.
-- Real-provider smoke test is opt-in and documented.
+### Roadmap and billing
 
-## Milestone 4+
+- The sequence is M1, M1.5, M2 reliability, M3 quality/context, M4 finished extension UX, M5 advanced browser features, M6 accounts/usage, M7 payments, M8 cross-browser GA, then M9 desktop, M10 mobile, M11 Vision/audio/meetings, and M12 Studio/enterprise.
+- M8 is a hard commercial extension-GA gate; desktop/mobile implementation is explicitly blocked until it is accepted.
+- `docs/billing/architecture.md` is provider-neutral, backend-authoritative, and separates authentication, billing, entitlements, usage metering, provider-cost controls, and support.
+- Webhook signatures/idempotency/replay, reconciliation, payment failure, trial abuse, usage integrity, plan transitions, cancellation/refunds, deletion/retention, tax/region/sanctions/jurisdiction, merchant-of-record/direct-processor, and later app-store interactions are covered.
+- No payment/provider account, live service, price, deployment, publication, or legal structure is purchased/configured/assumed.
 
-Use the criteria in `docs/verification-matrix.md` as the gate. No milestone is complete with unresolved high-severity security, privacy, correctness, or data-loss failures.
+### Frontend foundation and UX
 
-Partial, paused, cancelled, or stopped translation must show a normalized plain-language reason, completed and remaining counts, whether an automatic retry will occur, and relevant recovery actions. Technical details are optional and privacy-safe. Automatic retry honors the displayed delay; exhaustion changes the reason; manual continuation processes only failed/pending sections and preserves completed DOM changes.
+- Shared tokens cover typography, spacing, radii, surfaces, borders, focus, semantic status colors, shadows, control size, and reduced motion in light/dark themes.
+- Shared UI primitives exist for primary/secondary/tertiary/destructive/link actions, form fields, segmented controls, status/error/warning cards, progress/loading, permission requests, empty states, and accessible disclosure.
+- Popup preserves 360 px width while clarifying its primary action, session view switch, comparison, page-change scan/update, optional translated-copy permission, recovery, advanced refresh, and destructive end-session hierarchy.
+- Options and comparison use the same action/status/focus language without changing core translation behavior or removing recovery controls.
+- Ordinary UI does not expose raw HTTP failures, private endpoints, fingerprints, or internal IDs; technical diagnostics remain bounded and disclosed on demand.
 
-## Universal provider release-candidate extension
+### Runtime evidence
 
-- Every provider is registered by stable ID with honest configured/enabled state, safe capability metadata, and backend-only credentials/endpoints.
-- Native Gemini, OpenAI, Anthropic, Cohere, and DeepL requests and the generic compatible profiles pass mocked contract tests.
-- Extension selection contains only backend-enabled providers and allowlisted models; backend validation rejects invented values.
-- No selected-provider failure silently sends text to another provider.
-- Malformed, fenced, refused, truncated, partial, stale, duplicate, unknown, markup-injecting, token-changing, or excessively expanded output fails safely.
-- Normal automated tests and browser tests make no paid provider request. Live test and benchmark commands are explicit and documented.
-- Full verification, browser mock regression, secret/bundle scans, and a rebuilt local unpacked candidate pass before local commit.
+- Managed Chromium covers no-session, translating/partial/completed, automatic incomplete-response recovery, original/translated, no-change/changed/updated, permission explanation/denial/copy-ready, comparison, provider error, restricted page, light/dark, RTL/LTR/mixed direction, 390 px, 200% zoom, reduced motion, and keyboard focus.
+- Screenshots and numeric region/overflow checks reject cropped controls, overlap, horizontal overflow, dense unreadable cards, color-only status, broken BiDi order, and inconsistent action styling.
+- Formal screen-reader/contrast and branded-Chrome claims remain separate unless actually performed.
+
+### Closure
+
+- Full old-path/reference and Markdown-link checks, Beads lint/preflight, dependency-cycle checks, secret/permission/manifest/bundle/source-map inspection, performance suite where applicable, and Git diff checks pass or exact blockers are recorded.
+- Work remains only on `chore/repository-cleanup-roadmap-and-extension-ux`; focused commits are pushed and a draft pull request is opened but not merged.
+- M2, desktop, mobile, Vision, meetings, and Studio implementation have not begun.
+
+## M2-M7 planning gates
+
+- M2: lifecycle/restart/reload/SPA/sleep-wake resilience, large-page/mutation/memory performance, adaptive batching, provider backoff, and degraded/offline recovery have accepted specifications and evidence.
+- M3: explicit bounded context/brief/glossary/feedback/routing and quality evaluation pass privacy, recipient, language, and human-review gates.
+- M4: finished extension popup/side-panel/options/comparison/onboarding design system passes formal accessibility, BiDi, responsive, theme, motion, and visual acceptance.
+- M5: each advanced browser capability proves browser feasibility, explicit activation, protected-field handling, retention, export, and format safety.
+- M6: production authentication/accounts/teams/sync/data controls/metering/quotas/entitlements/audit/deletion/export/observability pass concurrency, revocation, abuse, privacy, and security gates.
+- M7: plans/subscriptions/trials/coupons/upgrades/downgrades/cancellation/refunds/failures/portal/invoices/seats/enterprise/cost protection pass billing, reconciliation, jurisdiction, legal, security, privacy, and support acceptance.
+
+## M8 — extension General Availability gate
+
+M8 requires the complete gate in `ROADMAP.md`: reliable large pages and lifecycle/SPA behavior; no known critical/high security issue; least privilege; accepted privacy/accessibility/BiDi/finished UX; accounts/data controls/metering/entitlements/subscriptions/cancellation/cost protection; Chrome/Edge/Firefox acceptance and Safari decision; store/support/monitoring/incident/beta/rollback readiness.
+
+M9/M10 implementation remains blocked until M8 is accepted.

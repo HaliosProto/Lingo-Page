@@ -17,6 +17,14 @@ import type {
 } from '@translation/shared-types';
 import { extensionResponseSchema, type ExtensionResponse } from '@translation/shared-validation';
 import {
+  Button,
+  Disclosure,
+  PermissionRequest,
+  ProgressIndicator,
+  SegmentedControl,
+  StatusCard,
+} from '@translation/ui';
+import {
   failurePresentation,
   progressLabel,
   safeFailureDiagnostics,
@@ -568,13 +576,9 @@ function PopupApp() {
         </div>
         <div className="header-actions">
           <span className="version-pill">LOCAL · v{browser.runtime.getManifest().version}</span>
-          <button
-            className="text-button"
-            type="button"
-            onClick={() => void browser.runtime.openOptionsPage()}
-          >
+          <Button variant="link" onClick={() => void browser.runtime.openOptionsPage()}>
             Settings
-          </button>
+          </Button>
         </div>
       </header>
 
@@ -671,20 +675,21 @@ function PopupApp() {
         </label>
       </section>
 
-      <section className="progress-panel" aria-live="polite">
-        <div className="progress-copy">
-          <strong>{progressLabel(progress)}</strong>
-          <span>{percent}%</span>
-        </div>
-        <progress max="100" value={percent} />
-        <div className="progress-metrics" aria-label="Translation queue status">
-          <span>{progress.translatedSegments} translated</span>
-          <span>{progress.queuedSegments ?? 0} queued</span>
-          <span>{progress.waitingSegments ?? 0} waiting</span>
-          <span>{progress.retryingSegments ?? 0} retrying</span>
-          <span>{progress.failedSegments} failed</span>
-        </div>
-      </section>
+      <ProgressIndicator
+        className="progress-panel"
+        aria-live="polite"
+        label={progressLabel(progress)}
+        value={percent}
+        details={
+          <div className="progress-metrics" aria-label="Translation queue status">
+            <span>{progress.translatedSegments} translated</span>
+            <span>{progress.queuedSegments ?? 0} queued</span>
+            <span>{progress.waitingSegments ?? 0} waiting</span>
+            <span>{progress.retryingSegments ?? 0} retrying</span>
+            <span>{progress.failedSegments} failed</span>
+          </div>
+        }
+      />
 
       {translatedCopy && !hasSession && (
         <section
@@ -719,7 +724,7 @@ function PopupApp() {
             </div>
             <span className="session-state">{sessionStateLabel(progress)}</span>
           </div>
-          <div className="segmented-control" role="group" aria-label="Page view">
+          <SegmentedControl className="segmented-control" label="Page view">
             <button
               type="button"
               aria-pressed={activeView === 'original'}
@@ -736,7 +741,7 @@ function PopupApp() {
             >
               Translated
             </button>
-          </div>
+          </SegmentedControl>
           {translatedCopy && (
             <div
               className="change-summary"
@@ -763,16 +768,16 @@ function PopupApp() {
                 {translatedCopy.providerRequests} provider requests
               </span>
               {(translatedCopy.status === 'partial' || translatedCopy.status === 'no-matches') && (
-                <button
-                  className="primary-button compact-button"
-                  type="button"
+                <Button
+                  variant="primary"
+                  className="compact-button"
                   disabled={working || busy}
                   onClick={() => void continueTranslation()}
                 >
                   {translatedCopy.status === 'partial'
                     ? 'Translate unmatched sections'
                     : 'Translate this page'}
-                </button>
+                </Button>
               )}
             </div>
           )}
@@ -803,68 +808,70 @@ function PopupApp() {
                     {progress.changeScan.summary.reorderedSegments} reordered ·{' '}
                     {progress.changeScan.summary.uncertainSegments} uncertain
                   </span>
-                  <button
-                    className="primary-button compact-button"
-                    type="button"
+                  <Button
+                    variant="primary"
+                    className="compact-button"
                     disabled={working || busy}
                     onClick={() => void runSessionCommand('UPDATE_CHANGED_SECTIONS')}
                   >
                     {activeSessionCommand === 'UPDATE_CHANGED_SECTIONS'
                       ? 'Updating…'
                       : 'Update changed sections'}
-                  </button>
+                  </Button>
                 </>
               )}
             </div>
           )}
-          <p className="site-access-note">{TRANSLATED_COPY_ACCESS_EXPLANATION}</p>
+          <PermissionRequest
+            className="session-permission"
+            description={TRANSLATED_COPY_ACCESS_EXPLANATION}
+          />
           <div className="session-actions">
-            <button
-              type="button"
+            <Button
+              variant="secondary"
               disabled={working}
               onClick={() => void openSessionView('OPEN_TRANSLATED_COPY')}
             >
               Open translated copy
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="primary"
               disabled={working}
               onClick={() => void openSessionView('OPEN_COMPARISON_VIEW')}
             >
-              Open comparison view
-            </button>
-            <button
-              type="button"
+              Compare original and translation
+            </Button>
+            <Button
+              variant="tertiary"
               disabled={working}
               onClick={() => void runSessionCommand('SCAN_PAGE_CHANGES')}
             >
               {activeSessionCommand === 'SCAN_PAGE_CHANGES'
                 ? 'Checking…'
                 : 'Check for new or changed content'}
-            </button>
+            </Button>
           </div>
-          <details className="advanced-actions">
-            <summary>Advanced actions</summary>
+          <Disclosure className="advanced-actions" label="Advanced actions">
             <p>Refreshing may use provider quota. Ending discards this session only.</p>
             <div>
-              <button type="button" disabled={working || busy} onClick={confirmRefresh}>
+              <Button variant="tertiary" disabled={working || busy} onClick={confirmRefresh}>
                 Refresh translation
-              </button>
-              <button
-                className="danger-text"
-                type="button"
-                disabled={working}
-                onClick={confirmEndSession}
-              >
+              </Button>
+              <Button variant="destructive" disabled={working} onClick={confirmEndSession}>
                 End translation session
-              </button>
+              </Button>
             </div>
-          </details>
+          </Disclosure>
         </section>
       )}
 
       {failure && failureDetails && (
-        <section className="failure-panel" role="alert" aria-live="assertive">
+        <section
+          className="failure-panel ui-status-card"
+          data-tone="danger"
+          role="alert"
+          aria-live="assertive"
+        >
           <p className="failure-message">{failureDetails.message}</p>
           {failureDetails.secondaryMessage && (
             <p className="failure-secondary">{failureDetails.secondaryMessage}</p>
@@ -872,15 +879,15 @@ function PopupApp() {
           {failureDetails.actions.length > 0 && (
             <div className="failure-actions">
               {failureDetails.actions.map((action, index) => (
-                <button
-                  className={index === 0 ? 'primary-button compact-button' : 'secondary-button'}
-                  type="button"
+                <Button
+                  variant={index === 0 ? 'primary' : 'secondary'}
+                  className="compact-button"
                   key={action.id}
                   disabled={working || busy}
                   onClick={() => handleFailureAction(action.id)}
                 >
                   {action.label}
-                </button>
+                </Button>
               ))}
             </div>
           )}
@@ -894,13 +901,12 @@ function PopupApp() {
                 </div>
               ))}
             </dl>
-            <button
-              className="text-button"
-              type="button"
+            <Button
+              variant="link"
               onClick={() => void copyDiagnostics(failure, failureProvider?.displayName)}
             >
               {diagnosticsCopied ? 'Diagnostics copied' : 'Copy diagnostics'}
-            </button>
+            </Button>
           </details>
         </section>
       )}
@@ -908,35 +914,35 @@ function PopupApp() {
       {progress.notices?.map((notice) => {
         const noticeDetails = failurePresentation(notice);
         return (
-          <section className="notice-panel" key={notice.reason} aria-live="polite">
-            <p>{noticeDetails.message}</p>
-            {noticeDetails.secondaryMessage && <p>{noticeDetails.secondaryMessage}</p>}
-          </section>
+          <StatusCard
+            className="notice-panel"
+            key={notice.reason}
+            tone="warning"
+            title={noticeDetails.message}
+            description={noticeDetails.secondaryMessage}
+            aria-live="polite"
+          />
         );
       })}
 
       {busy ? (
-        <button
-          className="secondary-button danger-button"
-          type="button"
-          onClick={() => void cancelTranslation()}
-        >
+        <Button variant="destructive" fullWidth onClick={() => void cancelTranslation()}>
           Cancel translation
-        </button>
+        </Button>
       ) : !failure && !hasSession ? (
-        <button
-          className="primary-button"
-          type="button"
+        <Button
+          variant="primary"
+          fullWidth
           disabled={!supported || !backendReady || working}
           onClick={() => void startTranslation()}
         >
           {working ? 'Starting…' : 'Translate page'}
-        </button>
+        </Button>
       ) : null}
       {!hasSession && progress.translatedSegments > 0 && (
-        <button className="secondary-button" type="button" onClick={() => void restorePage()}>
+        <Button variant="secondary" fullWidth onClick={() => void restorePage()}>
           Show original
-        </button>
+        </Button>
       )}
 
       <section className="connection-row" aria-live="polite">
@@ -951,9 +957,8 @@ function PopupApp() {
       {error && (
         <div className="error-banner" role="alert">
           <span>{error}</span>
-          <button
-            className="text-button"
-            type="button"
+          <Button
+            variant="link"
             onClick={() =>
               retrySessionCommand
                 ? void runSessionCommand(retrySessionCommand)
@@ -961,7 +966,7 @@ function PopupApp() {
             }
           >
             Retry
-          </button>
+          </Button>
         </div>
       )}
       <footer className="footer-row">

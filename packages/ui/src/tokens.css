@@ -1,39 +1,110 @@
 :root,
 :root[data-theme='light'] {
   color-scheme: light;
-  --translation-ink: #18212b;
-  --translation-muted: #627181;
-  --translation-accent: #2764d8;
-  --translation-surface: #f7f9fc;
-  --translation-border: #d7dee8;
-  --translation-danger: #b42318;
+
+  --translation-ink: #172033;
+  --translation-muted: #5d6b82;
+  --translation-subtle: #7c899d;
+  --translation-accent: #285fd1;
+  --translation-accent-hover: #194db8;
+  --translation-on-accent: #ffffff;
+  --translation-background: #f5f7fb;
+  --translation-surface: #ffffff;
+  --translation-surface-raised: #ffffff;
+  --translation-surface-subtle: #eef3fb;
+  --translation-border: #d5ddea;
+  --translation-border-strong: #b8c4d6;
+  --translation-focus: #2563eb;
+
+  --translation-info: #285fd1;
+  --translation-info-surface: #edf3ff;
   --translation-success: #087443;
+  --translation-success-surface: #eaf8f1;
+  --translation-warning: #8a5a00;
+  --translation-warning-surface: #fff7df;
+  --translation-danger: #b42318;
+  --translation-danger-surface: #fff0ef;
+
+  --translation-text-xs: 0.6875rem;
+  --translation-text-sm: 0.75rem;
+  --translation-text-md: 0.875rem;
+  --translation-text-lg: 1.0625rem;
+  --translation-text-xl: 1.4375rem;
+  --translation-leading-tight: 1.25;
+  --translation-leading-normal: 1.5;
+
+  --translation-space-1: 4px;
+  --translation-space-2: 8px;
+  --translation-space-3: 12px;
+  --translation-space-4: 16px;
+  --translation-space-5: 20px;
+  --translation-space-6: 24px;
+  --translation-space-8: 32px;
+
   --translation-radius-small: 8px;
-  --translation-radius-medium: 14px;
+  --translation-radius-medium: 12px;
+  --translation-radius-large: 16px;
+  --translation-radius-pill: 999px;
+  --translation-shadow-small: 0 1px 2px rgb(23 32 51 / 8%);
+  --translation-shadow-medium: 0 8px 24px rgb(23 32 51 / 10%);
+  --translation-control-height: 40px;
   --translation-motion-fast: 120ms;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']):not([data-theme='dark']) {
-    --translation-ink: #eef3f8;
-    --translation-muted: #a9b7c6;
+    color-scheme: dark;
+    --translation-ink: #eef3fb;
+    --translation-muted: #a9b7ca;
+    --translation-subtle: #8797ad;
     --translation-accent: #8fb2ff;
-    --translation-surface: #18212b;
-    --translation-border: #354352;
-    --translation-danger: #ff9f94;
+    --translation-accent-hover: #b3c9ff;
+    --translation-on-accent: #101827;
+    --translation-background: #101722;
+    --translation-surface: #182230;
+    --translation-surface-raised: #1d2838;
+    --translation-surface-subtle: #202d3e;
+    --translation-border: #35465a;
+    --translation-border-strong: #4a5e76;
+    --translation-focus: #9dbbff;
+    --translation-info: #9dbbff;
+    --translation-info-surface: #202f4a;
     --translation-success: #7ee2b8;
+    --translation-success-surface: #17372d;
+    --translation-warning: #ffd37a;
+    --translation-warning-surface: #3b301b;
+    --translation-danger: #ffaaa1;
+    --translation-danger-surface: #422522;
+    --translation-shadow-small: 0 1px 2px rgb(0 0 0 / 24%);
+    --translation-shadow-medium: 0 8px 24px rgb(0 0 0 / 28%);
   }
 }
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --translation-ink: #eef3f8;
-  --translation-muted: #a9b7c6;
+  --translation-ink: #eef3fb;
+  --translation-muted: #a9b7ca;
+  --translation-subtle: #8797ad;
   --translation-accent: #8fb2ff;
-  --translation-surface: #18212b;
-  --translation-border: #354352;
-  --translation-danger: #ff9f94;
+  --translation-accent-hover: #b3c9ff;
+  --translation-on-accent: #101827;
+  --translation-background: #101722;
+  --translation-surface: #182230;
+  --translation-surface-raised: #1d2838;
+  --translation-surface-subtle: #202d3e;
+  --translation-border: #35465a;
+  --translation-border-strong: #4a5e76;
+  --translation-focus: #9dbbff;
+  --translation-info: #9dbbff;
+  --translation-info-surface: #202f4a;
   --translation-success: #7ee2b8;
+  --translation-success-surface: #17372d;
+  --translation-warning: #ffd37a;
+  --translation-warning-surface: #3b301b;
+  --translation-danger: #ffaaa1;
+  --translation-danger-surface: #422522;
+  --translation-shadow-small: 0 1px 2px rgb(0 0 0 / 24%);
+  --translation-shadow-medium: 0 8px 24px rgb(0 0 0 / 28%);
 }
 
 @media (prefers-reduced-motion: reduce) {

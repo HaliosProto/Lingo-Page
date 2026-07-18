@@ -2,7 +2,7 @@
 
 Lingo Page is a privacy-first Chrome extension and local application API for translating eligible webpage text in place. The local release candidate is verified with a deterministic mock provider and includes a backend-only universal provider registry for optional local testing.
 
-The repository is governed by `PRODUCT_CONSTITUTION.md`, `PRODUCT_VISION.md`, and `ROADMAP.md`. The original Milestones 0-6 describe implemented local-MVP history; the current program foundation is recorded in `docs/milestone-0-verification-report.md`, and the durable-session milestone is recorded in `docs/milestone-1-verification-report.md`.
+The repository is governed by `PRODUCT_CONSTITUTION.md`, `PRODUCT_VISION.md`, and `ROADMAP.md`. Start with `docs/INDEX.md` for the canonical document hierarchy. Milestone 0/1 specifications and evidence are preserved under `docs/milestones/`; older local verification evidence is under `docs/archive/`.
 
 ## What works
 
@@ -66,11 +66,13 @@ No deployment, Chrome Web Store publication, real-provider call, account system,
 
 ## Program documentation
 
+- Documentation map and cleanup inventory: `docs/INDEX.md`, `docs/repository-cleanup-inventory.md`
 - Current architecture audit: `docs/current-architecture-audit.md`
 - Platform direction: `docs/platform-architecture.md`
 - Security baseline: `docs/security-baseline.md`
-- Performance baseline: `docs/v2-performance-baseline.md`
-- Durable-session specification and evidence: `docs/milestone-1-specification.md`, `docs/milestone-1-verification-report.md`
+- Performance baseline: `docs/archive/v2-performance-baseline.md`
+- Durable-session specification and evidence: `docs/milestones/milestone-1-specification.md`, `docs/milestones/milestone-1-verification-report.md`
+- Billing/entitlement boundary: `docs/billing/architecture.md`
 - Design, accessibility, and BiDi: `docs/design-strategy.md`, `docs/accessibility.md`, `docs/bidi-safety.md`
 - Workflow, task graph, and memory: `docs/tooling-and-workflow.md`, `docs/project-memory.md`
 - Research and positioning: `docs/research-registry.md`, `docs/competitive-parity.md`, `docs/marketing-strategy.md`
