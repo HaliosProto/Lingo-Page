@@ -1,5 +1,6 @@
 import { globSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import process from 'node:process';
 
 const repositoryRoot = resolve(import.meta.dirname, '..');
 const manifestPaths = [

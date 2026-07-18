@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
+import process from 'node:process';
 import { globSync } from 'node:fs';
 
 const repositoryRoot = resolve(import.meta.dirname, '..');
