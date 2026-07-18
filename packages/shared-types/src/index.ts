@@ -109,6 +109,35 @@ export type TranslatedCopyApplicationSummary = {
   providerRequests: 0;
 };
 
+export type TranslatedCopyIntentState =
+  | 'CREATED'
+  | 'REQUESTING_PERMISSION'
+  | 'PERMISSION_GRANTED'
+  | 'OPENING_DESTINATION'
+  | 'DESTINATION_CREATED'
+  | 'APPLYING_TRANSLATION'
+  | 'COMPLETED'
+  | 'DENIED'
+  | 'FAILED'
+  | 'EXPIRED';
+
+export type TranslatedCopyIntentRecord = {
+  version: 1;
+  intentId: string;
+  state: TranslatedCopyIntentState;
+  sourceTabId: number;
+  sessionId: string;
+  originPattern: string;
+  navigationIdentity: string;
+  providerId: ProviderId;
+  modelId: string;
+  createdAt: number;
+  updatedAt: number;
+  expiresAt: number;
+  destinationTabId?: number;
+  failureCode?: 'permission-revoked' | 'source-changed' | 'destination-failed' | 'expired';
+};
+
 export type TranslationComparisonElementTag =
   | 'main'
   | 'article'
@@ -256,6 +285,32 @@ export type TranslationFailureMetadata = {
   unsupportedCount?: number;
   excludedCount?: number;
   causeReason?: Exclude<TranslationFailureReason, 'RETRY_EXHAUSTED'>;
+  failureCategory?:
+    | TranslationResponseRecoveryClassification
+    | 'rate-limit'
+    | 'timeout'
+    | 'authentication'
+    | 'quota'
+    | 'provider-refusal'
+    | 'retry-exhaustion';
+  requestedCount?: number;
+  returnedValidCount?: number;
+  missingCount?: number;
+  duplicateCount?: number;
+  unknownCount?: number;
+  emptyCount?: number;
+  parseFailure?: boolean;
+  finishReason?: string;
+  responseTruncated?: boolean;
+  splitDepth?: number;
+  smallestAttemptedBatch?: number;
+  unresolvedCount?: number;
+  inputCharacterCount?: number;
+  estimatedInputTokens?: number;
+  estimatedOutputTokens?: number;
+  responseSize?: number;
+  batchSize?: number;
+  retryHistory?: string;
 };
 
 export type TranslationFailure = {
@@ -341,6 +396,36 @@ export type TranslationResponse = {
     outputTokens?: number;
   };
   partial?: boolean;
+  recovery?: TranslationResponseRecoveryMetadata;
+};
+
+export type TranslationResponseRecoveryClassification =
+  | 'complete'
+  | 'valid-partial'
+  | 'truncated-json'
+  | 'malformed-json'
+  | 'invalid-structured-output'
+  | 'missing-ids'
+  | 'duplicate-ids'
+  | 'unknown-ids'
+  | 'empty-translation';
+
+export type TranslationResponseRecoveryMetadata = {
+  classification: TranslationResponseRecoveryClassification;
+  requestedSegmentIds: string[];
+  returnedSegmentIds: string[];
+  missingSegmentIds: string[];
+  duplicateSegmentIds: string[];
+  unknownSegmentIds: string[];
+  emptySegmentIds: string[];
+  parseFailure: boolean;
+  finishReason?: string;
+  responseTruncated: boolean;
+  inputCharacters: number;
+  estimatedInputTokens: number;
+  estimatedOutputTokens: number;
+  responseBytes: number;
+  batchSize: number;
 };
 
 export type TranslationProgress = {

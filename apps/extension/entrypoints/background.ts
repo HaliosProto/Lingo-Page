@@ -18,6 +18,7 @@ import type {
   TranslationRequest,
   TranslationResponse,
   TranslationSessionBundle,
+  TranslatedCopyIntentRecord,
 } from '@translation/shared-types';
 import { CONTRACT_VERSION } from '@translation/shared-types';
 import { createCacheKey } from '@translation/translation-core';
@@ -33,9 +34,18 @@ import {
   translationSessionBundleSchema,
   translatedCopyHandoffIndexSchema,
   translatedCopyHandoffRecordSchema,
+  translatedCopyIntentRecordSchema,
   type ExtensionResponse,
 } from '@translation/shared-validation';
-import { hasTranslatedCopySiteAccess } from '../src/translated-copy-access';
+import {
+  hasTranslatedCopySiteAccess,
+  translatedCopyOriginPattern,
+} from '../src/translated-copy-access';
+import {
+  TranslatedCopyIntentCoordinator,
+  translatedCopyNavigationIdentity,
+  type TranslatedCopyIntentExecutionHooks,
+} from '../src/translated-copy-intent';
 
 type CacheEntry = { translatedText: string; createdAt: number };
 type CacheStore = Record<string, CacheEntry>;
@@ -49,6 +59,7 @@ const comparisonTokenByTab = new Map<number, string>();
 const COMPARISON_STORAGE_PREFIX = 'comparisonSession:';
 const COPY_HANDOFF_STORAGE_PREFIX = 'translatedCopyHandoff:';
 const COPY_HANDOFF_TAB_PREFIX = 'translatedCopyTab:';
+const COPY_INTENT_STORAGE_PREFIX = 'translatedCopyIntent:';
 const COPY_HANDOFF_TTL_MS = 30_000;
 const MAX_SESSION_BUNDLE_BYTES = 2_000_000;
 type CopyHandoffSummary = {
@@ -84,6 +95,10 @@ const extensionPageCommandTypes = new Set([
   'UPDATE_CHANGED_SECTIONS',
   'REFRESH_TRANSLATION',
   'OPEN_TRANSLATED_COPY',
+  'CREATE_TRANSLATED_COPY_INTENT',
+  'RESUME_TRANSLATED_COPY_INTENT',
+  'DENY_TRANSLATED_COPY_INTENT',
+  'GET_TRANSLATED_COPY_DENIED_ORIGINS',
   'OPEN_TRANSLATED_COPY_FROM_BUNDLE',
   'OPEN_COMPARISON_VIEW',
   'GET_COMPARISON_SESSION',
@@ -103,6 +118,10 @@ function copyHandoffStorageKey(token: string): string {
 
 function copyHandoffTabKey(tabId: number): string {
   return `${COPY_HANDOFF_TAB_PREFIX}${tabId}`;
+}
+
+function copyIntentStorageKey(intentId: string): string {
+  return `${COPY_INTENT_STORAGE_PREFIX}${intentId}`;
 }
 
 function bundleByteLength(bundle: TranslationSessionBundle): number {
@@ -358,6 +377,7 @@ async function openTranslatedCopyFromBundle(
   sourceBundle: TranslationSessionBundle,
   requestId: string,
   sourceTabId?: number,
+  hooks?: TranslatedCopyIntentExecutionHooks,
 ): Promise<ExtensionResponse> {
   const validatedSource = translationSessionBundleSchema.parse(sourceBundle);
   if (bundleByteLength(validatedSource) > MAX_SESSION_BUNDLE_BYTES) {
@@ -395,6 +415,7 @@ async function openTranslatedCopyFromBundle(
       expiresAt,
     }),
   });
+  await hooks?.destinationCreated(copyTab.id);
 
   try {
     await browser.tabs.update(copyTab.id, { url: validatedSource.navigationUrl });
@@ -406,6 +427,7 @@ async function openTranslatedCopyFromBundle(
     ) {
       throw new Error('The destination site does not have translated-copy access.');
     }
+    await hooks?.applyingTranslation(copyTab.id);
     await ensurePageShell(copyTab.id);
     const summary = await waitForCopyAcknowledgement(copyTab.id, token);
     return extensionResponseSchema.parse({
@@ -428,6 +450,7 @@ async function openTranslatedCopy(
   sourceTabId: number,
   sessionId: string,
   requestId: string,
+  hooks?: TranslatedCopyIntentExecutionHooks,
 ): Promise<ExtensionResponse> {
   const [sourceTab, sourceBundle] = await Promise.all([
     browser.tabs.get(sourceTabId),
@@ -436,7 +459,74 @@ async function openTranslatedCopy(
   if (!sourceTab.url || !navigationCompatible(sourceBundle.navigationUrl, sourceTab.url)) {
     throw new Error('The source tab navigation changed before the copy could open.');
   }
-  return await openTranslatedCopyFromBundle(sourceBundle, requestId, sourceTabId);
+  return await openTranslatedCopyFromBundle(sourceBundle, requestId, sourceTabId, hooks);
+}
+
+const translatedCopyIntentStore = {
+  async get(intentId: string): Promise<TranslatedCopyIntentRecord | undefined> {
+    const key = copyIntentStorageKey(intentId);
+    const stored = await browser.storage.session.get(key);
+    const parsed = translatedCopyIntentRecordSchema.safeParse(stored[key]);
+    return parsed.success ? parsed.data : undefined;
+  },
+  async list(): Promise<TranslatedCopyIntentRecord[]> {
+    const stored = await browser.storage.session.get(null);
+    return Object.entries(stored).flatMap(([key, value]) => {
+      if (!key.startsWith(COPY_INTENT_STORAGE_PREFIX)) return [];
+      const parsed = translatedCopyIntentRecordSchema.safeParse(value);
+      return parsed.success ? [parsed.data] : [];
+    });
+  },
+  async set(record: TranslatedCopyIntentRecord): Promise<void> {
+    const parsed = translatedCopyIntentRecordSchema.parse(record);
+    await browser.storage.session.set({ [copyIntentStorageKey(parsed.intentId)]: parsed });
+  },
+  async remove(intentId: string): Promise<void> {
+    await browser.storage.session.remove(copyIntentStorageKey(intentId));
+  },
+};
+
+const translatedCopyIntentCoordinator = new TranslatedCopyIntentCoordinator(
+  translatedCopyIntentStore,
+  browser.permissions,
+  async (intent, hooks) => {
+    const sourceTab = await browser.tabs.get(intent.sourceTabId);
+    if (
+      !sourceTab.url ||
+      (await translatedCopyNavigationIdentity(sourceTab.url)) !== intent.navigationIdentity
+    ) {
+      throw new Error('The source navigation changed before the translated copy could open.');
+    }
+    const response = await openTranslatedCopy(
+      intent.sourceTabId,
+      intent.sessionId,
+      createRequestId(),
+      hooks,
+    );
+    if (response.type !== 'TRANSLATED_COPY_OPENED') {
+      throw new Error('The translated copy did not reach its final translated state.');
+    }
+    return { destinationTabId: response.payload.tabId };
+  },
+);
+
+function translatedCopyIntentStatusResponse(
+  requestId: string,
+  record: TranslatedCopyIntentRecord,
+): ExtensionResponse {
+  return extensionResponseSchema.parse({
+    version: CONTRACT_VERSION,
+    requestId,
+    type: 'TRANSLATED_COPY_INTENT_STATUS',
+    payload: {
+      intentId: record.intentId,
+      state: record.state,
+      originPattern: record.originPattern,
+      ...(record.destinationTabId === undefined
+        ? {}
+        : { destinationTabId: record.destinationTabId }),
+    },
+  });
 }
 
 async function openComparisonView(
@@ -807,6 +897,7 @@ async function translateRequest(request: TranslationRequest): Promise<ExtensionR
   });
 
   let detectedSourceLanguage: string | undefined;
+  let providerRecovery: TranslationResponse['recovery'];
   if (uncached.length > 0) {
     const controller = new AbortController();
     const unregister = registerController(request.sessionId, controller);
@@ -859,6 +950,7 @@ async function translateRequest(request: TranslationRequest): Promise<ExtensionR
         );
       }
       detectedSourceLanguage = parsed.data.detectedSourceLanguage;
+      providerRecovery = parsed.data.recovery;
       for (const translated of parsed.data.translations) {
         translations.set(translated.id, translated.translatedText);
         const original = request.segments.find((segment) => segment.id === translated.id);
@@ -905,16 +997,33 @@ async function translateRequest(request: TranslationRequest): Promise<ExtensionR
     }
   }
 
+  const returnedSegments = request.segments.flatMap((segment) => {
+    const translatedText = translations.get(segment.id);
+    return translatedText === undefined ? [] : [{ id: segment.id, translatedText }];
+  });
+  const returnedIds = new Set(returnedSegments.map((translation) => translation.id));
+  const missingSegmentIds = request.segments
+    .map((segment) => segment.id)
+    .filter((id) => !returnedIds.has(id));
   const response: TranslationResponse = translationResponseSchema.parse({
     requestId: request.requestId,
     sessionId: request.sessionId,
     providerId: request.providerId ?? settings.providerId,
     modelId: request.modelId ?? settings.modelId,
     detectedSourceLanguage,
-    translations: request.segments.map((segment) => ({
-      id: segment.id,
-      translatedText: translations.get(segment.id),
-    })),
+    translations: returnedSegments,
+    partial: missingSegmentIds.length > 0,
+    ...(providerRecovery
+      ? {
+          recovery: {
+            ...providerRecovery,
+            requestedSegmentIds: request.segments.map((segment) => segment.id),
+            returnedSegmentIds: returnedSegments.map((translation) => translation.id),
+            missingSegmentIds,
+            batchSize: request.segments.length,
+          },
+        }
+      : {}),
   });
   return extensionResponseSchema.parse({
     version: CONTRACT_VERSION,
@@ -966,6 +1075,16 @@ async function translateSelection(tabId: number, text: string): Promise<Selectio
 }
 
 export default defineBackground(() => {
+  void translatedCopyIntentCoordinator.cleanupAbandoned();
+
+  browser.permissions.onAdded.addListener((permissions) => {
+    void translatedCopyIntentCoordinator.resumeForAddedOrigins(permissions.origins ?? []);
+  });
+
+  browser.permissions.onRemoved.addListener((permissions) => {
+    void translatedCopyIntentCoordinator.handleRemovedOrigins(permissions.origins ?? []);
+  });
+
   browser.tabs.onRemoved.addListener((tabId) => {
     progressByTab.delete(tabId);
     void cleanupCopyHandoffForTab(tabId);
@@ -1170,6 +1289,57 @@ export default defineBackground(() => {
             parsed.data.payload.sessionId,
             requestId,
           );
+        case 'CREATE_TRANSLATED_COPY_INTENT': {
+          const payload = parsed.data.payload;
+          const tab = await browser.tabs.get(payload.tabId);
+          const requestedOrigin = translatedCopyOriginPattern(payload.navigationUrl);
+          const currentOrigin = translatedCopyOriginPattern(tab.url ?? '');
+          if (!requestedOrigin || requestedOrigin !== currentOrigin) {
+            return createErrorResponse(
+              requestId,
+              'INVALID_MESSAGE',
+              'The translated-copy origin no longer matches the source tab.',
+              false,
+            );
+          }
+          const record = await translatedCopyIntentCoordinator.create({
+            sourceTabId: payload.tabId,
+            sessionId: payload.sessionId,
+            navigationUrl: payload.navigationUrl,
+            providerId: payload.providerId,
+            modelId: payload.modelId,
+          });
+          return translatedCopyIntentStatusResponse(requestId, record);
+        }
+        case 'RESUME_TRANSLATED_COPY_INTENT': {
+          const record = await translatedCopyIntentCoordinator.resume(parsed.data.payload.intentId);
+          return record
+            ? translatedCopyIntentStatusResponse(requestId, record)
+            : createErrorResponse(
+                requestId,
+                'INVALID_MESSAGE',
+                'The translated-copy action is unavailable or expired.',
+                false,
+              );
+        }
+        case 'DENY_TRANSLATED_COPY_INTENT': {
+          const record = await translatedCopyIntentCoordinator.deny(parsed.data.payload.intentId);
+          return record
+            ? translatedCopyIntentStatusResponse(requestId, record)
+            : createErrorResponse(
+                requestId,
+                'INVALID_MESSAGE',
+                'The translated-copy action is unavailable or expired.',
+                false,
+              );
+        }
+        case 'GET_TRANSLATED_COPY_DENIED_ORIGINS':
+          return extensionResponseSchema.parse({
+            version: CONTRACT_VERSION,
+            requestId,
+            type: 'TRANSLATED_COPY_DENIED_ORIGINS',
+            payload: { origins: await translatedCopyIntentCoordinator.deniedOrigins() },
+          });
         case 'OPEN_TRANSLATED_COPY_FROM_BUNDLE':
           return await openTranslatedCopyFromBundle(
             parsed.data.payload.bundle,

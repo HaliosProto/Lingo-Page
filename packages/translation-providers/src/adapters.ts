@@ -22,7 +22,12 @@ import {
   type PreparedTranslationPrompt,
 } from './prompt';
 
-type TransportResult = { text: string; usage?: TranslationResponse['usage'] };
+type TransportResult = {
+  text: string;
+  usage?: TranslationResponse['usage'];
+  finishReason?: string;
+  responseTruncated?: boolean;
+};
 
 function requireText(value: unknown): string {
   if (typeof value !== 'string' || !value.trim()) {
@@ -176,8 +181,16 @@ async function callGemini(
       context,
     ),
   );
-  if (payload.status !== 'completed' || !Array.isArray(payload.steps)) {
+  if (!Array.isArray(payload.steps)) {
     throw new ProviderError('invalid-response', 'Provider returned an incomplete response.', true);
+  }
+  const status = typeof payload.status === 'string' ? payload.status : undefined;
+  if (status && ['failed', 'cancelled', 'refused', 'rejected'].includes(status.toLowerCase())) {
+    throw new ProviderError(
+      'invalid-response',
+      'Provider explicitly refused or failed the translation request.',
+      false,
+    );
   }
   const texts: string[] = [];
   for (const value of payload.steps) {
@@ -189,12 +202,15 @@ async function callGemini(
     }
   }
   const usage = payload.usage ? asRecord(payload.usage) : {};
+  const finishReason = typeof payload.finish_reason === 'string' ? payload.finish_reason : status;
   return {
     text: requireText(texts.join('')),
     usage: {
       inputTokens: asNonnegativeInteger(usage.total_input_tokens),
       outputTokens: asNonnegativeInteger(usage.total_output_tokens),
     },
+    ...(finishReason ? { finishReason } : {}),
+    responseTruncated: status !== undefined && status !== 'completed',
   };
 }
 
@@ -338,7 +354,10 @@ function createLlmProvider(config: ProviderRuntimeConfig): TranslationProvider {
       for (let attempt = 0; attempt <= config.maxRetries; attempt += 1) {
         try {
           const result = await transport(config, prepared, context);
-          return parseTranslationJson(result.text, request, config, prepared, result.usage);
+          return parseTranslationJson(result.text, request, config, prepared, result.usage, {
+            ...(result.finishReason ? { finishReason: result.finishReason } : {}),
+            responseTruncated: result.responseTruncated,
+          });
         } catch (error) {
           lastError = error;
           if (

@@ -27,6 +27,7 @@ import {
   beginTranslatedCopySiteAccessRequest,
   TRANSLATED_COPY_ACCESS_DENIED,
   TRANSLATED_COPY_ACCESS_EXPLANATION,
+  translatedCopyOriginPattern,
   type TranslatedCopySiteAccess,
 } from '../../src/translated-copy-access';
 import '../../src/ui/global.css';
@@ -59,6 +60,25 @@ function diagnosticLabel(key: string): string {
       retryAttempts: 'Retry attempts',
       retryAfterSeconds: 'Retry after (seconds)',
       automaticRetry: 'Automatic retry',
+      failureCategory: 'Failure category',
+      requestedCount: 'Requested records',
+      returnedValidCount: 'Valid returned records',
+      missingCount: 'Missing records',
+      duplicateCount: 'Duplicate records',
+      unknownCount: 'Unknown records',
+      emptyCount: 'Empty records',
+      parseFailure: 'Parse failure',
+      finishReason: 'Provider finish reason',
+      responseTruncated: 'Response truncated',
+      splitDepth: 'Split depth',
+      smallestAttemptedBatch: 'Smallest attempted batch',
+      unresolvedCount: 'Unresolved records',
+      inputCharacterCount: 'Input characters',
+      estimatedInputTokens: 'Estimated input tokens',
+      estimatedOutputTokens: 'Estimated output tokens',
+      responseSize: 'Response bytes',
+      batchSize: 'Batch size',
+      retryHistory: 'Retry history',
     }[key] ?? key
   );
 }
@@ -126,33 +146,44 @@ function PopupApp() {
         if (activeTab?.id === undefined) throw new Error('No active browser tab is available.');
         const activeTabId = activeTab.id;
         setTabId(activeTabId);
-        const [statusResponse, healthResponse, settingsResponse, providersResponse] =
-          await Promise.all([
-            sendMessage({
-              version: 1,
-              requestId: createRequestId(),
-              type: 'GET_TAB_STATUS',
-              payload: { tabId: activeTabId },
-            }),
-            sendMessage({
-              version: 1,
-              requestId: createRequestId(),
-              type: 'GET_API_HEALTH',
-              payload: {},
-            }),
-            sendMessage({
-              version: 1,
-              requestId: createRequestId(),
-              type: 'GET_SETTINGS',
-              payload: {},
-            }),
-            sendMessage({
-              version: 1,
-              requestId: createRequestId(),
-              type: 'GET_PROVIDERS',
-              payload: {},
-            }),
-          ]);
+        const [
+          statusResponse,
+          healthResponse,
+          settingsResponse,
+          providersResponse,
+          deniedOriginsResponse,
+        ] = await Promise.all([
+          sendMessage({
+            version: 1,
+            requestId: createRequestId(),
+            type: 'GET_TAB_STATUS',
+            payload: { tabId: activeTabId },
+          }),
+          sendMessage({
+            version: 1,
+            requestId: createRequestId(),
+            type: 'GET_API_HEALTH',
+            payload: {},
+          }),
+          sendMessage({
+            version: 1,
+            requestId: createRequestId(),
+            type: 'GET_SETTINGS',
+            payload: {},
+          }),
+          sendMessage({
+            version: 1,
+            requestId: createRequestId(),
+            type: 'GET_PROVIDERS',
+            payload: {},
+          }),
+          sendMessage({
+            version: 1,
+            requestId: createRequestId(),
+            type: 'GET_TRANSLATED_COPY_DENIED_ORIGINS',
+            payload: {},
+          }),
+        ]);
         if (!active) return;
         if (statusResponse.type === 'TAB_STATUS') {
           setTabStatus(statusResponse.payload);
@@ -162,6 +193,9 @@ function PopupApp() {
         if (settingsResponse.type === 'SETTINGS') setSettings(settingsResponse.payload.settings);
         if (providersResponse.type === 'PROVIDERS')
           setProviders(providersResponse.payload.providers);
+        if (deniedOriginsResponse.type === 'TRANSLATED_COPY_DENIED_ORIGINS') {
+          deniedTranslatedCopyOrigins.current = new Set(deniedOriginsResponse.payload.origins);
+        }
         if (healthResponse.type === 'MESSAGE_ERROR') setError(healthResponse.payload.message);
       } catch (cause) {
         if (active)
@@ -280,9 +314,32 @@ function PopupApp() {
   async function openSessionView(type: 'OPEN_TRANSLATED_COPY' | 'OPEN_COMPARISON_VIEW') {
     if (tabId === undefined || !progress.sessionId) return;
     let siteAccessRequest: Promise<TranslatedCopySiteAccess> | undefined;
+    let intentRequest: Promise<ExtensionResponse> | undefined;
     if (type === 'OPEN_TRANSLATED_COPY') {
+      const navigationUrl = tabStatus?.url ?? '';
+      const originPattern = translatedCopyOriginPattern(navigationUrl);
+      if (!originPattern) {
+        setError('Translated copies are available only for HTTP or HTTPS pages.');
+        return;
+      }
+      if (deniedTranslatedCopyOrigins.current.has(originPattern)) {
+        setError(TRANSLATED_COPY_ACCESS_DENIED);
+        return;
+      }
+      intentRequest = sendMessage({
+        version: 1,
+        requestId: createRequestId(),
+        type: 'CREATE_TRANSLATED_COPY_INTENT',
+        payload: {
+          tabId,
+          sessionId: progress.sessionId,
+          navigationUrl,
+          providerId: settings.providerId,
+          modelId: settings.modelId,
+        },
+      });
       const access = beginTranslatedCopySiteAccessRequest(
-        tabStatus?.url ?? '',
+        navigationUrl,
         browser.permissions,
         deniedTranslatedCopyOrigins.current,
       );
@@ -301,10 +358,33 @@ function PopupApp() {
     try {
       if (siteAccessRequest) {
         const siteAccess = await siteAccessRequest;
+        const intentResponse = await intentRequest;
+        if (intentResponse?.type === 'MESSAGE_ERROR') {
+          setError(intentResponse.payload.message);
+          return;
+        }
+        if (intentResponse?.type !== 'TRANSLATED_COPY_INTENT_STATUS') {
+          setError('The translated-copy action could not be prepared.');
+          return;
+        }
         if (!siteAccess.granted) {
+          await sendMessage({
+            version: 1,
+            requestId: createRequestId(),
+            type: 'DENY_TRANSLATED_COPY_INTENT',
+            payload: { intentId: intentResponse.payload.intentId },
+          });
           setError(TRANSLATED_COPY_ACCESS_DENIED);
           return;
         }
+        const response = await sendMessage({
+          version: 1,
+          requestId: createRequestId(),
+          type: 'RESUME_TRANSLATED_COPY_INTENT',
+          payload: { intentId: intentResponse.payload.intentId },
+        });
+        if (response.type === 'MESSAGE_ERROR') setError(response.payload.message);
+        return;
       }
       const response = await sendMessage({
         version: 1,
@@ -413,6 +493,9 @@ function PopupApp() {
         return;
       case 'change-provider':
         document.querySelector<HTMLSelectElement>('[data-provider-select]')?.focus();
+        return;
+      case 'keep-partial':
+        void runSessionCommand('SET_PAGE_VIEW', { displayMode: 'translated' });
         return;
       case 'restore':
         void restorePage();

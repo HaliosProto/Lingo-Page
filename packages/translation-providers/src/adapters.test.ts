@@ -132,6 +132,47 @@ describe('native adapter request contracts', () => {
   );
 });
 
+describe('Gemini incomplete-response classification', () => {
+  it('preserves complete records from an output-token-truncated interaction', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      response({
+        status: 'incomplete',
+        finish_reason: 'MAX_OUTPUT_TOKENS',
+        steps: [
+          {
+            type: 'model_output',
+            content: [{ type: 'text', text: `${normalizedJson.slice(0, -2)},` }],
+          },
+        ],
+      }),
+    );
+    const result = await createProviderFromConfig(
+      config('gemini-interactions', fetchImpl, { id: 'gemini' }),
+    ).translate(request, {});
+    expect(result).toMatchObject({
+      partial: true,
+      translations: [{ id: 'segment-1' }],
+      recovery: {
+        classification: 'truncated-json',
+        finishReason: 'MAX_OUTPUT_TOKENS',
+        responseTruncated: true,
+      },
+    });
+    expect(result.translations[0]?.translatedText).toMatch(/\{\{name\}\}$/u);
+  });
+
+  it('does not classify an explicit refusal as recursively retryable', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(response({ status: 'refused', steps: [] }));
+    await expect(
+      createProviderFromConfig(
+        config('gemini-interactions', fetchImpl, { id: 'gemini' }),
+      ).translate(request, {}),
+    ).rejects.toMatchObject({ code: 'invalid-response', retryable: false });
+  });
+});
+
 describe('OpenAI-compatible adapter', () => {
   it('uses one backend profile and preserves prompt-injection text as data', async () => {
     const adversarial: TranslationRequest = {
@@ -163,7 +204,7 @@ describe('OpenAI-compatible adapter', () => {
     expect(body.response_format).toEqual({ type: 'json_object' });
   });
 
-  it('retries malformed JSON at most once', async () => {
+  it('returns malformed JSON as recoverable unresolved output without a transport retry', async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
       .mockResolvedValue(
@@ -176,8 +217,12 @@ describe('OpenAI-compatible adapter', () => {
         maxRetries: 1,
       }),
     ).translate(request, {});
-    await expect(action).rejects.toMatchObject({ code: 'invalid-response' });
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    await expect(action).resolves.toMatchObject({
+      partial: true,
+      translations: [],
+      recovery: { classification: 'malformed-json', parseFailure: true },
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it.each([
@@ -242,12 +287,12 @@ describe('OpenAI-compatible adapter', () => {
   });
 });
 
-describe('normalized output validation', () => {
+describe('normalized output recovery', () => {
   const prepared = prepareTranslationPrompt(request);
   const runtime = config('openai-chat-compatible', vi.fn<typeof fetch>());
 
   it.each([
-    ['markdown fences', `\`\`\`json\n${normalizedJson}\n\`\`\``],
+    ['markdown fences', `\`\`\`json\n${normalizedJson}\n\`\`\``, 'malformed-json', 1],
     [
       'missing IDs',
       JSON.stringify({
@@ -255,6 +300,8 @@ describe('normalized output validation', () => {
         sessionId: request.sessionId,
         translations: [],
       }),
+      'missing-ids',
+      0,
     ],
     [
       'duplicate IDs',
@@ -266,6 +313,8 @@ describe('normalized output validation', () => {
           { id: 'segment-1', translatedText: 'b __LINGO_TOKEN_0__' },
         ],
       }),
+      'duplicate-ids',
+      0,
     ],
     [
       'unknown IDs',
@@ -274,6 +323,8 @@ describe('normalized output validation', () => {
         sessionId: request.sessionId,
         translations: [{ id: 'other', translatedText: 'a' }],
       }),
+      'unknown-ids',
+      0,
     ],
     [
       'mismatched sessions',
@@ -282,6 +333,8 @@ describe('normalized output validation', () => {
         sessionId: 'session_other_123',
         translations: [{ id: 'segment-1', translatedText: 'a __LINGO_TOKEN_0__' }],
       }),
+      'invalid-structured-output',
+      0,
     ],
     [
       'unexpected HTML',
@@ -290,9 +343,54 @@ describe('normalized output validation', () => {
         sessionId: request.sessionId,
         translations: [{ id: 'segment-1', translatedText: '<script>x</script> __LINGO_TOKEN_0__' }],
       }),
+      'invalid-structured-output',
+      0,
     ],
-  ])('rejects %s', (_label, raw) => {
-    expect(() => parseTranslationJson(raw, request, runtime, prepared)).toThrow();
+  ])('classifies %s and applies only valid records', (_label, raw, classification, validCount) => {
+    const result = parseTranslationJson(raw, request, runtime, prepared);
+    expect(result).toMatchObject({ partial: true, recovery: { classification } });
+    expect(result.translations).toHaveLength(validCount);
+  });
+
+  it('preserves a valid sibling while leaving an empty record unresolved', () => {
+    const twoSegmentRequest: TranslationRequest = {
+      ...request,
+      segments: [...request.segments, { id: 'segment-2', text: 'Second section' }],
+    };
+    const twoSegmentPrepared = prepareTranslationPrompt(twoSegmentRequest);
+    const result = parseTranslationJson(
+      JSON.stringify({
+        requestId: request.requestId,
+        sessionId: request.sessionId,
+        translations: [
+          { id: 'segment-1', translatedText: 'valid __LINGO_TOKEN_0__' },
+          { id: 'segment-2', translatedText: '' },
+        ],
+      }),
+      twoSegmentRequest,
+      runtime,
+      twoSegmentPrepared,
+    );
+    expect(result.translations).toEqual([{ id: 'segment-1', translatedText: 'valid {{name}}' }]);
+    expect(result.recovery).toMatchObject({
+      classification: 'empty-translation',
+      missingSegmentIds: ['segment-2'],
+      emptySegmentIds: ['segment-2'],
+    });
+  });
+
+  it('salvages complete records from truncated JSON and records the finish reason', () => {
+    const raw = `{"requestId":"${request.requestId}","sessionId":"${request.sessionId}","translations":[{"id":"segment-1","translatedText":"valid __LINGO_TOKEN_0__"},`;
+    const result = parseTranslationJson(raw, request, runtime, prepared, undefined, {
+      finishReason: 'MAX_TOKENS',
+      responseTruncated: true,
+    });
+    expect(result.translations).toEqual([{ id: 'segment-1', translatedText: 'valid {{name}}' }]);
+    expect(result.recovery).toMatchObject({
+      classification: 'truncated-json',
+      finishReason: 'MAX_TOKENS',
+      responseTruncated: true,
+    });
   });
 
   it('keeps glossary and hostile instructions in the untrusted user payload', () => {

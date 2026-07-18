@@ -13,6 +13,7 @@ export type FailureActionId =
   | 'start-again'
   | 'change-provider'
   | 'retry-later'
+  | 'keep-partial'
   | 'restore';
 
 export type FailureAction = { id: FailureActionId; label: string };
@@ -67,6 +68,7 @@ const automaticRetry: FailureAction = {
 };
 const continueTranslation: FailureAction = { id: 'continue', label: 'Continue translation' };
 const changeProvider: FailureAction = { id: 'change-provider', label: 'Change provider' };
+const keepPartial: FailureAction = { id: 'keep-partial', label: 'Keep partial translation' };
 const restore: FailureAction = { id: 'restore', label: 'Restore original page' };
 
 export function failurePresentation(
@@ -131,9 +133,15 @@ export function failurePresentation(
         actions: [{ id: 'retry-failed', label: 'Retry' }, changeProvider, restore],
       };
     case 'INVALID_PROVIDER_RESPONSE':
+      if (failure.metadata.automaticRetry) {
+        return {
+          message: `${provider} returned only part of this batch. Retrying the remaining ${failure.metadata.unresolvedCount ?? failed} sections in smaller groups…`,
+          actions: [],
+        };
+      }
       return {
         message: `${provider} returned an incomplete response for ${failed} sections. Those sections were not changed.`,
-        actions: [retryFailed, changeProvider, restore],
+        actions: [retryFailed, changeProvider, keepPartial],
       };
     case 'BACKEND_UNAVAILABLE':
       return {
@@ -180,8 +188,12 @@ export function failurePresentation(
         message:
           failure.metadata.causeReason === 'LOCAL_RATE_LIMIT'
             ? `Translation stopped because the local service continued rejecting new batches. ${translated} of ${total} sections were translated.`
-            : 'Automatic retries were exhausted. The translated sections were preserved.',
-        actions: [retryFailed, continueTranslation, changeProvider, restore],
+            : `Automatic recovery stopped after bounded retries. ${translated} of ${total} sections were translated, and ${failure.metadata.unresolvedCount ?? remaining} remain unresolved.`,
+        actions: [
+          { id: 'retry-failed', label: 'Retry unresolved sections' },
+          changeProvider,
+          keepPartial,
+        ],
       };
     case 'UNKNOWN':
       return {
@@ -229,6 +241,25 @@ export function safeFailureDiagnostics(
       retryAttempts: metadata.retryAttempt,
       retryAfterSeconds: metadata.retryAfterSeconds,
       automaticRetry: metadata.automaticRetry,
+      failureCategory: metadata.failureCategory,
+      requestedCount: metadata.requestedCount,
+      returnedValidCount: metadata.returnedValidCount,
+      missingCount: metadata.missingCount,
+      duplicateCount: metadata.duplicateCount,
+      unknownCount: metadata.unknownCount,
+      emptyCount: metadata.emptyCount,
+      parseFailure: metadata.parseFailure,
+      finishReason: metadata.finishReason,
+      responseTruncated: metadata.responseTruncated,
+      splitDepth: metadata.splitDepth,
+      smallestAttemptedBatch: metadata.smallestAttemptedBatch,
+      unresolvedCount: metadata.unresolvedCount,
+      inputCharacterCount: metadata.inputCharacterCount,
+      estimatedInputTokens: metadata.estimatedInputTokens,
+      estimatedOutputTokens: metadata.estimatedOutputTokens,
+      responseSize: metadata.responseSize,
+      batchSize: metadata.batchSize,
+      retryHistory: metadata.retryHistory,
     }).filter((entry): entry is [string, string | number | boolean] => entry[1] !== undefined),
   );
 }

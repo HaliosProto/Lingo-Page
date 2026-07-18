@@ -1,6 +1,5 @@
 import { browser } from 'wxt/browser';
 import {
-  batchSegments,
   createSegmentId,
   createTextFingerprint,
   isLikelyTranslatableText,
@@ -31,6 +30,10 @@ import {
   type ContentRequest,
   type ExtensionResponse,
 } from '@translation/shared-validation';
+import {
+  providerAwareBatchLimits,
+  runAdaptiveTranslationRecovery,
+} from '../src/adaptive-translation-recovery';
 
 type NodeRecord = {
   node: Text;
@@ -65,6 +68,7 @@ type Session = {
   lifecycle: TranslationSessionLifecycle;
   changed: TranslationChangeSummary;
   changeScan?: TranslationChangeScanResult;
+  safeBatchTarget?: number;
 };
 
 class TranslationFailureError extends Error {
@@ -547,12 +551,14 @@ export default defineUnlistedScript(() => {
     useSmallerBatches = false,
     cancellationEpoch = session.cancellationEpoch,
   ): Promise<void> {
-    const batches = batchSegments(
-      records.map((record) => record.segment),
-      useSmallerBatches
-        ? { maxSegments: 10, maxCharacters: 2_000 }
-        : { maxSegments: 50, maxCharacters: 10_000 },
-    );
+    const limits = providerAwareBatchLimits({
+      providerId: session.providerId,
+      sourceLanguage: session.sourceLanguage,
+      targetLanguage: session.targetLanguage,
+      segments: records.map((record) => record.segment),
+      useSmallerBatches,
+      currentSafeBatchTarget: session.safeBatchTarget,
+    });
     progress = {
       ...progress,
       status: 'translating',
@@ -564,42 +570,54 @@ export default defineUnlistedScript(() => {
     };
     session.lifecycle = 'translating';
     session.lastActivityAt = Date.now();
-
-    for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
-      const segments = batches[batchIndex]!;
-      let retryAttempt = 0;
-      while (true) {
+    const result = await runAdaptiveTranslationRecovery({
+      segments: records.map((record) => record.segment),
+      providerId: session.providerId,
+      sourceLanguage: session.sourceLanguage,
+      targetLanguage: session.targetLanguage,
+      limits,
+      initialSafeBatchTarget: session.safeBatchTarget,
+      cancelled: () =>
+        session.cancelled ||
+        session.cancellationEpoch !== cancellationEpoch ||
+        currentSession !== session,
+      wait: async (seconds) => {
+        await waitForRetry(session, seconds);
+        assertActive(session, cancellationEpoch);
+      },
+      send: async (segments) => {
+        assertActive(session, cancellationEpoch);
         try {
-          assertActive(session, cancellationEpoch);
           const rawResponse = await browser.runtime.sendMessage(
             makeTranslationRequest(session, segments),
           );
           const response = extensionResponseSchema.parse(rawResponse);
           if (response.type === 'MESSAGE_ERROR') {
-            throw new TranslationFailureError(failureFromResponse(response, session));
+            return {
+              ok: false as const,
+              failure: failureFromResponse(response, session),
+              retryable: response.payload.retryable,
+            };
           }
           if (response.type !== 'TRANSLATION_RESULT') {
-            throw new TranslationFailureError({
-              reason: 'INVALID_PROVIDER_RESPONSE',
-              metadata: { providerId: session.providerId, automaticRetry: false },
-            });
+            return {
+              ok: false as const,
+              retryable: true,
+              failure: {
+                reason: 'INVALID_PROVIDER_RESPONSE' as const,
+                metadata: { providerId: session.providerId, automaticRetry: true },
+              },
+            };
           }
           if (response.payload.response.sessionId !== session.id) {
-            throw new TranslationFailureError({
-              reason: 'NAVIGATION_CHANGED',
-              metadata: { providerId: session.providerId, automaticRetry: false },
-            });
-          }
-          assertActive(session, cancellationEpoch);
-
-          for (const translation of response.payload.response.translations) {
-            const record = recordsById.get(translation.id);
-            if (!record || !record.node.isConnected || record.translatedText !== undefined)
-              continue;
-            record.translatedText = `${record.leadingWhitespace}${translation.translatedText}${record.trailingWhitespace}`;
-            record.status = 'translated';
-            if (session.displayMode !== 'original') writeRecord(record, record.translatedText);
-            progress = { ...progress, translatedSegments: progress.translatedSegments + 1 };
+            return {
+              ok: false as const,
+              retryable: false,
+              failure: {
+                reason: 'NAVIGATION_CHANGED' as const,
+                metadata: { providerId: session.providerId, automaticRetry: false },
+              },
+            };
           }
           if (response.payload.response.detectedSourceLanguage) {
             progress = {
@@ -607,105 +625,163 @@ export default defineUnlistedScript(() => {
               detectedSourceLanguage: response.payload.response.detectedSourceLanguage,
             };
           }
-          progress = {
-            ...progress,
-            status: 'translating',
-            queuedSegments: records.filter((record) => record.translatedText === undefined).length,
-            waitingSegments: 0,
-            retryingSegments: 0,
-            failedSegments: 0,
-            failure: undefined,
+          return { ok: true as const, response: response.payload.response };
+        } catch {
+          return {
+            ok: false as const,
+            retryable: false,
+            failure: {
+              reason: 'UNKNOWN' as const,
+              metadata: { providerId: session.providerId, automaticRetry: false },
+            },
           };
-          break;
-        } catch (cause) {
-          const failure =
-            cause instanceof TranslationFailureError
-              ? cause.failure
-              : {
-                  reason: 'UNKNOWN' as const,
-                  metadata: { providerId: session.providerId, automaticRetry: false },
-                };
-          const failedSegments = segments.filter(
-            (segment) => recordsById.get(segment.id)?.translatedText === undefined,
-          ).length;
-          for (const segment of segments) {
-            const record = recordsById.get(segment.id);
-            if (record && record.translatedText === undefined) record.status = 'failed';
-          }
-          const pendingSegments = records.filter(
-            (record) => record.translatedText === undefined,
-          ).length;
-          const queuedSegments = Math.max(0, pendingSegments - failedSegments);
-          const canRetryAutomatically =
-            failure.metadata.automaticRetry === true &&
-            (failure.reason === 'LOCAL_RATE_LIMIT' || failure.reason === 'UPSTREAM_RATE_LIMIT') &&
-            retryAttempt < 1;
-          if (canRetryAutomatically) {
-            retryAttempt += 1;
-            const retryAfterSeconds = failure.metadata.retryAfterSeconds ?? 5;
-            const waitingFailure = failureWithProgress(failure, {
-              providerId: session.providerId,
-              translatedSegments: progress.translatedSegments,
-              totalSegments: progress.discoveredSegments,
-              failedSegments,
-              queuedSegments,
-              retryAttempt,
-              retryAfterSeconds,
-              automaticRetry: true,
-              failedBatches: 1,
-            });
-            progress = {
-              ...progress,
-              status: 'paused',
-              failedSegments,
-              queuedSegments,
-              waitingSegments: failedSegments,
-              retryingSegments: 0,
-              failure: waitingFailure,
-            };
-            await waitForRetry(session, retryAfterSeconds);
-            assertActive(session, cancellationEpoch);
-            progress = {
-              ...progress,
-              status: 'retrying',
-              waitingSegments: 0,
-              retryingSegments: failedSegments,
-              failure: failureWithProgress(waitingFailure, { retryAfterSeconds: 0 }),
-            };
-            continue;
-          }
-          const causeReason = failure.reason === 'RETRY_EXHAUSTED' ? 'UNKNOWN' : failure.reason;
-          const finalFailure: TranslationFailure =
-            failure.metadata.automaticRetry && retryAttempt >= 1
-              ? {
-                  reason: 'RETRY_EXHAUSTED' as const,
-                  metadata: {
-                    ...failure.metadata,
-                    providerId: session.providerId,
-                    translatedSegments: progress.translatedSegments,
-                    totalSegments: progress.discoveredSegments,
-                    failedSegments,
-                    queuedSegments,
-                    retryAttempt,
-                    automaticRetry: false,
-                    failedBatches: 1,
-                    causeReason,
-                  },
-                }
-              : failureWithProgress(failure, {
-                  providerId: session.providerId,
-                  translatedSegments: progress.translatedSegments,
-                  totalSegments: progress.discoveredSegments,
-                  failedSegments,
-                  queuedSegments,
-                  retryAttempt,
-                  automaticRetry: false,
-                  failedBatches: 1,
-                });
-          throw new TranslationFailureError(finalFailure);
         }
+      },
+      apply: (translations) => {
+        assertActive(session, cancellationEpoch);
+        for (const translation of translations) {
+          const record = recordsById.get(translation.id);
+          if (!record || !record.node.isConnected || record.translatedText !== undefined) continue;
+          record.translatedText = `${record.leadingWhitespace}${translation.translatedText}${record.trailingWhitespace}`;
+          record.status = 'translated';
+          if (session.displayMode !== 'original') writeRecord(record, record.translatedText);
+          progress = { ...progress, translatedSegments: progress.translatedSegments + 1 };
+        }
+      },
+      update: (update) => {
+        const pendingSegments = records.filter(
+          (record) => record.translatedText === undefined,
+        ).length;
+        const retryingSegments = update.state === 'requesting' ? 0 : update.unresolvedCount;
+        const queuedSegments = Math.max(0, pendingSegments - retryingSegments);
+        const recovery = update.response?.recovery;
+        const activeFailure =
+          update.failure ??
+          (recovery && recovery.classification !== 'complete'
+            ? ({
+                reason: 'INVALID_PROVIDER_RESPONSE',
+                metadata: { providerId: session.providerId },
+              } satisfies TranslationFailure)
+            : undefined);
+        progress = {
+          ...progress,
+          status:
+            update.state === 'waiting'
+              ? 'paused'
+              : update.state === 'retrying'
+                ? 'retrying'
+                : 'translating',
+          failedSegments: 0,
+          queuedSegments,
+          waitingSegments: update.state === 'waiting' ? update.unresolvedCount : 0,
+          retryingSegments,
+          failure: activeFailure
+            ? failureWithProgress(activeFailure, {
+                providerId: session.providerId,
+                translatedSegments: progress.translatedSegments,
+                totalSegments: progress.discoveredSegments,
+                failedSegments: 0,
+                queuedSegments,
+                retryAttempt: update.retryAttempts,
+                retryAfterSeconds: update.retryAfterSeconds,
+                automaticRetry: true,
+                failedBatches: 1,
+                failureCategory:
+                  recovery?.classification ??
+                  (activeFailure.reason === 'PROVIDER_TIMEOUT'
+                    ? 'timeout'
+                    : activeFailure.reason === 'UPSTREAM_RATE_LIMIT' ||
+                        activeFailure.reason === 'LOCAL_RATE_LIMIT'
+                      ? 'rate-limit'
+                      : undefined),
+                requestedCount: recovery?.requestedSegmentIds.length ?? update.batchSize,
+                returnedValidCount: recovery?.returnedSegmentIds.length,
+                missingCount: recovery?.missingSegmentIds.length,
+                duplicateCount: recovery?.duplicateSegmentIds.length,
+                unknownCount: recovery?.unknownSegmentIds.length,
+                emptyCount: recovery?.emptySegmentIds.length,
+                parseFailure: recovery?.parseFailure,
+                finishReason: recovery?.finishReason,
+                responseTruncated: recovery?.responseTruncated,
+                splitDepth: update.splitDepth,
+                smallestAttemptedBatch: Math.min(update.batchSize, update.safeBatchTarget),
+                unresolvedCount: update.unresolvedCount,
+                inputCharacterCount: recovery?.inputCharacters,
+                estimatedInputTokens: recovery?.estimatedInputTokens,
+                estimatedOutputTokens: recovery?.estimatedOutputTokens,
+                responseSize: recovery?.responseBytes,
+                batchSize: update.batchSize,
+              })
+            : undefined,
+        };
+      },
+    });
+    session.safeBatchTarget = result.safeBatchTarget;
+    assertActive(session, cancellationEpoch);
+    if (result.terminalFailure || result.unresolvedSegments.length > 0) {
+      for (const segment of result.unresolvedSegments) {
+        const record = recordsById.get(segment.id);
+        if (record && record.translatedText === undefined) record.status = 'failed';
       }
+      const recovery = result.lastResponse?.recovery;
+      const pendingSegments = records.filter(
+        (record) => record.translatedText === undefined,
+      ).length;
+      throw new TranslationFailureError(
+        failureWithProgress(
+          result.terminalFailure ?? {
+            reason: 'RETRY_EXHAUSTED',
+            metadata: { providerId: session.providerId },
+          },
+          {
+            providerId: session.providerId,
+            translatedSegments: progress.translatedSegments,
+            totalSegments: progress.discoveredSegments,
+            failedSegments: result.unresolvedSegments.length,
+            queuedSegments: Math.max(0, pendingSegments - result.unresolvedSegments.length),
+            retryAttempt: result.retryAttempts,
+            automaticRetry: false,
+            failedBatches: result.unresolvedSegments.length > 0 ? 1 : 0,
+            failureCategory:
+              recovery?.classification ??
+              (result.terminalFailure?.reason === 'AUTHENTICATION_FAILED'
+                ? 'authentication'
+                : result.terminalFailure?.reason === 'UPSTREAM_QUOTA_EXHAUSTED'
+                  ? 'quota'
+                  : result.terminalFailure?.reason === 'PROVIDER_TIMEOUT'
+                    ? 'timeout'
+                    : 'retry-exhaustion'),
+            requestedCount: recovery?.requestedSegmentIds.length,
+            returnedValidCount: recovery?.returnedSegmentIds.length,
+            missingCount: recovery?.missingSegmentIds.length,
+            duplicateCount: recovery?.duplicateSegmentIds.length,
+            unknownCount: recovery?.unknownSegmentIds.length,
+            emptyCount: recovery?.emptySegmentIds.length,
+            parseFailure: recovery?.parseFailure,
+            finishReason: recovery?.finishReason,
+            responseTruncated: recovery?.responseTruncated,
+            splitDepth: result.deepestSplit,
+            smallestAttemptedBatch: result.smallestAttemptedBatch,
+            unresolvedCount: result.unresolvedSegments.length,
+            inputCharacterCount: recovery?.inputCharacters,
+            estimatedInputTokens: recovery?.estimatedInputTokens,
+            estimatedOutputTokens: recovery?.estimatedOutputTokens,
+            responseSize: recovery?.responseBytes,
+            batchSize: recovery?.batchSize,
+            retryHistory: result.retryHistory,
+          },
+        ),
+      );
     }
+    progress = {
+      ...progress,
+      status: 'translating',
+      queuedSegments: records.filter((record) => record.translatedText === undefined).length,
+      waitingSegments: 0,
+      retryingSegments: 0,
+      failedSegments: 0,
+      failure: undefined,
+    };
   }
 
   function finishWithFailure(failure: TranslationFailure): void {
