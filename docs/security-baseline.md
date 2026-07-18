@@ -12,7 +12,7 @@ Audit date: 2026-07-18. Scope: ordinary single-pass source/configuration review 
 
 ## Existing protections
 
-- MV3 permissions are limited to `activeTab`, `contextMenus`, `scripting`, and `storage`; production host access resolves to the application API, with the fixture origin only in E2E mode.
+- Required MV3 permissions are limited to `activeTab`, `contextMenus`, `scripting`, and `storage`; required production host access resolves to the application API, with the fixture origin only in E2E mode. The later translated-copy acceptance fix declares optional HTTP/HTTPS patterns and grants only the user-selected current origin.
 - Provider credentials and arbitrary endpoints are backend-owned. Provider/model IDs are registry/allowlist validated and selected-provider failure does not silently change recipient.
 - Runtime Zod schemas validate extension messages, API bodies, and provider results. Content-script translation/progress senders require the extension ID, a tab, and top frame.
 - Provider output reaches the page through `Text.nodeValue` or `textContent`; no provider HTML is interpreted.
@@ -55,7 +55,7 @@ The 2026-07-18 durable-session change received a bounded defensive review using 
 - Privileged popup/comparison commands now require the extension's own page origin in addition to the extension ID. Content-script progress/translation messages retain top-frame tab checks. This closes a plausible sender-authorization gap discovered during review; legitimate flows passed managed Chromium E2E. Add a direct fake-sender router test when the background router gains an injectable test seam.
 - Comparison handoff uses an unguessable fragment token, `chrome.storage.session`, an owning-tab binding, and single-use retrieval/cleanup. Invalid, stale, mismatched, or oversized payloads fail closed.
 - Copy import validates navigation and applies only confident plain-text matches. Uncertain content remains original. Ending one page-owned session does not clear another tab.
-- Production permissions remain `activeTab`, `contextMenus`, `scripting`, and `storage`, with only the loopback application API host. No `<all_urls>` or new host permission was introduced.
+- At the time of this baseline, production required permissions remained `activeTab`, `contextMenus`, `scripting`, and `storage`, with only the loopback application API host. The later translated-copy fix adds optional HTTP/HTTPS declarations without required `<all_urls>` or automatic site access; see ADR 0009 and the Milestone 1 verification addendum.
 - Generated extension and Worker bundles were scanned without displaying configured values. No credential-pattern match was found. Production extension source maps are absent; the Worker dry-run source map embeds expected source content and is confined to ignored build output.
 - The production dependency advisory refresh was unavailable because registry access was prohibited. An offline attempt did not complete and was terminated; it is not reported as a pass.
 

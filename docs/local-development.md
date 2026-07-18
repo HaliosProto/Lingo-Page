@@ -85,18 +85,19 @@ pnpm verify
 pnpm test:e2e
 ```
 
-`pnpm verify` runs formatting, lint, strict types, unit/integration tests, and production builds. `pnpm test:e2e` creates `.output/chrome-mv3-e2e`, whose extra host permission is limited to `http://127.0.0.1:4173/*`. Managed Chromium coverage and branded Chrome coverage are reported separately.
+`pnpm verify` runs formatting, lint, strict types, unit/integration tests, and production builds. `pnpm test:e2e` creates `.output/chrome-mv3-e2e`, whose required extra fixture host permission is limited to `http://127.0.0.1:4173/*`. Both production and E2E manifests declare optional HTTP/HTTPS patterns for translated-copy requests; those declarations grant nothing by themselves, and the runtime asks only for the current origin from the explicit button gesture. Managed Chromium coverage and branded Chrome coverage are reported separately.
 
 ## Manual Chrome checklist
 
 1. Build and load the production directory unpacked.
-2. Confirm the manifest shows no access to all sites.
+2. Confirm required permissions show no all-site access. The optional site-access declaration may list HTTP and HTTPS, but no site is granted until **Open translated copy** requests the current origin.
 3. Translate and restore a normal article; verify links/forms/controls still work.
 4. Cancel a translation and navigate during another translation; verify no stale text is applied.
 5. Add/select dynamic text and verify context-menu translation/copy.
 6. Check popup, page, and service-worker consoles for errors.
 7. Check DevTools Network: extension traffic must target only the configured application API.
-8. Search the loaded bundle for the provider key and bearer token; neither may exist.
+8. Translate a safe page, choose **Open translated copy**, and confirm Chrome asks only for that origin. Deny once and confirm the source is unchanged and the same popup does not prompt again; then grant on a later explicit attempt and confirm the final copy is translated before its ready status.
+9. Search the loaded bundle for the provider key and bearer token; neither may exist.
 
 ## Troubleshooting
 

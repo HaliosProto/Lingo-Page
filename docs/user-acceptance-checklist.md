@@ -6,8 +6,14 @@ Run `pnpm local:test`, load `artifacts/translation-extension-local-rc/extension`
 - [ ] An ordinary HTTP(S) page reports ready and translates only eligible visible text.
 - [ ] Links, images, controls, forms, layout, and page behavior remain intact.
 - [ ] Restore returns the original text exactly.
+- [ ] Checking for new or changed content always shows no-change, changes-found, updated, or retryable-error feedback and makes no translation request until Update/Refresh is chosen.
+- [ ] Open translated copy explains the site-access need, requests only the current HTTP(S) origin from the click, and never requests all-site access; grant, denial, already-granted, redirect, and revocation behavior is correct.
+- [ ] On a site without a prior grant, one **Open translated copy** click plus one approval opens exactly one destination even if the popup closes; denial opens none and is not immediately prompted again.
+- [ ] One translated-copy tab remains open on success and reuse failure; after bounded hydration its final ready DOM, summary, cached matches, original fallbacks, zero-provider-call reuse, and independence from the source are correct.
+- [ ] Comparison defaults to a 50/50 full-page Original/Translation split; linked/unlinked scrolling, divider keyboard/pointer control, Reset, Swap, narrow layout, themes, reduced motion, and 200% zoom remain usable.
 - [ ] Cancel stops work without applying stale or partial unsafe replacements.
-- [ ] Progress reports discovery and translation state; failure shows a retry action.
+- [ ] On the Lionel Messi Wikipedia article with the configured Gemini model, an incomplete batch automatically preserves valid records, retries unresolved IDs in smaller groups, continues the later queue, and finishes or reports a minimal honest unresolved set without repeated user retry clicks.
+- [ ] Recovery progress reports translated, remaining, retrying, failed, and queued counts; final exhaustion offers Retry unresolved sections, Change provider, and Keep partial translation.
 - [ ] Dynamic content is translated when enabled and remains untouched when disabled.
 - [ ] Selected text produces an isolated copyable result card.
 - [ ] Persian/RTL output preserves readable direction and layout.

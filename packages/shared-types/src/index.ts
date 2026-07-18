@@ -73,7 +73,7 @@ export type TranslationStatus =
   | 'cancelled'
   | 'error';
 
-export const TRANSLATION_SESSION_VERSION = 1 as const;
+export const TRANSLATION_SESSION_VERSION = 2 as const;
 
 export type TranslationDisplayMode = 'original' | 'translated' | 'mixed-partial';
 export type TranslationSessionLifecycle =
@@ -87,6 +87,140 @@ export type TranslationChangeSummary = {
   removedSegments: number;
   reorderedSegments: number;
   uncertainSegments: number;
+};
+
+export type TranslationChangeScanResult = {
+  status: 'no-changes' | 'changes-found' | 'updated';
+  summary: TranslationChangeSummary;
+  updatedSegments?: number;
+};
+
+export type TranslatedCopyApplicationStatus =
+  'applying' | 'ready' | 'partial' | 'no-matches' | 'import-failed' | 'session-stale';
+
+export type TranslatedCopyApplicationSummary = {
+  status: TranslatedCopyApplicationStatus;
+  discoveredSegments: number;
+  matchedSegments: number;
+  appliedSegments: number;
+  unmatchedSegments: number;
+  uncertainSegments: number;
+  changedSegments: number;
+  providerRequests: 0;
+};
+
+export type TranslatedCopyIntentState =
+  | 'CREATED'
+  | 'REQUESTING_PERMISSION'
+  | 'PERMISSION_GRANTED'
+  | 'OPENING_DESTINATION'
+  | 'DESTINATION_CREATED'
+  | 'APPLYING_TRANSLATION'
+  | 'COMPLETED'
+  | 'DENIED'
+  | 'FAILED'
+  | 'EXPIRED';
+
+export type TranslatedCopyIntentRecord = {
+  version: 1;
+  intentId: string;
+  state: TranslatedCopyIntentState;
+  sourceTabId: number;
+  sessionId: string;
+  originPattern: string;
+  navigationIdentity: string;
+  providerId: ProviderId;
+  modelId: string;
+  createdAt: number;
+  updatedAt: number;
+  expiresAt: number;
+  destinationTabId?: number;
+  failureCode?: 'permission-revoked' | 'source-changed' | 'destination-failed' | 'expired';
+};
+
+export type TranslationComparisonElementTag =
+  | 'main'
+  | 'article'
+  | 'section'
+  | 'header'
+  | 'footer'
+  | 'nav'
+  | 'aside'
+  | 'div'
+  | 'p'
+  | 'h1'
+  | 'h2'
+  | 'h3'
+  | 'h4'
+  | 'h5'
+  | 'h6'
+  | 'ul'
+  | 'ol'
+  | 'li'
+  | 'dl'
+  | 'dt'
+  | 'dd'
+  | 'table'
+  | 'caption'
+  | 'thead'
+  | 'tbody'
+  | 'tfoot'
+  | 'tr'
+  | 'th'
+  | 'td'
+  | 'figure'
+  | 'figcaption'
+  | 'blockquote'
+  | 'hr'
+  | 'br'
+  | 'img'
+  | 'a'
+  | 'span'
+  | 'strong'
+  | 'em'
+  | 'b'
+  | 'i'
+  | 'small'
+  | 'sub'
+  | 'sup'
+  | 'time'
+  | 'code'
+  | 'kbd'
+  | 'samp'
+  | 'mark'
+  | 'button';
+
+export type TranslationComparisonAttributes = {
+  href?: string;
+  src?: string;
+  alt?: string;
+  title?: string;
+  role?: string;
+  ariaLabel?: string;
+  lang?: string;
+  dir?: 'auto' | 'ltr' | 'rtl';
+  rowSpan?: number;
+  colSpan?: number;
+  listStart?: number;
+};
+
+export type TranslationComparisonSnapshotNode =
+  | {
+      kind: 'element';
+      parentIndex?: number;
+      tag: TranslationComparisonElementTag;
+      attributes?: TranslationComparisonAttributes;
+    }
+  | {
+      kind: 'text';
+      parentIndex: number;
+      segmentId?: string;
+      text?: string;
+    };
+
+export type TranslationComparisonSnapshot = {
+  rootIndex: 0;
+  nodes: TranslationComparisonSnapshotNode[];
 };
 
 export type TranslationSessionSegment = {
@@ -116,6 +250,7 @@ export type TranslationSessionBundle = {
   lifecycle: TranslationSessionLifecycle;
   partial: boolean;
   segments: TranslationSessionSegment[];
+  comparisonSnapshot: TranslationComparisonSnapshot;
 };
 
 export type TranslationFailureReason =
@@ -150,6 +285,32 @@ export type TranslationFailureMetadata = {
   unsupportedCount?: number;
   excludedCount?: number;
   causeReason?: Exclude<TranslationFailureReason, 'RETRY_EXHAUSTED'>;
+  failureCategory?:
+    | TranslationResponseRecoveryClassification
+    | 'rate-limit'
+    | 'timeout'
+    | 'authentication'
+    | 'quota'
+    | 'provider-refusal'
+    | 'retry-exhaustion';
+  requestedCount?: number;
+  returnedValidCount?: number;
+  missingCount?: number;
+  duplicateCount?: number;
+  unknownCount?: number;
+  emptyCount?: number;
+  parseFailure?: boolean;
+  finishReason?: string;
+  responseTruncated?: boolean;
+  splitDepth?: number;
+  smallestAttemptedBatch?: number;
+  unresolvedCount?: number;
+  inputCharacterCount?: number;
+  estimatedInputTokens?: number;
+  estimatedOutputTokens?: number;
+  responseSize?: number;
+  batchSize?: number;
+  retryHistory?: string;
 };
 
 export type TranslationFailure = {
@@ -235,6 +396,36 @@ export type TranslationResponse = {
     outputTokens?: number;
   };
   partial?: boolean;
+  recovery?: TranslationResponseRecoveryMetadata;
+};
+
+export type TranslationResponseRecoveryClassification =
+  | 'complete'
+  | 'valid-partial'
+  | 'truncated-json'
+  | 'malformed-json'
+  | 'invalid-structured-output'
+  | 'missing-ids'
+  | 'duplicate-ids'
+  | 'unknown-ids'
+  | 'empty-translation';
+
+export type TranslationResponseRecoveryMetadata = {
+  classification: TranslationResponseRecoveryClassification;
+  requestedSegmentIds: string[];
+  returnedSegmentIds: string[];
+  missingSegmentIds: string[];
+  duplicateSegmentIds: string[];
+  unknownSegmentIds: string[];
+  emptySegmentIds: string[];
+  parseFailure: boolean;
+  finishReason?: string;
+  responseTruncated: boolean;
+  inputCharacters: number;
+  estimatedInputTokens: number;
+  estimatedOutputTokens: number;
+  responseBytes: number;
+  batchSize: number;
 };
 
 export type TranslationProgress = {
@@ -254,6 +445,8 @@ export type TranslationProgress = {
   displayMode?: TranslationDisplayMode;
   lifecycle?: TranslationSessionLifecycle;
   changed?: TranslationChangeSummary;
+  changeScan?: TranslationChangeScanResult;
+  translatedCopy?: TranslatedCopyApplicationSummary;
   pageDiverged?: boolean;
 };
 

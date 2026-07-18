@@ -108,7 +108,7 @@ describe('shared runtime validation', () => {
 
   it('validates bounded translation-session bundles and rejects unsafe navigation', () => {
     const bundle = {
-      version: 1,
+      version: 2,
       sessionId: 'session_bundle_test123',
       navigationUrl: 'https://example.test/article',
       pageFingerprint: 'fp_page123',
@@ -134,6 +134,14 @@ describe('shared runtime validation', () => {
           status: 'translated',
         },
       ],
+      comparisonSnapshot: {
+        rootIndex: 0,
+        nodes: [
+          { kind: 'element', tag: 'main' },
+          { kind: 'element', parentIndex: 0, tag: 'article' },
+          { kind: 'text', parentIndex: 1, segmentId: 'seg_0_example' },
+        ],
+      },
     };
 
     expect(translationSessionBundleSchema.safeParse(bundle).success).toBe(true);
@@ -145,6 +153,52 @@ describe('shared runtime validation', () => {
       translationSessionBundleSchema.safeParse({
         ...bundle,
         segments: Array.from({ length: 2_501 }, () => bundle.segments[0]),
+      }).success,
+    ).toBe(false);
+    expect(
+      translationSessionBundleSchema.safeParse({
+        ...bundle,
+        comparisonSnapshot: {
+          rootIndex: 0,
+          nodes: [
+            { kind: 'element', tag: 'main' },
+            { kind: 'element', parentIndex: 2, tag: 'article' },
+            { kind: 'text', parentIndex: 1, text: 'Cycle attempt' },
+          ],
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      translationSessionBundleSchema.safeParse({
+        ...bundle,
+        comparisonSnapshot: {
+          rootIndex: 0,
+          nodes: [
+            { kind: 'element', tag: 'main' },
+            {
+              kind: 'element',
+              parentIndex: 0,
+              tag: 'a',
+              attributes: { href: 'javascript:alert(1)' },
+            },
+          ],
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      translationSessionBundleSchema.safeParse({
+        ...bundle,
+        comparisonSnapshot: {
+          rootIndex: 0,
+          nodes: [
+            { kind: 'element', tag: 'main' },
+            ...Array.from({ length: 41 }, (_, index) => ({
+              kind: 'element',
+              parentIndex: index,
+              tag: 'div',
+            })),
+          ],
+        },
       }).success,
     ).toBe(false);
   });

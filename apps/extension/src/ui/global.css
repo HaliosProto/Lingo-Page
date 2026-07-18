@@ -417,6 +417,13 @@ textarea {
   gap: 6px;
 }
 
+.site-access-note {
+  margin: 0;
+  color: var(--translation-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .session-actions button,
 .advanced-actions button {
   border-color: var(--translation-border);

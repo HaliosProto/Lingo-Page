@@ -164,6 +164,50 @@ test('translates, explains exclusions and cancellation, continues pending work, 
       }
     }
     expect(translationRequestCount).toBe(requestsAfterInitialTranslation);
+    await popup.evaluate(async () => {
+      const response = await chrome.runtime.sendMessage({
+        version: 1,
+        requestId: 'req_e2e_light_theme_get_12345',
+        type: 'GET_SETTINGS',
+        payload: {},
+      });
+      if (response.type !== 'SETTINGS') throw new Error('Settings unavailable.');
+      await chrome.runtime.sendMessage({
+        version: 1,
+        requestId: 'req_e2e_light_theme_update_12345',
+        type: 'UPDATE_SETTINGS',
+        payload: { settings: { ...response.payload.settings, theme: 'light' } },
+      });
+    });
+    const rtlComparisonPagePromise = context.waitForEvent('page');
+    const rtlComparisonResponse = await commandForFixture(popup, fixtureTabId, {
+      version: 1,
+      requestId: 'req_e2e_open_rtl_comparison_12345',
+      type: 'OPEN_COMPARISON_VIEW',
+      payload: { sessionId: 'session_e2e_page_12345' },
+    });
+    expect(rtlComparisonResponse).toMatchObject({ type: 'COMPARISON_OPENED' });
+    const rtlComparison = await rtlComparisonPagePromise;
+    await rtlComparison.setViewportSize({ width: 1100, height: 800 });
+    await expect
+      .poll(() => rtlComparison.evaluate(() => document.documentElement.dataset.theme))
+      .toBe('light');
+    await expect(rtlComparison.locator('#original-pane')).toHaveAttribute('dir', 'auto');
+    await expect(rtlComparison.locator('#translation-pane')).toHaveAttribute('dir', 'rtl');
+    await expect(
+      rtlComparison.locator('#translation-pane').getByText('[fa] Stable fixture heading'),
+    ).toBeVisible();
+    if (captureMilestoneOne) {
+      await rtlComparison.screenshot({
+        path: join(milestoneOneScreenshotRoot, 'comparison-rtl-ltr.png'),
+        fullPage: false,
+      });
+    }
+    const rtlComparisonClosed = rtlComparison.waitForEvent('close');
+    await rtlComparison.getByRole('button', { name: 'Close comparison' }).click();
+    await rtlComparisonClosed;
+    await fixture.bringToFront();
+    expect(translationRequestCount).toBe(requestsAfterInitialTranslation);
     await expect(
       popup.getByText(
         'Some content could not be translated because it is inside protected frames, images, canvas elements, or browser-restricted areas.',
@@ -257,7 +301,7 @@ test('translates, explains exclusions and cancellation, continues pending work, 
     await expect(fixture.locator('#bulk-0')).toHaveText('[en] Bulk section 0 remains stable.');
     expect(translationRequestCount).toBe(requestsBeforePartialSwitch);
 
-    await commandForFixture(popup, fixtureTabId, {
+    const continueResponse = await commandForFixture(popup, fixtureTabId, {
       version: 1,
       requestId: 'req_e2e_continue_12345',
       type: 'CONTINUE_PAGE_TRANSLATION',
@@ -268,7 +312,24 @@ test('translates, explains exclusions and cancellation, continues pending work, 
         useSmallerBatches: false,
       },
     });
-    await expect(fixture.locator('#bulk-999')).toHaveText('[en] Bulk section 999 remains stable.');
+    expect(continueResponse).toMatchObject({ type: 'TRANSLATION_PROGRESS' });
+    await expect
+      .poll(
+        async () => {
+          const response = (await commandForFixture(popup, fixtureTabId, {
+            version: 1,
+            requestId: `req_e2e_continue_poll_${Date.now()}`,
+            type: 'GET_TRANSLATION_PROGRESS',
+            payload: {},
+          })) as { payload?: { progress?: { status?: string } } };
+          return response.payload?.progress?.status;
+        },
+        { timeout: 15_000 },
+      )
+      .toBe('completed');
+    await expect(fixture.locator('#bulk-999')).toHaveText('[en] Bulk section 999 remains stable.', {
+      timeout: 15_000,
+    });
     await expect(fixture.locator('#bulk-0')).toHaveText('[en] Bulk section 0 remains stable.');
     const completedProgress = (await commandForFixture(popup, fixtureTabId, {
       version: 1,
@@ -280,6 +341,58 @@ test('translates, explains exclusions and cancellation, continues pending work, 
       status: 'completed',
       failedSegments: 0,
     });
+
+    const requestsBeforeNoChangeScan = translationRequestCount;
+    const noChangeResponse = await commandForFixture(popup, fixtureTabId, {
+      version: 1,
+      requestId: 'req_e2e_scan_no_changes_12345',
+      type: 'SCAN_PAGE_CHANGES',
+      payload: { sessionId: 'session_e2e_partial_12345' },
+    });
+    expect(noChangeResponse).toMatchObject({
+      type: 'TRANSLATION_PROGRESS',
+      payload: {
+        progress: {
+          pageDiverged: false,
+          changeScan: { status: 'no-changes' },
+        },
+      },
+    });
+    expect(translationRequestCount).toBe(requestsBeforeNoChangeScan);
+    await commandForFixture(popup, fixtureTabId, {
+      version: 1,
+      requestId: 'req_e2e_scan_original_view_12345',
+      type: 'SET_PAGE_VIEW',
+      payload: { sessionId: 'session_e2e_partial_12345', displayMode: 'original' },
+    });
+    await expect(fixture.locator('#heading')).toHaveText('Stable fixture heading');
+    const originalViewScan = await commandForFixture(popup, fixtureTabId, {
+      version: 1,
+      requestId: 'req_e2e_scan_original_no_changes_12345',
+      type: 'SCAN_PAGE_CHANGES',
+      payload: { sessionId: 'session_e2e_partial_12345' },
+    });
+    expect(originalViewScan).toMatchObject({
+      type: 'TRANSLATION_PROGRESS',
+      payload: { progress: { changeScan: { status: 'no-changes' } } },
+    });
+    await commandForFixture(popup, fixtureTabId, {
+      version: 1,
+      requestId: 'req_e2e_scan_translated_view_12345',
+      type: 'SET_PAGE_VIEW',
+      payload: { sessionId: 'session_e2e_partial_12345', displayMode: 'translated' },
+    });
+    await expect(fixture.locator('#heading')).toHaveText('[en] Stable fixture heading');
+    expect(translationRequestCount).toBe(requestsBeforeNoChangeScan);
+    await popup.reload();
+    await expect(popup.getByText('No page changes found.')).toBeVisible();
+    await expect(popup.getByText('Your translation is up to date.')).toBeVisible();
+    if (captureMilestoneOne) {
+      await popup.screenshot({
+        path: join(milestoneOneScreenshotRoot, 'no-page-changes.png'),
+        fullPage: true,
+      });
+    }
 
     await fixture.evaluate(() => window.addChangedSection());
     await fixture.evaluate(() => window.addMixedDirectionText());
@@ -316,6 +429,15 @@ test('translates, explains exclusions and cancellation, continues pending work, 
       'Persian فارسی model XJ-2026, https://example.com/path and number ۱۲۳۴.',
     );
     expect(translationRequestCount).toBe(requestsBeforeChangeScan + 1);
+    await popup.reload();
+    await expect(popup.getByText('Changed sections updated.')).toBeVisible();
+    await expect(popup.getByText(/2 translated/u)).toBeVisible();
+    if (captureMilestoneOne) {
+      await popup.screenshot({
+        path: join(milestoneOneScreenshotRoot, 'changed-sections-updated.png'),
+        fullPage: true,
+      });
+    }
 
     if (captureMilestoneOne) {
       await fixture.locator('#mixed-direction').scrollIntoViewIfNeeded();
@@ -392,6 +514,228 @@ test('translates, explains exclusions and cancellation, continues pending work, 
       .find((page) => page.url() === 'http://127.0.0.1:4173/fixture.html' && page !== fixture);
     expect(copyPage).toBeDefined();
     await expect(copyPage!.locator('#heading')).toHaveText('[en] Stable fixture heading');
+    await expect(copyPage!.locator('#lingo-page-copy-status')).toHaveAttribute(
+      'data-copy-status',
+      'partial',
+    );
+    await expect(copyPage!.locator('#lingo-page-copy-status')).toHaveAttribute(
+      'data-provider-requests',
+      '0',
+    );
+    await expect(copyPage!.locator('#lingo-page-copy-status')).toHaveAttribute(
+      'data-actions',
+      'Translate unmatched sections',
+    );
+    const copyHandoffState = await serviceWorker.evaluate(async (copyTabId) => {
+      const stored = await chrome.storage.session.get(null);
+      const tabEntry = stored[`translatedCopyTab:${copyTabId}`];
+      const pendingKeys = Object.keys(stored).filter((key) =>
+        key.startsWith('translatedCopyHandoff:'),
+      );
+      return { tabEntry, pendingKeys };
+    }, copyResponse.payload.tabId);
+    expect(copyHandoffState.tabEntry).toMatchObject({ status: 'acknowledged' });
+    expect(copyHandoffState.pendingKeys).toHaveLength(0);
+    const duplicateClaim = await serviceWorker.evaluate(async (copyTabId) => {
+      const [result] = await chrome.scripting.executeScript({
+        target: { tabId: copyTabId },
+        func: async () =>
+          chrome.runtime.sendMessage({
+            version: 1,
+            requestId: 'req_e2e_duplicate_copy_claim_12345',
+            type: 'GET_TRANSLATED_COPY_HANDOFF',
+            payload: {},
+          }),
+      });
+      return result?.result;
+    }, copyResponse.payload.tabId);
+    expect(duplicateClaim).toMatchObject({
+      type: 'TRANSLATED_COPY_HANDOFF_STATUS',
+      payload: { status: 'already-applied' },
+    });
+    const duplicateAck = await serviceWorker.evaluate(
+      async ({ tabId, token, summary }) => {
+        const [result] = await chrome.scripting.executeScript({
+          target: { tabId },
+          func: async ({ token, summary }) =>
+            chrome.runtime.sendMessage({
+              version: 1,
+              requestId: 'req_e2e_duplicate_copy_ack_12345',
+              type: 'ACK_TRANSLATED_COPY_HANDOFF',
+              payload: { token, ...summary },
+            }),
+          args: [{ token, summary }],
+        });
+        return result?.result;
+      },
+      {
+        tabId: copyResponse.payload.tabId,
+        token: copyHandoffState.tabEntry.token as string,
+        summary: {
+          applicationStatus: copyHandoffState.tabEntry.applicationStatus as string,
+          applicationStage: 'destination-ready' as const,
+          discoveredSegments: copyHandoffState.tabEntry.discoveredSegments as number,
+          appliedSegments: copyHandoffState.tabEntry.appliedSegments as number,
+          changedSegments: copyHandoffState.tabEntry.changedSegments as number,
+          providerRequests: 0 as const,
+          matchedSegments: copyHandoffState.tabEntry.matchedSegments as number,
+          unmatchedSegments: copyHandoffState.tabEntry.unmatchedSegments as number,
+          uncertainSegments: copyHandoffState.tabEntry.uncertainSegments as number,
+        },
+      },
+    );
+    expect(duplicateAck).toMatchObject({
+      type: 'TRANSLATED_COPY_ACKNOWLEDGED',
+      payload: { acknowledged: true },
+    });
+
+    const exportedBundle = await popup.evaluate(
+      async ({ tabId, sessionId }) => {
+        return chrome.tabs.sendMessage(tabId, {
+          version: 1,
+          requestId: 'req_e2e_export_redirect_copy_12345',
+          type: 'EXPORT_SESSION_BUNDLE',
+          payload: { sessionId },
+        });
+      },
+      { tabId: fixtureTabId, sessionId: 'session_e2e_partial_12345' },
+    );
+    expect(exportedBundle.type).toBe('SESSION_BUNDLE');
+
+    for (const rejection of ['expired', 'invalid', 'wrong-tab'] as const) {
+      const rejectedClaim = await serviceWorker.evaluate(
+        async ({ sourceTabId, copyTabId, bundle, rejection }) => {
+          const token = `copy_${crypto.randomUUID().replaceAll('-', '')}`;
+          const expiresAt = rejection === 'expired' ? Date.now() - 1 : Date.now() + 30_000;
+          const record = {
+            version: 1,
+            token,
+            tabId: rejection === 'wrong-tab' ? copyTabId : sourceTabId,
+            createdAt: Date.now(),
+            expiresAt,
+            bundle: rejection === 'invalid' ? { invalid: true } : bundle,
+          };
+          await chrome.storage.session.set({
+            [`translatedCopyHandoff:${token}`]: record,
+            [`translatedCopyTab:${sourceTabId}`]: {
+              version: 1,
+              status: 'pending',
+              token,
+              expiresAt,
+            },
+          });
+          const [result] = await chrome.scripting.executeScript({
+            target: { tabId: sourceTabId },
+            func: async () =>
+              chrome.runtime.sendMessage({
+                version: 1,
+                requestId: `req_e2e_rejected_claim_${crypto.randomUUID().replaceAll('-', '')}`,
+                type: 'GET_TRANSLATED_COPY_HANDOFF',
+                payload: {},
+              }),
+          });
+          return result?.result;
+        },
+        {
+          sourceTabId: fixtureTabId,
+          copyTabId: copyResponse.payload.tabId,
+          bundle: exportedBundle.payload.bundle,
+          rejection,
+        },
+      );
+      expect(rejectedClaim).toMatchObject({
+        type: 'TRANSLATED_COPY_HANDOFF_STATUS',
+        payload: { status: 'failed' },
+      });
+      await expect(fixture.locator('#heading')).toHaveText('[en] Stable fixture heading');
+    }
+
+    const zeroMatchPagePromise = context.waitForEvent('page');
+    const zeroMatchResponsePromise = popup.evaluate(async (bundle) => {
+      return chrome.runtime.sendMessage({
+        version: 1,
+        requestId: 'req_e2e_open_zero_match_copy_12345',
+        type: 'OPEN_TRANSLATED_COPY_FROM_BUNDLE',
+        payload: {
+          bundle: {
+            ...bundle,
+            segments: bundle.segments.map((segment: { id: string }, index: number) => ({
+              ...segment,
+              sourceFingerprint: `fp_unmatched_${index}`,
+              structuralFingerprint: `structure_unmatched_${index}`,
+            })),
+          },
+        },
+      });
+    }, exportedBundle.payload.bundle);
+    const zeroMatchPage = await zeroMatchPagePromise;
+    const zeroMatchResponse = await zeroMatchResponsePromise;
+    expect(zeroMatchResponse).toMatchObject({
+      type: 'TRANSLATED_COPY_OPENED',
+      payload: { applicationStatus: 'no-matches', matchedSegments: 0, providerRequests: 0 },
+    });
+    await expect(zeroMatchPage).toHaveURL('http://127.0.0.1:4173/fixture.html');
+    await expect(zeroMatchPage.locator('#heading')).toHaveText('Stable fixture heading');
+    await expect(zeroMatchPage.locator('#lingo-page-copy-status')).toHaveAttribute(
+      'data-copy-status',
+      'no-matches',
+    );
+    await expect(zeroMatchPage.locator('#lingo-page-copy-status')).toHaveAttribute(
+      'data-actions',
+      'Retry matching|Translate this page|Return to source tab',
+    );
+    await zeroMatchPage.close();
+    await expect(fixture.locator('#heading')).toHaveText('[en] Stable fixture heading');
+
+    const redirectPagePromise = context.waitForEvent('page');
+    const failedCopyResponsePromise = popup.evaluate(async (bundle) => {
+      return chrome.runtime.sendMessage({
+        version: 1,
+        requestId: 'req_e2e_open_redirect_copy_12345',
+        type: 'OPEN_TRANSLATED_COPY_FROM_BUNDLE',
+        payload: {
+          bundle: {
+            ...bundle,
+            navigationUrl: 'http://127.0.0.1:4173/redirect-copy',
+          },
+        },
+      });
+    }, exportedBundle.payload.bundle);
+    const redirectedCopy = await redirectPagePromise;
+    const redirectedCopyResponse = await failedCopyResponsePromise;
+    expect(redirectedCopyResponse).toMatchObject({
+      type: 'TRANSLATED_COPY_OPENED',
+      payload: { applicationStatus: 'partial', matchedSegments: expect.any(Number) },
+    });
+    await expect(redirectedCopy).toHaveURL('http://127.0.0.1:4173/fixture.html');
+    await expect(redirectedCopy.locator('#heading')).toHaveText('[en] Stable fixture heading');
+    await expect(redirectedCopy.locator('#lingo-page-copy-status')).toHaveAttribute(
+      'data-copy-status',
+      'partial',
+    );
+    expect(context.pages()).toContain(redirectedCopy);
+
+    const wrongSitePagePromise = context.waitForEvent('page');
+    const wrongSiteResponsePromise = popup.evaluate(async (bundle) => {
+      return chrome.runtime.sendMessage({
+        version: 1,
+        requestId: 'req_e2e_open_wrong_site_copy_12345',
+        type: 'OPEN_TRANSLATED_COPY_FROM_BUNDLE',
+        payload: {
+          bundle: {
+            ...bundle,
+            navigationUrl: 'http://127.0.0.1:4173/redirect-copy-wrong-site',
+          },
+        },
+      });
+    }, exportedBundle.payload.bundle);
+    const wrongSiteCopy = await wrongSitePagePromise;
+    const wrongSiteResponse = await wrongSiteResponsePromise;
+    expect(wrongSiteResponse).toMatchObject({ type: 'MESSAGE_ERROR' });
+    await expect(wrongSiteCopy).toHaveURL('http://localhost:4173/fixture.html');
+    await expect(wrongSiteCopy.locator('#heading')).toHaveText('Stable fixture heading');
+    await expect(wrongSiteCopy.locator('#lingo-page-copy-status')).toHaveCount(0);
+    await wrongSiteCopy.close();
     if (captureMilestoneOne) {
       await copyPage!.screenshot({
         path: join(milestoneOneScreenshotRoot, 'translated-copy.png'),
@@ -434,27 +778,168 @@ test('translates, explains exclusions and cancellation, continues pending work, 
       comparison.getByRole('heading', { name: 'Translation Extension Fixture' }),
     ).toBeVisible();
     await expect(comparison.getByText(/of \d+ translated/u)).toBeVisible();
+    await expect(comparison.getByText('Partial session')).toBeVisible();
     await expect
       .poll(() => comparison.evaluate(() => document.documentElement.dataset.theme))
       .toBe('dark');
     expect(await comparison.evaluate(() => document.documentElement.dataset.reducedMotion)).toBe(
       'true',
     );
+    await comparison.setViewportSize({ width: 1100, height: 800 });
+    const originalPane = comparison.locator('#original-pane');
+    const translationPane = comparison.locator('#translation-pane');
+    const divider = comparison.getByRole('separator', { name: 'Resize comparison panes' });
+    await expect(originalPane.getByText('Stable fixture heading', { exact: true })).toBeVisible();
+    await expect(
+      translationPane.getByText('[en] Stable fixture heading', { exact: true }),
+    ).toBeVisible();
+    await expect(comparison.locator('.segment-pair')).toHaveCount(0);
+    await expect(comparison.locator('.snapshot-document table')).toHaveCount(2);
+    await expect(comparison.locator('.snapshot-document ul')).toHaveCount(2);
+    await expect(comparison.locator('.snapshot-document button')).toHaveCount(4);
+    await expect(
+      comparison.locator(
+        '.snapshot-document script, .snapshot-document iframe, .snapshot-document object, .snapshot-document embed, .snapshot-document form, .snapshot-document input, .snapshot-document textarea, .snapshot-document select',
+      ),
+    ).toHaveCount(0);
+    await expect(
+      comparison.locator(
+        '.snapshot-document [onclick], .snapshot-document [onload], .snapshot-document a[href^="javascript:"]',
+      ),
+    ).toHaveCount(0);
+    expect(await comparison.evaluate(() => typeof (window as Window).addChangedSection)).toBe(
+      'undefined',
+    );
+
+    const initialPaneWidths = await comparison.evaluate(() => {
+      const original = document.querySelector('#original-pane')!.getBoundingClientRect();
+      const translation = document.querySelector('#translation-pane')!.getBoundingClientRect();
+      const workspace = document.querySelector('.comparison-workspace')!.getBoundingClientRect();
+      return {
+        original: original.width,
+        translation: translation.width,
+        workspaceBottom: workspace.bottom,
+        innerHeight: innerHeight,
+      };
+    });
+    expect(Math.abs(initialPaneWidths.original - initialPaneWidths.translation)).toBeLessThan(30);
+    expect(initialPaneWidths.workspaceBottom).toBeLessThanOrEqual(initialPaneWidths.innerHeight);
+
     if (captureMilestoneOne) {
-      await comparison.setViewportSize({ width: 1100, height: 800 });
-      await comparison.evaluate(() => window.scrollTo(0, 0));
       await comparison.screenshot({
-        path: join(milestoneOneScreenshotRoot, 'comparison-dark.png'),
+        path: join(milestoneOneScreenshotRoot, 'comparison-default-50-50.png'),
         fullPage: false,
       });
-      await comparison.setViewportSize({ width: 390, height: 844 });
-      await comparison.evaluate(() => window.scrollTo(0, 0));
+      await comparison.screenshot({
+        path: join(milestoneOneScreenshotRoot, 'comparison-partial.png'),
+        fullPage: false,
+      });
+    }
+
+    await originalPane.hover();
+    await comparison.mouse.wheel(0, 900);
+    await expect
+      .poll(() => translationPane.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(0);
+    expect(await comparison.evaluate(() => window.scrollY)).toBe(0);
+    if (captureMilestoneOne) {
+      await comparison.screenshot({
+        path: join(milestoneOneScreenshotRoot, 'comparison-synchronized-scrolled.png'),
+        fullPage: false,
+      });
+    }
+
+    await translationPane.hover();
+    await comparison.mouse.wheel(0, 650);
+    await expect
+      .poll(() => originalPane.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(0);
+    await comparison.getByRole('button', { name: 'Scrolling linked' }).click();
+    const translationBeforeIndependentScroll = await translationPane.evaluate(
+      (element) => element.scrollTop,
+    );
+    await originalPane.hover();
+    await comparison.mouse.wheel(0, 500);
+    await expect
+      .poll(async () =>
+        Math.abs(
+          (await translationPane.evaluate((element) => element.scrollTop)) -
+            translationBeforeIndependentScroll,
+        ),
+      )
+      .toBeLessThan(3);
+    if (captureMilestoneOne) {
+      await comparison.screenshot({
+        path: join(milestoneOneScreenshotRoot, 'comparison-unlinked-scroll.png'),
+        fullPage: false,
+      });
+    }
+    await comparison.getByRole('button', { name: 'Scrolling unlinked' }).click();
+    await expect(comparison.getByText(/panes were realigned/u)).toBeVisible();
+
+    await divider.focus();
+    await divider.press('ArrowRight');
+    await divider.press('ArrowRight');
+    await divider.press('ArrowRight');
+    await expect(divider).toHaveAttribute('aria-valuenow', '56');
+    const dividerBox = await divider.boundingBox();
+    expect(dividerBox).not.toBeNull();
+    if (dividerBox) {
+      await comparison.mouse.move(dividerBox.x + dividerBox.width / 2, dividerBox.y + 30);
+      await comparison.mouse.down();
+      await comparison.mouse.move(dividerBox.x - 80, dividerBox.y + 30, { steps: 6 });
+      await comparison.mouse.up();
+      expect(Number(await divider.getAttribute('aria-valuenow'))).toBeLessThan(56);
+    }
+    if (captureMilestoneOne) {
+      await comparison.screenshot({
+        path: join(milestoneOneScreenshotRoot, 'comparison-adjusted-divider.png'),
+        fullPage: false,
+      });
+    }
+    await comparison.getByRole('button', { name: 'Reset layout' }).click();
+    await expect(divider).toHaveAttribute('aria-valuenow', '50');
+    await comparison.getByRole('button', { name: 'Swap sides' }).click();
+    await expect(comparison.locator('.comparison-pane').first()).toHaveAttribute(
+      'id',
+      'translation-pane',
+    );
+    if (captureMilestoneOne) {
+      await comparison.screenshot({
+        path: join(milestoneOneScreenshotRoot, 'comparison-swapped-sides.png'),
+        fullPage: false,
+      });
+    }
+    await comparison.getByRole('button', { name: 'Swap sides' }).click();
+    await serviceWorker.evaluate(
+      async (tabId) => chrome.tabs.setZoom(tabId, 2),
+      comparisonResponse.payload.tabId,
+    );
+    await expect(comparison.getByRole('heading', { name: 'Original', exact: true })).toBeVisible();
+    await expect(
+      comparison.getByRole('heading', { name: 'Translation', exact: true }),
+    ).toBeVisible();
+    await expect(comparison.getByRole('button', { name: 'Reset layout' })).toBeVisible();
+    expect(
+      await comparison.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(
+      await comparison.evaluate(() => document.documentElement.clientWidth + 1),
+    );
+    await serviceWorker.evaluate(
+      async (tabId) => chrome.tabs.setZoom(tabId, 1),
+      comparisonResponse.payload.tabId,
+    );
+    await comparison.setViewportSize({ width: 390, height: 844 });
+    await expect(comparison.getByRole('heading', { name: 'Original', exact: true })).toBeVisible();
+    await expect(
+      comparison.getByRole('heading', { name: 'Translation', exact: true }),
+    ).toBeVisible();
+    if (captureMilestoneOne) {
       await comparison.screenshot({
         path: join(milestoneOneScreenshotRoot, 'comparison-narrow.png'),
         fullPage: false,
       });
     }
-    await comparison.getByRole('button', { name: 'Next' }).click();
     expect(translationRequestCount).toBe(requestsBeforeCopy);
 
     await commandForFixture(popup, fixtureTabId, {
@@ -500,6 +985,9 @@ test('translates, explains exclusions and cancellation, continues pending work, 
         fullPage: false,
       });
     }
+    await fixture.close();
+    expect(copyPage!.isClosed()).toBe(false);
+    await expect(copyPage!.locator('#heading')).toHaveText('[en] Stable fixture heading');
     expect(runtimeErrors).toEqual([]);
   } finally {
     await context.close();

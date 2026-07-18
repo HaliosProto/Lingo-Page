@@ -1,4 +1,4 @@
-import { StrictMode, useCallback, useEffect, useState } from 'react';
+import { StrictMode, useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { browser } from 'wxt/browser';
 import {
@@ -23,6 +23,13 @@ import {
   type FailureActionId,
 } from '../../src/translation-failures';
 import { ErrorBoundary } from '../../src/ui/ErrorBoundary';
+import {
+  beginTranslatedCopySiteAccessRequest,
+  TRANSLATED_COPY_ACCESS_DENIED,
+  TRANSLATED_COPY_ACCESS_EXPLANATION,
+  translatedCopyOriginPattern,
+  type TranslatedCopySiteAccess,
+} from '../../src/translated-copy-access';
 import '../../src/ui/global.css';
 
 async function sendMessage(message: unknown): Promise<ExtensionResponse> {
@@ -53,6 +60,25 @@ function diagnosticLabel(key: string): string {
       retryAttempts: 'Retry attempts',
       retryAfterSeconds: 'Retry after (seconds)',
       automaticRetry: 'Automatic retry',
+      failureCategory: 'Failure category',
+      requestedCount: 'Requested records',
+      returnedValidCount: 'Valid returned records',
+      missingCount: 'Missing records',
+      duplicateCount: 'Duplicate records',
+      unknownCount: 'Unknown records',
+      emptyCount: 'Empty records',
+      parseFailure: 'Parse failure',
+      finishReason: 'Provider finish reason',
+      responseTruncated: 'Response truncated',
+      splitDepth: 'Split depth',
+      smallestAttemptedBatch: 'Smallest attempted batch',
+      unresolvedCount: 'Unresolved records',
+      inputCharacterCount: 'Input characters',
+      estimatedInputTokens: 'Estimated input tokens',
+      estimatedOutputTokens: 'Estimated output tokens',
+      responseSize: 'Response bytes',
+      batchSize: 'Batch size',
+      retryHistory: 'Retry history',
     }[key] ?? key
   );
 }
@@ -65,6 +91,13 @@ function sessionStateLabel(progress: TranslationProgress): string {
   if (progress.lifecycle === 'translating') return 'Translating';
   return progress.status === 'cancelled' ? 'Paused' : 'Active';
 }
+
+type SessionCommandType =
+  | 'SET_PAGE_VIEW'
+  | 'SCAN_PAGE_CHANGES'
+  | 'UPDATE_CHANGED_SECTIONS'
+  | 'REFRESH_TRANSLATION'
+  | 'END_TRANSLATION_SESSION';
 
 function PopupApp() {
   const [tabId, setTabId] = useState<number>();
@@ -80,7 +113,10 @@ function PopupApp() {
   });
   const [error, setError] = useState<string>();
   const [working, setWorking] = useState(false);
+  const [activeSessionCommand, setActiveSessionCommand] = useState<SessionCommandType>();
+  const [retrySessionCommand, setRetrySessionCommand] = useState<SessionCommandType>();
   const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
+  const deniedTranslatedCopyOrigins = useRef(new Set<string>());
 
   const refreshProgress = useCallback(async (activeTabId: number) => {
     const response = await sendMessage({
@@ -110,33 +146,44 @@ function PopupApp() {
         if (activeTab?.id === undefined) throw new Error('No active browser tab is available.');
         const activeTabId = activeTab.id;
         setTabId(activeTabId);
-        const [statusResponse, healthResponse, settingsResponse, providersResponse] =
-          await Promise.all([
-            sendMessage({
-              version: 1,
-              requestId: createRequestId(),
-              type: 'GET_TAB_STATUS',
-              payload: { tabId: activeTabId },
-            }),
-            sendMessage({
-              version: 1,
-              requestId: createRequestId(),
-              type: 'GET_API_HEALTH',
-              payload: {},
-            }),
-            sendMessage({
-              version: 1,
-              requestId: createRequestId(),
-              type: 'GET_SETTINGS',
-              payload: {},
-            }),
-            sendMessage({
-              version: 1,
-              requestId: createRequestId(),
-              type: 'GET_PROVIDERS',
-              payload: {},
-            }),
-          ]);
+        const [
+          statusResponse,
+          healthResponse,
+          settingsResponse,
+          providersResponse,
+          deniedOriginsResponse,
+        ] = await Promise.all([
+          sendMessage({
+            version: 1,
+            requestId: createRequestId(),
+            type: 'GET_TAB_STATUS',
+            payload: { tabId: activeTabId },
+          }),
+          sendMessage({
+            version: 1,
+            requestId: createRequestId(),
+            type: 'GET_API_HEALTH',
+            payload: {},
+          }),
+          sendMessage({
+            version: 1,
+            requestId: createRequestId(),
+            type: 'GET_SETTINGS',
+            payload: {},
+          }),
+          sendMessage({
+            version: 1,
+            requestId: createRequestId(),
+            type: 'GET_PROVIDERS',
+            payload: {},
+          }),
+          sendMessage({
+            version: 1,
+            requestId: createRequestId(),
+            type: 'GET_TRANSLATED_COPY_DENIED_ORIGINS',
+            payload: {},
+          }),
+        ]);
         if (!active) return;
         if (statusResponse.type === 'TAB_STATUS') {
           setTabStatus(statusResponse.payload);
@@ -146,6 +193,9 @@ function PopupApp() {
         if (settingsResponse.type === 'SETTINGS') setSettings(settingsResponse.payload.settings);
         if (providersResponse.type === 'PROVIDERS')
           setProviders(providersResponse.payload.providers);
+        if (deniedOriginsResponse.type === 'TRANSLATED_COPY_DENIED_ORIGINS') {
+          deniedTranslatedCopyOrigins.current = new Set(deniedOriginsResponse.payload.origins);
+        }
         if (healthResponse.type === 'MESSAGE_ERROR') setError(healthResponse.payload.message);
       } catch (cause) {
         if (active)
@@ -228,16 +278,13 @@ function PopupApp() {
   }
 
   async function runSessionCommand(
-    type:
-      | 'SET_PAGE_VIEW'
-      | 'SCAN_PAGE_CHANGES'
-      | 'UPDATE_CHANGED_SECTIONS'
-      | 'REFRESH_TRANSLATION'
-      | 'END_TRANSLATION_SESSION',
+    type: SessionCommandType,
     extra: Record<string, unknown> = {},
   ): Promise<void> {
     if (tabId === undefined || !progress.sessionId) return;
     setWorking(true);
+    setActiveSessionCommand(type);
+    setRetrySessionCommand(undefined);
     setError(undefined);
     try {
       const response = await sendMessage({
@@ -247,19 +294,98 @@ function PopupApp() {
         payload: { tabId, sessionId: progress.sessionId, ...extra },
       });
       if (response.type === 'TRANSLATION_PROGRESS') setProgress(response.payload.progress);
-      if (response.type === 'MESSAGE_ERROR') setError(response.payload.message);
+      if (response.type === 'MESSAGE_ERROR') {
+        setError(response.payload.message);
+        if (type === 'SCAN_PAGE_CHANGES' || type === 'UPDATE_CHANGED_SECTIONS') {
+          setRetrySessionCommand(type);
+        }
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'The session action could not finish.');
+      if (type === 'SCAN_PAGE_CHANGES' || type === 'UPDATE_CHANGED_SECTIONS') {
+        setRetrySessionCommand(type);
+      }
     } finally {
       setWorking(false);
+      setActiveSessionCommand(undefined);
     }
   }
 
   async function openSessionView(type: 'OPEN_TRANSLATED_COPY' | 'OPEN_COMPARISON_VIEW') {
     if (tabId === undefined || !progress.sessionId) return;
+    let siteAccessRequest: Promise<TranslatedCopySiteAccess> | undefined;
+    let intentRequest: Promise<ExtensionResponse> | undefined;
+    if (type === 'OPEN_TRANSLATED_COPY') {
+      const navigationUrl = tabStatus?.url ?? '';
+      const originPattern = translatedCopyOriginPattern(navigationUrl);
+      if (!originPattern) {
+        setError('Translated copies are available only for HTTP or HTTPS pages.');
+        return;
+      }
+      if (deniedTranslatedCopyOrigins.current.has(originPattern)) {
+        setError(TRANSLATED_COPY_ACCESS_DENIED);
+        return;
+      }
+      intentRequest = sendMessage({
+        version: 1,
+        requestId: createRequestId(),
+        type: 'CREATE_TRANSLATED_COPY_INTENT',
+        payload: {
+          tabId,
+          sessionId: progress.sessionId,
+          navigationUrl,
+          providerId: settings.providerId,
+          modelId: settings.modelId,
+        },
+      });
+      const access = beginTranslatedCopySiteAccessRequest(
+        navigationUrl,
+        browser.permissions,
+        deniedTranslatedCopyOrigins.current,
+      );
+      if (access.status === 'unsupported') {
+        setError('Translated copies are available only for HTTP or HTTPS pages.');
+        return;
+      }
+      if (access.status === 'previously-denied') {
+        setError(TRANSLATED_COPY_ACCESS_DENIED);
+        return;
+      }
+      siteAccessRequest = access.request;
+    }
     setWorking(true);
     setError(undefined);
     try {
+      if (siteAccessRequest) {
+        const siteAccess = await siteAccessRequest;
+        const intentResponse = await intentRequest;
+        if (intentResponse?.type === 'MESSAGE_ERROR') {
+          setError(intentResponse.payload.message);
+          return;
+        }
+        if (intentResponse?.type !== 'TRANSLATED_COPY_INTENT_STATUS') {
+          setError('The translated-copy action could not be prepared.');
+          return;
+        }
+        if (!siteAccess.granted) {
+          await sendMessage({
+            version: 1,
+            requestId: createRequestId(),
+            type: 'DENY_TRANSLATED_COPY_INTENT',
+            payload: { intentId: intentResponse.payload.intentId },
+          });
+          setError(TRANSLATED_COPY_ACCESS_DENIED);
+          return;
+        }
+        const response = await sendMessage({
+          version: 1,
+          requestId: createRequestId(),
+          type: 'RESUME_TRANSLATED_COPY_INTENT',
+          payload: { intentId: intentResponse.payload.intentId },
+        });
+        if (response.type === 'MESSAGE_ERROR') setError(response.payload.message);
+        return;
+      }
       const response = await sendMessage({
         version: 1,
         requestId: createRequestId(),
@@ -368,6 +494,9 @@ function PopupApp() {
       case 'change-provider':
         document.querySelector<HTMLSelectElement>('[data-provider-select]')?.focus();
         return;
+      case 'keep-partial':
+        void runSessionCommand('SET_PAGE_VIEW', { displayMode: 'translated' });
+        return;
       case 'restore':
         void restorePage();
     }
@@ -392,11 +521,14 @@ function PopupApp() {
   const busy = ['discovering', 'translating', 'paused', 'retrying'].includes(progress.status);
   const hasSession = Boolean(progress.sessionId && progress.status !== 'idle');
   const activeView = progress.displayMode === 'original' ? 'original' : 'translated';
-  const changedCount = progress.changed
-    ? progress.changed.newSegments +
-      progress.changed.modifiedSegments +
-      progress.changed.removedSegments +
-      progress.changed.uncertainSegments
+  const changeSummary = progress.changeScan?.summary ?? progress.changed;
+  const translatedCopy = progress.translatedCopy;
+  const changedCount = changeSummary
+    ? changeSummary.newSegments +
+      changeSummary.modifiedSegments +
+      changeSummary.removedSegments +
+      changeSummary.reorderedSegments +
+      changeSummary.uncertainSegments
     : 0;
   const selectableProviders = providers.filter(
     (provider) => provider.enabled && provider.configured,
@@ -554,6 +686,27 @@ function PopupApp() {
         </div>
       </section>
 
+      {translatedCopy && !hasSession && (
+        <section
+          className="session-panel"
+          aria-label="Translated copy status"
+          data-translated-copy-status={translatedCopy.status}
+        >
+          <div className="session-heading">
+            <div>
+              <strong>
+                {translatedCopy.status === 'applying'
+                  ? 'Applying cached translation'
+                  : translatedCopy.status === 'session-stale'
+                    ? 'Saved translation is stale'
+                    : 'Translation import failed'}
+              </strong>
+              <p>No provider request was made automatically.</p>
+            </div>
+          </div>
+        </section>
+      )}
+
       {hasSession && (
         <section className="session-panel" aria-label="Translation session controls">
           <div className="session-heading">
@@ -584,24 +737,87 @@ function PopupApp() {
               Translated
             </button>
           </div>
-          {progress.pageDiverged && progress.changed && (
-            <div className="change-summary" role="status">
-              <strong>{changedCount} page changes found</strong>
+          {translatedCopy && (
+            <div
+              className="change-summary"
+              role="status"
+              aria-live="polite"
+              data-translated-copy-status={translatedCopy.status}
+            >
+              <strong>
+                {translatedCopy.status === 'applying'
+                  ? 'Applying cached translation'
+                  : translatedCopy.status === 'ready'
+                    ? 'Translated copy ready'
+                    : translatedCopy.status === 'partial'
+                      ? 'Translated copy partially applied'
+                      : translatedCopy.status === 'no-matches'
+                        ? 'No safe cached matches'
+                        : translatedCopy.status === 'session-stale'
+                          ? 'Saved translation is stale'
+                          : 'Translation import failed'}
+              </strong>
               <span>
-                {progress.changed.newSegments} new · {progress.changed.modifiedSegments} modified ·{' '}
-                {progress.changed.removedSegments} removed · {progress.changed.uncertainSegments}{' '}
-                uncertain
+                {translatedCopy.matchedSegments} reused · {translatedCopy.unmatchedSegments}{' '}
+                unmatched · {translatedCopy.uncertainSegments} uncertain ·{' '}
+                {translatedCopy.providerRequests} provider requests
               </span>
-              <button
-                className="primary-button compact-button"
-                type="button"
-                disabled={working || busy}
-                onClick={() => void runSessionCommand('UPDATE_CHANGED_SECTIONS')}
-              >
-                Update changed sections
-              </button>
+              {(translatedCopy.status === 'partial' || translatedCopy.status === 'no-matches') && (
+                <button
+                  className="primary-button compact-button"
+                  type="button"
+                  disabled={working || busy}
+                  onClick={() => void continueTranslation()}
+                >
+                  {translatedCopy.status === 'partial'
+                    ? 'Translate unmatched sections'
+                    : 'Translate this page'}
+                </button>
+              )}
             </div>
           )}
+          {progress.changeScan && (
+            <div className="change-summary" role="status" aria-live="polite">
+              {progress.changeScan.status === 'no-changes' ? (
+                <>
+                  <strong>No page changes found.</strong>
+                  <span>Your translation is up to date.</span>
+                </>
+              ) : progress.changeScan.status === 'updated' ? (
+                <>
+                  <strong>Changed sections updated.</strong>
+                  <span>
+                    {progress.changeScan.updatedSegments ?? 0} translated ·{' '}
+                    {progress.changeScan.summary.removedSegments} removed ·{' '}
+                    {progress.changeScan.summary.reorderedSegments} reordered ·{' '}
+                    {progress.changeScan.summary.uncertainSegments} uncertain and left original
+                  </span>
+                </>
+              ) : (
+                <>
+                  <strong>{changedCount} page changes found</strong>
+                  <span>
+                    {progress.changeScan.summary.newSegments} new ·{' '}
+                    {progress.changeScan.summary.modifiedSegments} modified ·{' '}
+                    {progress.changeScan.summary.removedSegments} removed ·{' '}
+                    {progress.changeScan.summary.reorderedSegments} reordered ·{' '}
+                    {progress.changeScan.summary.uncertainSegments} uncertain
+                  </span>
+                  <button
+                    className="primary-button compact-button"
+                    type="button"
+                    disabled={working || busy}
+                    onClick={() => void runSessionCommand('UPDATE_CHANGED_SECTIONS')}
+                  >
+                    {activeSessionCommand === 'UPDATE_CHANGED_SECTIONS'
+                      ? 'Updating…'
+                      : 'Update changed sections'}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+          <p className="site-access-note">{TRANSLATED_COPY_ACCESS_EXPLANATION}</p>
           <div className="session-actions">
             <button
               type="button"
@@ -622,7 +838,9 @@ function PopupApp() {
               disabled={working}
               onClick={() => void runSessionCommand('SCAN_PAGE_CHANGES')}
             >
-              Check for page changes
+              {activeSessionCommand === 'SCAN_PAGE_CHANGES'
+                ? 'Checking…'
+                : 'Check for new or changed content'}
             </button>
           </div>
           <details className="advanced-actions">
@@ -733,7 +951,15 @@ function PopupApp() {
       {error && (
         <div className="error-banner" role="alert">
           <span>{error}</span>
-          <button className="text-button" type="button" onClick={() => window.location.reload()}>
+          <button
+            className="text-button"
+            type="button"
+            onClick={() =>
+              retrySessionCommand
+                ? void runSessionCommand(retrySessionCommand)
+                : window.location.reload()
+            }
+          >
             Retry
           </button>
         </div>

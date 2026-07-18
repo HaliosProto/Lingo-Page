@@ -1,6 +1,5 @@
 import { browser } from 'wxt/browser';
 import {
-  batchSegments,
   createSegmentId,
   createTextFingerprint,
   isLikelyTranslatableText,
@@ -9,14 +8,20 @@ import {
 import type {
   GlossaryEntry,
   ProviderId,
+  TranslationChangeScanResult,
   TranslationFailure,
   TranslationChangeSummary,
+  TranslationComparisonAttributes,
+  TranslationComparisonElementTag,
+  TranslationComparisonSnapshot,
   TranslationDisplayMode,
   TranslationProgress,
   TranslationSegment,
   TranslationSessionBundle,
   TranslationSessionLifecycle,
   TranslationSegmentStatus,
+  TranslatedCopyApplicationStatus,
+  TranslatedCopyApplicationSummary,
 } from '@translation/shared-types';
 import { CONTRACT_VERSION, TRANSLATION_SESSION_VERSION } from '@translation/shared-types';
 import {
@@ -25,6 +30,10 @@ import {
   type ContentRequest,
   type ExtensionResponse,
 } from '@translation/shared-validation';
+import {
+  providerAwareBatchLimits,
+  runAdaptiveTranslationRecovery,
+} from '../src/adaptive-translation-recovery';
 
 type NodeRecord = {
   node: Text;
@@ -58,6 +67,8 @@ type Session = {
   displayMode: TranslationDisplayMode;
   lifecycle: TranslationSessionLifecycle;
   changed: TranslationChangeSummary;
+  changeScan?: TranslationChangeScanResult;
+  safeBatchTarget?: number;
 };
 
 class TranslationFailureError extends Error {
@@ -93,6 +104,82 @@ const excludedSelector = [
 
 const MAX_SESSION_SEGMENTS = 2_500;
 const MAX_SESSION_BUNDLE_BYTES = 2_000_000;
+const MAX_COMPARISON_SNAPSHOT_NODES = 15_000;
+const MAX_COMPARISON_SNAPSHOT_DEPTH = 40;
+const COPY_INITIAL_STABILITY_MS = 150;
+const COPY_INITIAL_STABILITY_TIMEOUT_MS = 1_200;
+const COPY_RECONCILIATION_WINDOW_MS = 1_600;
+const comparisonElementTags = new Set<TranslationComparisonElementTag>([
+  'main',
+  'article',
+  'section',
+  'header',
+  'footer',
+  'nav',
+  'aside',
+  'div',
+  'p',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'ul',
+  'ol',
+  'li',
+  'dl',
+  'dt',
+  'dd',
+  'table',
+  'caption',
+  'thead',
+  'tbody',
+  'tfoot',
+  'tr',
+  'th',
+  'td',
+  'figure',
+  'figcaption',
+  'blockquote',
+  'hr',
+  'br',
+  'img',
+  'a',
+  'span',
+  'strong',
+  'em',
+  'b',
+  'i',
+  'small',
+  'sub',
+  'sup',
+  'time',
+  'code',
+  'kbd',
+  'samp',
+  'mark',
+  'button',
+]);
+const comparisonExcludedSelector = [
+  'script',
+  'style',
+  'noscript',
+  'iframe',
+  'object',
+  'embed',
+  'form',
+  'input',
+  'textarea',
+  'select',
+  'option',
+  'svg',
+  'canvas',
+  '[contenteditable]:not([contenteditable="false"])',
+  '[aria-hidden="true"]',
+  '#lingo-page-selection-result',
+  '#lingo-page-copy-status',
+].join(',');
 
 function emptyChangeSummary(): TranslationChangeSummary {
   return {
@@ -117,6 +204,8 @@ export default defineUnlistedScript(() => {
   let observerTimer: ReturnType<typeof setTimeout> | undefined;
   let nextOrdinal = 0;
   let progress: TranslationProgress = idleProgress();
+  let translatedCopyBundle: TranslationSessionBundle | undefined;
+  let translatedCopyToken: string | undefined;
 
   function idleProgress(): TranslationProgress {
     return {
@@ -139,6 +228,7 @@ export default defineUnlistedScript(() => {
       displayMode: session.displayMode,
       lifecycle: session.lifecycle,
       changed: session.changed,
+      ...(session.changeScan ? { changeScan: session.changeScan } : {}),
       pageDiverged: Object.values(session.changed).some((count) => count > 0),
     };
   }
@@ -461,12 +551,14 @@ export default defineUnlistedScript(() => {
     useSmallerBatches = false,
     cancellationEpoch = session.cancellationEpoch,
   ): Promise<void> {
-    const batches = batchSegments(
-      records.map((record) => record.segment),
-      useSmallerBatches
-        ? { maxSegments: 10, maxCharacters: 2_000 }
-        : { maxSegments: 50, maxCharacters: 10_000 },
-    );
+    const limits = providerAwareBatchLimits({
+      providerId: session.providerId,
+      sourceLanguage: session.sourceLanguage,
+      targetLanguage: session.targetLanguage,
+      segments: records.map((record) => record.segment),
+      useSmallerBatches,
+      currentSafeBatchTarget: session.safeBatchTarget,
+    });
     progress = {
       ...progress,
       status: 'translating',
@@ -478,42 +570,54 @@ export default defineUnlistedScript(() => {
     };
     session.lifecycle = 'translating';
     session.lastActivityAt = Date.now();
-
-    for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
-      const segments = batches[batchIndex]!;
-      let retryAttempt = 0;
-      while (true) {
+    const result = await runAdaptiveTranslationRecovery({
+      segments: records.map((record) => record.segment),
+      providerId: session.providerId,
+      sourceLanguage: session.sourceLanguage,
+      targetLanguage: session.targetLanguage,
+      limits,
+      initialSafeBatchTarget: session.safeBatchTarget,
+      cancelled: () =>
+        session.cancelled ||
+        session.cancellationEpoch !== cancellationEpoch ||
+        currentSession !== session,
+      wait: async (seconds) => {
+        await waitForRetry(session, seconds);
+        assertActive(session, cancellationEpoch);
+      },
+      send: async (segments) => {
+        assertActive(session, cancellationEpoch);
         try {
-          assertActive(session, cancellationEpoch);
           const rawResponse = await browser.runtime.sendMessage(
             makeTranslationRequest(session, segments),
           );
           const response = extensionResponseSchema.parse(rawResponse);
           if (response.type === 'MESSAGE_ERROR') {
-            throw new TranslationFailureError(failureFromResponse(response, session));
+            return {
+              ok: false as const,
+              failure: failureFromResponse(response, session),
+              retryable: response.payload.retryable,
+            };
           }
           if (response.type !== 'TRANSLATION_RESULT') {
-            throw new TranslationFailureError({
-              reason: 'INVALID_PROVIDER_RESPONSE',
-              metadata: { providerId: session.providerId, automaticRetry: false },
-            });
+            return {
+              ok: false as const,
+              retryable: true,
+              failure: {
+                reason: 'INVALID_PROVIDER_RESPONSE' as const,
+                metadata: { providerId: session.providerId, automaticRetry: true },
+              },
+            };
           }
           if (response.payload.response.sessionId !== session.id) {
-            throw new TranslationFailureError({
-              reason: 'NAVIGATION_CHANGED',
-              metadata: { providerId: session.providerId, automaticRetry: false },
-            });
-          }
-          assertActive(session, cancellationEpoch);
-
-          for (const translation of response.payload.response.translations) {
-            const record = recordsById.get(translation.id);
-            if (!record || !record.node.isConnected || record.translatedText !== undefined)
-              continue;
-            record.translatedText = `${record.leadingWhitespace}${translation.translatedText}${record.trailingWhitespace}`;
-            record.status = 'translated';
-            if (session.displayMode !== 'original') writeRecord(record, record.translatedText);
-            progress = { ...progress, translatedSegments: progress.translatedSegments + 1 };
+            return {
+              ok: false as const,
+              retryable: false,
+              failure: {
+                reason: 'NAVIGATION_CHANGED' as const,
+                metadata: { providerId: session.providerId, automaticRetry: false },
+              },
+            };
           }
           if (response.payload.response.detectedSourceLanguage) {
             progress = {
@@ -521,105 +625,163 @@ export default defineUnlistedScript(() => {
               detectedSourceLanguage: response.payload.response.detectedSourceLanguage,
             };
           }
-          progress = {
-            ...progress,
-            status: 'translating',
-            queuedSegments: records.filter((record) => record.translatedText === undefined).length,
-            waitingSegments: 0,
-            retryingSegments: 0,
-            failedSegments: 0,
-            failure: undefined,
+          return { ok: true as const, response: response.payload.response };
+        } catch {
+          return {
+            ok: false as const,
+            retryable: false,
+            failure: {
+              reason: 'UNKNOWN' as const,
+              metadata: { providerId: session.providerId, automaticRetry: false },
+            },
           };
-          break;
-        } catch (cause) {
-          const failure =
-            cause instanceof TranslationFailureError
-              ? cause.failure
-              : {
-                  reason: 'UNKNOWN' as const,
-                  metadata: { providerId: session.providerId, automaticRetry: false },
-                };
-          const failedSegments = segments.filter(
-            (segment) => recordsById.get(segment.id)?.translatedText === undefined,
-          ).length;
-          for (const segment of segments) {
-            const record = recordsById.get(segment.id);
-            if (record && record.translatedText === undefined) record.status = 'failed';
-          }
-          const pendingSegments = records.filter(
-            (record) => record.translatedText === undefined,
-          ).length;
-          const queuedSegments = Math.max(0, pendingSegments - failedSegments);
-          const canRetryAutomatically =
-            failure.metadata.automaticRetry === true &&
-            (failure.reason === 'LOCAL_RATE_LIMIT' || failure.reason === 'UPSTREAM_RATE_LIMIT') &&
-            retryAttempt < 1;
-          if (canRetryAutomatically) {
-            retryAttempt += 1;
-            const retryAfterSeconds = failure.metadata.retryAfterSeconds ?? 5;
-            const waitingFailure = failureWithProgress(failure, {
-              providerId: session.providerId,
-              translatedSegments: progress.translatedSegments,
-              totalSegments: progress.discoveredSegments,
-              failedSegments,
-              queuedSegments,
-              retryAttempt,
-              retryAfterSeconds,
-              automaticRetry: true,
-              failedBatches: 1,
-            });
-            progress = {
-              ...progress,
-              status: 'paused',
-              failedSegments,
-              queuedSegments,
-              waitingSegments: failedSegments,
-              retryingSegments: 0,
-              failure: waitingFailure,
-            };
-            await waitForRetry(session, retryAfterSeconds);
-            assertActive(session, cancellationEpoch);
-            progress = {
-              ...progress,
-              status: 'retrying',
-              waitingSegments: 0,
-              retryingSegments: failedSegments,
-              failure: failureWithProgress(waitingFailure, { retryAfterSeconds: 0 }),
-            };
-            continue;
-          }
-          const causeReason = failure.reason === 'RETRY_EXHAUSTED' ? 'UNKNOWN' : failure.reason;
-          const finalFailure: TranslationFailure =
-            failure.metadata.automaticRetry && retryAttempt >= 1
-              ? {
-                  reason: 'RETRY_EXHAUSTED' as const,
-                  metadata: {
-                    ...failure.metadata,
-                    providerId: session.providerId,
-                    translatedSegments: progress.translatedSegments,
-                    totalSegments: progress.discoveredSegments,
-                    failedSegments,
-                    queuedSegments,
-                    retryAttempt,
-                    automaticRetry: false,
-                    failedBatches: 1,
-                    causeReason,
-                  },
-                }
-              : failureWithProgress(failure, {
-                  providerId: session.providerId,
-                  translatedSegments: progress.translatedSegments,
-                  totalSegments: progress.discoveredSegments,
-                  failedSegments,
-                  queuedSegments,
-                  retryAttempt,
-                  automaticRetry: false,
-                  failedBatches: 1,
-                });
-          throw new TranslationFailureError(finalFailure);
         }
+      },
+      apply: (translations) => {
+        assertActive(session, cancellationEpoch);
+        for (const translation of translations) {
+          const record = recordsById.get(translation.id);
+          if (!record || !record.node.isConnected || record.translatedText !== undefined) continue;
+          record.translatedText = `${record.leadingWhitespace}${translation.translatedText}${record.trailingWhitespace}`;
+          record.status = 'translated';
+          if (session.displayMode !== 'original') writeRecord(record, record.translatedText);
+          progress = { ...progress, translatedSegments: progress.translatedSegments + 1 };
+        }
+      },
+      update: (update) => {
+        const pendingSegments = records.filter(
+          (record) => record.translatedText === undefined,
+        ).length;
+        const retryingSegments = update.state === 'requesting' ? 0 : update.unresolvedCount;
+        const queuedSegments = Math.max(0, pendingSegments - retryingSegments);
+        const recovery = update.response?.recovery;
+        const activeFailure =
+          update.failure ??
+          (recovery && recovery.classification !== 'complete'
+            ? ({
+                reason: 'INVALID_PROVIDER_RESPONSE',
+                metadata: { providerId: session.providerId },
+              } satisfies TranslationFailure)
+            : undefined);
+        progress = {
+          ...progress,
+          status:
+            update.state === 'waiting'
+              ? 'paused'
+              : update.state === 'retrying'
+                ? 'retrying'
+                : 'translating',
+          failedSegments: 0,
+          queuedSegments,
+          waitingSegments: update.state === 'waiting' ? update.unresolvedCount : 0,
+          retryingSegments,
+          failure: activeFailure
+            ? failureWithProgress(activeFailure, {
+                providerId: session.providerId,
+                translatedSegments: progress.translatedSegments,
+                totalSegments: progress.discoveredSegments,
+                failedSegments: 0,
+                queuedSegments,
+                retryAttempt: update.retryAttempts,
+                retryAfterSeconds: update.retryAfterSeconds,
+                automaticRetry: true,
+                failedBatches: 1,
+                failureCategory:
+                  recovery?.classification ??
+                  (activeFailure.reason === 'PROVIDER_TIMEOUT'
+                    ? 'timeout'
+                    : activeFailure.reason === 'UPSTREAM_RATE_LIMIT' ||
+                        activeFailure.reason === 'LOCAL_RATE_LIMIT'
+                      ? 'rate-limit'
+                      : undefined),
+                requestedCount: recovery?.requestedSegmentIds.length ?? update.batchSize,
+                returnedValidCount: recovery?.returnedSegmentIds.length,
+                missingCount: recovery?.missingSegmentIds.length,
+                duplicateCount: recovery?.duplicateSegmentIds.length,
+                unknownCount: recovery?.unknownSegmentIds.length,
+                emptyCount: recovery?.emptySegmentIds.length,
+                parseFailure: recovery?.parseFailure,
+                finishReason: recovery?.finishReason,
+                responseTruncated: recovery?.responseTruncated,
+                splitDepth: update.splitDepth,
+                smallestAttemptedBatch: Math.min(update.batchSize, update.safeBatchTarget),
+                unresolvedCount: update.unresolvedCount,
+                inputCharacterCount: recovery?.inputCharacters,
+                estimatedInputTokens: recovery?.estimatedInputTokens,
+                estimatedOutputTokens: recovery?.estimatedOutputTokens,
+                responseSize: recovery?.responseBytes,
+                batchSize: update.batchSize,
+              })
+            : undefined,
+        };
+      },
+    });
+    session.safeBatchTarget = result.safeBatchTarget;
+    assertActive(session, cancellationEpoch);
+    if (result.terminalFailure || result.unresolvedSegments.length > 0) {
+      for (const segment of result.unresolvedSegments) {
+        const record = recordsById.get(segment.id);
+        if (record && record.translatedText === undefined) record.status = 'failed';
       }
+      const recovery = result.lastResponse?.recovery;
+      const pendingSegments = records.filter(
+        (record) => record.translatedText === undefined,
+      ).length;
+      throw new TranslationFailureError(
+        failureWithProgress(
+          result.terminalFailure ?? {
+            reason: 'RETRY_EXHAUSTED',
+            metadata: { providerId: session.providerId },
+          },
+          {
+            providerId: session.providerId,
+            translatedSegments: progress.translatedSegments,
+            totalSegments: progress.discoveredSegments,
+            failedSegments: result.unresolvedSegments.length,
+            queuedSegments: Math.max(0, pendingSegments - result.unresolvedSegments.length),
+            retryAttempt: result.retryAttempts,
+            automaticRetry: false,
+            failedBatches: result.unresolvedSegments.length > 0 ? 1 : 0,
+            failureCategory:
+              recovery?.classification ??
+              (result.terminalFailure?.reason === 'AUTHENTICATION_FAILED'
+                ? 'authentication'
+                : result.terminalFailure?.reason === 'UPSTREAM_QUOTA_EXHAUSTED'
+                  ? 'quota'
+                  : result.terminalFailure?.reason === 'PROVIDER_TIMEOUT'
+                    ? 'timeout'
+                    : 'retry-exhaustion'),
+            requestedCount: recovery?.requestedSegmentIds.length,
+            returnedValidCount: recovery?.returnedSegmentIds.length,
+            missingCount: recovery?.missingSegmentIds.length,
+            duplicateCount: recovery?.duplicateSegmentIds.length,
+            unknownCount: recovery?.unknownSegmentIds.length,
+            emptyCount: recovery?.emptySegmentIds.length,
+            parseFailure: recovery?.parseFailure,
+            finishReason: recovery?.finishReason,
+            responseTruncated: recovery?.responseTruncated,
+            splitDepth: result.deepestSplit,
+            smallestAttemptedBatch: result.smallestAttemptedBatch,
+            unresolvedCount: result.unresolvedSegments.length,
+            inputCharacterCount: recovery?.inputCharacters,
+            estimatedInputTokens: recovery?.estimatedInputTokens,
+            estimatedOutputTokens: recovery?.estimatedOutputTokens,
+            responseSize: recovery?.responseBytes,
+            batchSize: recovery?.batchSize,
+            retryHistory: result.retryHistory,
+          },
+        ),
+      );
     }
+    progress = {
+      ...progress,
+      status: 'translating',
+      queuedSegments: records.filter((record) => record.translatedText === undefined).length,
+      waitingSegments: 0,
+      retryingSegments: 0,
+      failedSegments: 0,
+      failure: undefined,
+    };
   }
 
   function finishWithFailure(failure: TranslationFailure): void {
@@ -792,13 +954,17 @@ export default defineUnlistedScript(() => {
     }
 
     session.changed = summary;
+    session.changeScan = {
+      status: Object.values(summary).some((count) => count > 0) ? 'changes-found' : 'no-changes',
+      summary,
+    };
     session.lastActivityAt = Date.now();
     if (Object.values(summary).some((count) => count > 0)) session.lifecycle = 'stale';
     return summary;
   }
 
   async function updateChangedSections(session: Session): Promise<void> {
-    scanForChanges(session);
+    const scannedSummary = scanForChanges(session);
     for (const record of [...recordsByNode.values()]) {
       if (record.status !== 'removed') continue;
       recordsByNode.delete(record.node);
@@ -815,6 +981,11 @@ export default defineUnlistedScript(() => {
         uncertainSegments: session.changed.uncertainSegments,
       };
       session.lifecycle = progress.failedSegments > 0 ? 'partial' : 'complete';
+      session.changeScan = {
+        status: Object.values(scannedSummary).some((count) => count > 0) ? 'updated' : 'no-changes',
+        summary: scannedSummary,
+        ...(Object.values(scannedSummary).some((count) => count > 0) ? { updatedSegments: 0 } : {}),
+      };
       return;
     }
     for (const record of changed) record.status = 'pending';
@@ -829,6 +1000,11 @@ export default defineUnlistedScript(() => {
         ).length,
       };
       session.lifecycle = session.changed.uncertainSegments > 0 ? 'partial' : 'complete';
+      session.changeScan = {
+        status: 'updated',
+        summary: scannedSummary,
+        updatedSegments: changed.length,
+      };
       progress = {
         ...progress,
         status: session.lifecycle === 'complete' ? 'completed' : 'partial',
@@ -1011,6 +1187,128 @@ export default defineUnlistedScript(() => {
     return createTextFingerprint(identity);
   }
 
+  function safeComparisonUrl(value: string | null): string | undefined {
+    if (!value) return undefined;
+    try {
+      const url = new URL(value, location.href);
+      if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
+        return undefined;
+      }
+      return url.href.slice(0, 4_096);
+    } catch {
+      return undefined;
+    }
+  }
+
+  function comparisonAttributes(element: Element): TranslationComparisonAttributes | undefined {
+    const attributes: TranslationComparisonAttributes = {};
+    const href =
+      element.tagName === 'A' ? safeComparisonUrl(element.getAttribute('href')) : undefined;
+    const src =
+      element.tagName === 'IMG' ? safeComparisonUrl(element.getAttribute('src')) : undefined;
+    const alt = element.getAttribute('alt')?.slice(0, 500);
+    const title = element.getAttribute('title')?.slice(0, 500);
+    const role = element.getAttribute('role')?.slice(0, 100);
+    const ariaLabel = element.getAttribute('aria-label')?.slice(0, 500);
+    const lang = element.getAttribute('lang');
+    const dir = element.getAttribute('dir');
+    if (href) attributes.href = href;
+    if (src) attributes.src = src;
+    if (alt) attributes.alt = alt;
+    if (title) attributes.title = title;
+    if (role) attributes.role = role;
+    if (ariaLabel) attributes.ariaLabel = ariaLabel;
+    if (lang && /^[a-zA-Z0-9-]{1,35}$/u.test(lang)) attributes.lang = lang;
+    if (dir === 'auto' || dir === 'ltr' || dir === 'rtl') attributes.dir = dir;
+    if (element instanceof HTMLTableCellElement) {
+      attributes.rowSpan = Math.min(100, Math.max(1, element.rowSpan));
+      attributes.colSpan = Math.min(100, Math.max(1, element.colSpan));
+    }
+    if (element instanceof HTMLOListElement && element.hasAttribute('start')) {
+      attributes.listStart = Math.min(10_000, Math.max(-10_000, element.start));
+    }
+    return Object.keys(attributes).length > 0 ? attributes : undefined;
+  }
+
+  function createComparisonSnapshot(): TranslationComparisonSnapshot {
+    const nodes: TranslationComparisonSnapshot['nodes'] = [];
+    const preferredRoot = document.querySelector('main, [role="main"], article') ?? document.body;
+    if (!preferredRoot) {
+      return { rootIndex: 0, nodes: [{ kind: 'element', tag: 'main' }] };
+    }
+
+    const appendNode = (node: Node, parentIndex: number | undefined, depth: number): void => {
+      if (nodes.length >= MAX_COMPARISON_SNAPSHOT_NODES || depth > MAX_COMPARISON_SNAPSHOT_DEPTH) {
+        return;
+      }
+      if (node.nodeType === Node.TEXT_NODE) {
+        if (parentIndex === undefined) return;
+        const textNode = node as Text;
+        const record = recordsByNode.get(textNode);
+        const text = textNode.nodeValue ?? '';
+        if (!record && text.length === 0) return;
+        nodes.push(
+          record
+            ? { kind: 'text', parentIndex, segmentId: record.segment.id }
+            : {
+                kind: 'text',
+                parentIndex,
+                text: (text.trim().length === 0 ? ' ' : text).slice(0, 2_200),
+              },
+        );
+        return;
+      }
+      if (!(node instanceof Element)) return;
+      if (node.matches(comparisonExcludedSelector) || !isVisible(node)) return;
+
+      const rawTag = node.tagName.toLowerCase();
+      const tag = comparisonElementTags.has(rawTag as TranslationComparisonElementTag)
+        ? (rawTag as TranslationComparisonElementTag)
+        : undefined;
+      if (!tag) {
+        for (const child of node.childNodes) appendNode(child, parentIndex, depth + 1);
+        return;
+      }
+
+      const index = nodes.length;
+      const attributes = comparisonAttributes(node);
+      nodes.push({
+        kind: 'element',
+        ...(parentIndex === undefined ? {} : { parentIndex }),
+        tag,
+        ...(attributes ? { attributes } : {}),
+      });
+      for (const child of node.childNodes) appendNode(child, index, depth + 1);
+    };
+
+    const rootAttributes = comparisonAttributes(preferredRoot);
+    nodes.push({
+      kind: 'element',
+      tag: 'main',
+      ...(rootAttributes ? { attributes: rootAttributes } : {}),
+    });
+    for (const child of preferredRoot.childNodes) appendNode(child, 0, 1);
+    return { rootIndex: 0, nodes };
+  }
+
+  function navigationCompatible(source: string, destination: string): boolean {
+    try {
+      const sourceUrl = new URL(source);
+      const destinationUrl = new URL(destination);
+      const protocolCompatible =
+        sourceUrl.protocol === destinationUrl.protocol ||
+        (sourceUrl.protocol === 'http:' && destinationUrl.protocol === 'https:');
+      const portCompatible =
+        sourceUrl.protocol === destinationUrl.protocol
+          ? sourceUrl.port === destinationUrl.port
+          : (!sourceUrl.port || sourceUrl.port === '80') &&
+            (!destinationUrl.port || destinationUrl.port === '443');
+      return protocolCompatible && portCompatible && sourceUrl.hostname === destinationUrl.hostname;
+    } catch {
+      return false;
+    }
+  }
+
   function exportSessionBundle(sessionId: string): TranslationSessionBundle | undefined {
     const session = currentSession;
     if (!session || session.id !== sessionId || location.href !== session.navigationId)
@@ -1042,6 +1340,7 @@ export default defineUnlistedScript(() => {
         ...(record.segment.elementRole ? { elementRole: record.segment.elementRole } : {}),
         status: record.status,
       })),
+      comparisonSnapshot: createComparisonSnapshot(),
     };
     if (new TextEncoder().encode(JSON.stringify(bundle)).byteLength > MAX_SESSION_BUNDLE_BYTES) {
       return undefined;
@@ -1049,8 +1348,31 @@ export default defineUnlistedScript(() => {
     return bundle;
   }
 
-  function importSessionBundle(bundle: TranslationSessionBundle): void {
-    if (location.href !== bundle.navigationUrl) {
+  function importSessionBundle(bundle: TranslationSessionBundle): {
+    discoveredSegments: number;
+    matchedSegments: number;
+    unmatchedSegments: number;
+    uncertainSegments: number;
+  };
+  function importSessionBundle(
+    bundle: TranslationSessionBundle,
+    observeDynamicContent?: boolean,
+  ): {
+    discoveredSegments: number;
+    matchedSegments: number;
+    unmatchedSegments: number;
+    uncertainSegments: number;
+  };
+  function importSessionBundle(
+    bundle: TranslationSessionBundle,
+    observeDynamicContent = true,
+  ): {
+    discoveredSegments: number;
+    matchedSegments: number;
+    unmatchedSegments: number;
+    uncertainSegments: number;
+  } {
+    if (!navigationCompatible(bundle.navigationUrl, location.href)) {
       throw new Error('The translated copy does not match the source navigation.');
     }
     endSession(true);
@@ -1071,7 +1393,10 @@ export default defineUnlistedScript(() => {
     let uncertainSegments = 0;
     for (const record of records) {
       const candidates = (sourceByFingerprint.get(record.sourceFingerprint) ?? []).filter(
-        (candidate) => !usedSourceIds.has(candidate.id) && candidate.translatedText,
+        (candidate) =>
+          !usedSourceIds.has(candidate.id) &&
+          candidate.translatedText &&
+          (!candidate.elementRole || candidate.elementRole === record.segment.elementRole),
       );
       const structuralMatches = candidates.filter(
         (candidate) => candidate.structuralFingerprint === record.structuralFingerprint,
@@ -1104,7 +1429,12 @@ export default defineUnlistedScript(() => {
       cancellationEpoch: 0,
       createdAt: now,
       lastActivityAt: now,
-      displayMode: matchedSegments === records.length ? 'translated' : 'mixed-partial',
+      displayMode:
+        matchedSegments === 0
+          ? 'original'
+          : matchedSegments === records.length
+            ? 'translated'
+            : 'mixed-partial',
       lifecycle: unmatchedSegments + uncertainSegments === 0 ? 'complete' : 'partial',
       changed: {
         ...emptyChangeSummary(),
@@ -1112,6 +1442,7 @@ export default defineUnlistedScript(() => {
         uncertainSegments,
       },
     };
+    const existingTranslatedCopy = progress.translatedCopy;
     progress = {
       sessionId: bundle.sessionId,
       status: unmatchedSegments + uncertainSegments === 0 ? 'completed' : 'partial',
@@ -1122,9 +1453,16 @@ export default defineUnlistedScript(() => {
       waitingSegments: 0,
       retryingSegments: 0,
       targetLanguage: bundle.targetLanguage,
+      ...(existingTranslatedCopy ? { translatedCopy: existingTranslatedCopy } : {}),
     };
-    setDisplayMode('translated');
-    startObserver();
+    setDisplayMode(matchedSegments === 0 ? 'original' : 'translated');
+    if (observeDynamicContent) startObserver();
+    return {
+      discoveredSegments: records.length,
+      matchedSegments,
+      unmatchedSegments,
+      uncertainSegments,
+    };
   }
 
   async function refreshTranslation(
@@ -1202,6 +1540,336 @@ export default defineUnlistedScript(() => {
       payload: { progress: sessionProgress() },
     });
   });
+
+  function showTranslatedCopyStatus(
+    tone: 'success' | 'warning',
+    status: TranslatedCopyApplicationStatus,
+    titleText: string,
+    messageText: string,
+    actions: Array<{ label: string; run: () => void }> = [],
+  ): void {
+    document.getElementById('lingo-page-copy-status')?.remove();
+    const host = document.createElement('div');
+    host.id = 'lingo-page-copy-status';
+    host.dataset.copyStatus = status;
+    host.dataset.actions = actions.map((action) => action.label).join('|');
+    host.style.all = 'initial';
+    const shadow = host.attachShadow({ mode: 'closed' });
+    const style = document.createElement('style');
+    style.textContent = `
+      :host { all: initial; }
+      .status { position: fixed; z-index: 2147483647; inset: 16px 16px auto auto; width: min(380px, calc(100vw - 32px)); padding: 14px 16px; border: 1px solid ${tone === 'success' ? '#78b48a' : '#e1ad63'}; border-radius: 12px; background: #fff; color: #172033; box-shadow: 0 16px 42px rgba(20, 29, 48, .2); font: 14px/1.45 system-ui, sans-serif; }
+      .top { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+      strong { display: block; margin-bottom: 4px; font-size: 14px; } p { margin: 0; color: #4b5568; }
+      .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+      button { border: 0; border-radius: 8px; padding: 6px 8px; background: #edf1ff; color: #2744a0; cursor: pointer; font: 600 12px system-ui, sans-serif; }
+      @media (prefers-color-scheme: dark) { .status { background: #17212f; color: #f5f7fb; } p { color: #c3cad6; } button { background: #263653; color: #a9c2ff; } }
+      @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; } }
+    `;
+    const card = document.createElement('section');
+    card.className = 'status';
+    card.setAttribute('role', tone === 'success' ? 'status' : 'alert');
+    const top = document.createElement('div');
+    top.className = 'top';
+    const copy = document.createElement('div');
+    const title = document.createElement('strong');
+    title.textContent = titleText;
+    const message = document.createElement('p');
+    message.textContent = messageText;
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.textContent = 'Dismiss';
+    close.setAttribute('aria-label', 'Dismiss translated-copy status');
+    close.addEventListener('click', () => host.remove());
+    copy.append(title, message);
+    if (actions.length > 0) {
+      const actionRow = document.createElement('div');
+      actionRow.className = 'actions';
+      for (const action of actions) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = action.label;
+        button.addEventListener('click', action.run);
+        actionRow.append(button);
+      }
+      copy.append(actionRow);
+    }
+    top.append(copy, close);
+    card.append(top);
+    shadow.append(style, card);
+    document.documentElement.append(host);
+  }
+
+  function translatedCopyProgress(
+    status: TranslatedCopyApplicationStatus,
+    summary?: Partial<TranslatedCopyApplicationSummary>,
+  ): TranslatedCopyApplicationSummary {
+    return {
+      status,
+      discoveredSegments: summary?.discoveredSegments ?? 0,
+      matchedSegments: summary?.matchedSegments ?? 0,
+      appliedSegments: summary?.appliedSegments ?? 0,
+      unmatchedSegments: summary?.unmatchedSegments ?? 0,
+      uncertainSegments: summary?.uncertainSegments ?? 0,
+      changedSegments: summary?.changedSegments ?? 0,
+      providerRequests: 0,
+    };
+  }
+
+  async function waitForDocumentReady(): Promise<void> {
+    if (document.readyState !== 'loading' && document.body) return;
+    await new Promise<void>((resolve) => {
+      const timeout = setTimeout(resolve, COPY_INITIAL_STABILITY_TIMEOUT_MS);
+      const finish = () => {
+        clearTimeout(timeout);
+        resolve();
+      };
+      document.addEventListener('DOMContentLoaded', finish, { once: true });
+    });
+  }
+
+  async function waitForDomQuiet(maximumMs: number): Promise<void> {
+    if (!document.body) return;
+    await new Promise<void>((resolve) => {
+      let quietTimer: ReturnType<typeof setTimeout> | undefined;
+      const deadline = setTimeout(finish, maximumMs);
+      const observer = new MutationObserver(scheduleQuietFinish);
+      function finish() {
+        observer.disconnect();
+        clearTimeout(deadline);
+        if (quietTimer !== undefined) clearTimeout(quietTimer);
+        resolve();
+      }
+      function scheduleQuietFinish() {
+        if (quietTimer !== undefined) clearTimeout(quietTimer);
+        quietTimer = setTimeout(finish, COPY_INITIAL_STABILITY_MS);
+      }
+      observer.observe(document.body!, { childList: true, characterData: true, subtree: true });
+      scheduleQuietFinish();
+    });
+  }
+
+  async function observeInitialDomChanges(): Promise<boolean> {
+    if (!document.body) return false;
+    return await new Promise<boolean>((resolve) => {
+      let changed = false;
+      const observer = new MutationObserver(() => {
+        changed = true;
+      });
+      observer.observe(document.body!, { childList: true, characterData: true, subtree: true });
+      setTimeout(() => {
+        observer.disconnect();
+        resolve(changed);
+      }, COPY_RECONCILIATION_WINDOW_MS);
+    });
+  }
+
+  function applicationStatus(summary: {
+    matchedSegments: number;
+    unmatchedSegments: number;
+    uncertainSegments: number;
+  }): 'ready' | 'partial' | 'no-matches' {
+    if (summary.matchedSegments === 0) return 'no-matches';
+    return summary.unmatchedSegments + summary.uncertainSegments > 0 ? 'partial' : 'ready';
+  }
+
+  async function applyTranslatedCopyBundle(bundle: TranslationSessionBundle): Promise<
+    TranslatedCopyApplicationSummary & {
+      applicationStatus: 'ready' | 'partial' | 'no-matches';
+      applicationStage: 'destination-ready';
+    }
+  > {
+    await waitForDocumentReady();
+    await waitForDomQuiet(COPY_INITIAL_STABILITY_TIMEOUT_MS);
+    const initial = importSessionBundle(bundle, false);
+    const changed = await observeInitialDomChanges();
+    let final = initial;
+    if (changed) {
+      await waitForDomQuiet(COPY_INITIAL_STABILITY_TIMEOUT_MS);
+      final = importSessionBundle(bundle, false);
+    }
+    startObserver();
+    const status = applicationStatus(final);
+    const summary = translatedCopyProgress(status, {
+      ...final,
+      appliedSegments: final.matchedSegments,
+      changedSegments: changed ? final.discoveredSegments : 0,
+    });
+    progress = { ...progress, translatedCopy: summary };
+    return {
+      ...summary,
+      applicationStatus: status,
+      applicationStage: 'destination-ready',
+    };
+  }
+
+  function translateImportedSections(): void {
+    const session = currentSession;
+    if (!session) return;
+    void browser.runtime.sendMessage({
+      version: CONTRACT_VERSION,
+      requestId: `req_copy_translate_${crypto.randomUUID().replaceAll('-', '')}`,
+      type: 'TRANSLATE_IMPORTED_SECTIONS',
+      payload: { sessionId: session.id },
+    });
+  }
+
+  function focusTranslatedCopySource(): void {
+    if (!translatedCopyToken) return;
+    void browser.runtime.sendMessage({
+      version: CONTRACT_VERSION,
+      requestId: `req_copy_source_${crypto.randomUUID().replaceAll('-', '')}`,
+      type: 'FOCUS_TRANSLATED_COPY_SOURCE',
+      payload: { token: translatedCopyToken },
+    });
+  }
+
+  function renderTranslatedCopySummary(summary: TranslatedCopyApplicationSummary): void {
+    const attachSummary = () => {
+      const host = document.getElementById('lingo-page-copy-status');
+      if (!host) return;
+      host.dataset.matchedSegments = String(summary.matchedSegments);
+      host.dataset.unmatchedSegments = String(summary.unmatchedSegments);
+      host.dataset.uncertainSegments = String(summary.uncertainSegments);
+      host.dataset.changedSegments = String(summary.changedSegments);
+      host.dataset.providerRequests = '0';
+    };
+    const commonMessage = `${summary.matchedSegments} sections reused, ${summary.unmatchedSegments} unmatched, ${summary.uncertainSegments} uncertain, and 0 provider requests.`;
+    if (summary.status === 'ready') {
+      showTranslatedCopyStatus('success', 'ready', 'Translated copy ready', commonMessage);
+      attachSummary();
+      return;
+    }
+    if (summary.status === 'partial') {
+      showTranslatedCopyStatus(
+        'warning',
+        'partial',
+        'Translated copy partially applied',
+        commonMessage,
+        [{ label: 'Translate unmatched sections', run: translateImportedSections }],
+      );
+      attachSummary();
+      return;
+    }
+    showTranslatedCopyStatus(
+      'warning',
+      'no-matches',
+      'No safe cached matches',
+      'The original page remains visible. No provider request was made.',
+      [
+        {
+          label: 'Retry matching',
+          run: () => {
+            if (!translatedCopyBundle) return;
+            showTranslatedCopyStatus(
+              'warning',
+              'applying',
+              'Applying cached translation',
+              'Waiting for the destination page to settle. No provider request will be made.',
+            );
+            void applyTranslatedCopyBundle(translatedCopyBundle)
+              .then(renderTranslatedCopySummary)
+              .catch(() => {
+                progress = {
+                  ...progress,
+                  translatedCopy: translatedCopyProgress('import-failed'),
+                };
+                showTranslatedCopyStatus(
+                  'warning',
+                  'import-failed',
+                  'Translation import failed',
+                  'The cached translation could not be applied safely.',
+                );
+              });
+          },
+        },
+        { label: 'Translate this page', run: translateImportedSections },
+        { label: 'Return to source tab', run: focusTranslatedCopySource },
+      ],
+    );
+    attachSummary();
+  }
+
+  async function claimTranslatedCopyHandoff(): Promise<void> {
+    try {
+      const response = extensionResponseSchema.parse(
+        await browser.runtime.sendMessage({
+          version: CONTRACT_VERSION,
+          requestId: `req_copy_claim_${crypto.randomUUID().replaceAll('-', '')}`,
+          type: 'GET_TRANSLATED_COPY_HANDOFF',
+          payload: {},
+        }),
+      );
+      if (response.type === 'TRANSLATED_COPY_HANDOFF_STATUS') {
+        if (response.payload.status === 'failed') {
+          const status = response.payload.message?.includes('expired')
+            ? 'session-stale'
+            : 'import-failed';
+          progress = { ...progress, translatedCopy: translatedCopyProgress(status) };
+          showTranslatedCopyStatus(
+            'warning',
+            status,
+            'Translation reuse unavailable',
+            response.payload.message ??
+              'This tab remains open, but its saved translation could not be reused safely.',
+          );
+        }
+        return;
+      }
+      if (response.type !== 'TRANSLATED_COPY_HANDOFF') return;
+      try {
+        translatedCopyBundle = response.payload.bundle;
+        translatedCopyToken = response.payload.token;
+        progress = {
+          ...progress,
+          status: 'discovering',
+          targetLanguage: response.payload.bundle.targetLanguage,
+          translatedCopy: translatedCopyProgress('applying'),
+        };
+        showTranslatedCopyStatus(
+          'warning',
+          'applying',
+          'Applying cached translation',
+          'Waiting for the destination page to settle. No provider request will be made.',
+        );
+        const summary = await applyTranslatedCopyBundle(response.payload.bundle);
+        const acknowledgement = extensionResponseSchema.parse(
+          await browser.runtime.sendMessage({
+            version: CONTRACT_VERSION,
+            requestId: `req_copy_ack_${crypto.randomUUID().replaceAll('-', '')}`,
+            type: 'ACK_TRANSLATED_COPY_HANDOFF',
+            payload: { token: response.payload.token, ...summary },
+          }),
+        );
+        if (acknowledgement.type !== 'TRANSLATED_COPY_ACKNOWLEDGED') {
+          throw new Error('The translated-copy acknowledgment was rejected.');
+        }
+        renderTranslatedCopySummary(summary);
+      } catch {
+        progress = {
+          ...progress,
+          status: currentSession ? progress.status : 'error',
+          translatedCopy: translatedCopyProgress('import-failed'),
+        };
+        await browser.runtime
+          .sendMessage({
+            version: CONTRACT_VERSION,
+            requestId: `req_copy_reject_${crypto.randomUUID().replaceAll('-', '')}`,
+            type: 'REJECT_TRANSLATED_COPY_HANDOFF',
+            payload: { token: response.payload.token },
+          })
+          .catch(() => undefined);
+        showTranslatedCopyStatus(
+          'warning',
+          'import-failed',
+          'Translation reuse unavailable',
+          'This tab remains open, but the saved translation did not match this page safely.',
+        );
+      }
+    } catch {
+      // Ordinary pages have no translated-copy handoff. Startup remains silent for that case.
+    }
+  }
 
   function showSelectionResult(payload: {
     sourceText: string;
@@ -1389,4 +2057,6 @@ export default defineUnlistedScript(() => {
         );
     }
   });
+
+  void claimTranslatedCopyHandoff();
 });

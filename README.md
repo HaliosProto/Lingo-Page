@@ -28,7 +28,7 @@ MV3 service worker -----> Hono API on Cloudflare Workers -----> provider registr
 Injected page engine (authoritative tab session and original text)
 ```
 
-The production manifest uses `activeTab`, `contextMenus`, `scripting`, and `storage`. It has no `<all_urls>` access. Provider keys never enter the extension bundle.
+The production manifest's required permissions are `activeTab`, `contextMenus`, `scripting`, and `storage`. Optional HTTP/HTTPS host patterns support an explicit current-origin grant for translated copies; they grant nothing automatically, and required `<all_urls>` access is absent. Provider keys never enter the extension bundle.
 
 ## Quick start
 

@@ -83,8 +83,8 @@ describe('translation failure explanations', () => {
     ],
     [
       'RETRY_EXHAUSTED' as const,
-      { causeReason: 'UPSTREAM_RATE_LIMIT' as const },
-      'Automatic retries were exhausted. The translated sections were preserved.',
+      { causeReason: 'UPSTREAM_RATE_LIMIT' as const, unresolvedCount: 92 },
+      'Automatic recovery stopped after bounded retries. 48 of 140 sections were translated, and 92 remain unresolved.',
     ],
   ])('renders the exact %s explanation', (reason, metadata, expected) => {
     expect(failurePresentation(failure(reason, metadata)).message).toBe(expected);
@@ -139,12 +139,36 @@ describe('translation failure explanations', () => {
     ).toBe('2 sections retrying');
   });
 
+  it('explains automatic partial recovery and exposes only final bounded actions', () => {
+    expect(
+      failurePresentation(
+        failure('INVALID_PROVIDER_RESPONSE', {
+          automaticRetry: true,
+          unresolvedCount: 23,
+        }),
+      ),
+    ).toEqual({
+      message:
+        'Gemini returned only part of this batch. Retrying the remaining 23 sections in smaller groups…',
+      actions: [],
+    });
+    expect(
+      failurePresentation(failure('RETRY_EXHAUSTED', { unresolvedCount: 4 })).actions.map(
+        (action) => action.label,
+      ),
+    ).toEqual(['Retry unresolved sections', 'Change provider', 'Keep partial translation']);
+  });
+
   it('copies only allowlisted technical diagnostics', () => {
     const diagnostics = safeFailureDiagnostics(
       failure('UPSTREAM_RATE_LIMIT', {
         httpStatus: 429,
         requestId: 'req_safe_diagnostics_123',
         retryAttempt: 3,
+        missingCount: 4,
+        splitDepth: 2,
+        responseSize: 900,
+        retryHistory: '50@0:valid-partial:46>4@1:missing-ids:0',
       }),
     );
     expect(diagnostics).toMatchObject({
@@ -153,6 +177,9 @@ describe('translation failure explanations', () => {
       httpStatus: 429,
       requestId: 'req_safe_diagnostics_123',
       retryAttempts: 3,
+      missingCount: 4,
+      splitDepth: 2,
+      responseSize: 900,
     });
     expect(JSON.stringify(diagnostics)).not.toMatch(/key|authorization|text|url/iu);
   });

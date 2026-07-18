@@ -24,7 +24,7 @@
 ## Extension controls
 
 - Manifest V3 service worker; no remotely hosted executable code.
-- Start with `activeTab` and `scripting`; add no persistent `<all_urls>` permission unless a later requirement proves it necessary.
+- Retain `activeTab` and `scripting` for normal translation. Translated-copy support may declare optional HTTP/HTTPS host patterns, but it requests only the current page origin directly from the explicit open-copy gesture. It never requests an all-site grant or adds required `<all_urls>` access.
 - Use isolated-world content scripts and avoid main-world injection.
 - Validate every message at runtime. Never trust a TypeScript cast.
 - Treat `sender.tab.id`, frame ID, URL identity, and navigation token as required context.
@@ -47,7 +47,7 @@
 - Abort provider calls on timeout or user cancellation where supported.
 - Retry only idempotent safe transient failures with bounded backoff.
 - Return normalized error codes plus request IDs, not upstream secrets or raw provider payloads.
-- Restrict operational error metadata to provider ID, counts, retry state/delay, HTTP status, request ID, and safe booleans. The extension schema strips all other fields before popup display or diagnostic copy.
+- Restrict operational error metadata to provider ID, record/batch/split/attempt counts, parse/truncation/finish classification, bounded retry history, size/token estimates, retry state/delay, HTTP status, request ID, and safe booleans. The extension schema strips all other fields before popup display or diagnostic copy; page and translated text are never diagnostic fields.
 - Create a request ID before parsing backend environment configuration so configuration failures still return a correlated structured error and `X-Request-ID` header.
 - Normalize blank optional `.dev.vars` template entries to unset values. Malformed non-blank values fail closed; privacy-safe diagnostics include only schema name, issue path, expected format/type, received value category, and a value-redacted message.
 - Redact authorization headers, secrets, page content, full URLs, and provider responses from logs.
@@ -60,9 +60,9 @@
 
 - All page text remains untrusted data inside a fixed provider instruction. It cannot select providers/models, change IDs or output schema, reveal credentials, or initiate network requests.
 - Native OpenAI, Gemini, Anthropic, Cohere, and DeepL adapters construct provider-specific payloads. Compatible providers share one reviewed adapter and immutable backend profile.
-- Returned JSON is parsed and locally validated even when an upstream claims strict schema support. Markdown fences, refusals, truncation, partial batches, stale IDs, unknown/duplicate IDs, token loss, markup insertion, and excessive expansion are failures.
+- Returned JSON is parsed and locally validated even when an upstream claims strict schema support. Each stable ID is reconciled independently: valid records from a partial or truncated response may be retained, while stale/unknown/duplicate/empty IDs, token loss, markup insertion, excessive expansion, and incomplete object tails remain unresolved and cannot mutate the DOM.
 - Automatic cross-provider fallback is absent. Development-only default resolution may choose the clearly labeled mock only when no provider was explicitly requested.
-- Emergency provider disable, allowlisted model catalogs, output-token limits, per-provider timeouts/concurrency, bounded malformed-output retry, and optional daily character quotas limit spend and blast radius.
+- Emergency provider disable, allowlisted model catalogs, output-token limits, per-provider timeouts/concurrency, provider-aware batch limits, bounded unresolved-only split recovery, and optional daily character quotas limit spend and blast radius. Authentication, quota, refusal, invalid configuration/model, and other non-retryable failures are never recursively split.
 
 ## Output validation
 
@@ -76,7 +76,8 @@ Permission audit, dependency audit, secret scan, bundle scan, schema-fuzz tests,
 
 - Every new session/view/update/copy/comparison payload is runtime validated and session-bound.
 - Normal view changes stay inside the page shell and cannot initiate a provider request.
-- Copy handoff requires exact navigation compatibility, a cloned session ID, bounded payload, top-frame injection, and confident content matching.
+- Copy permission continuation uses a metadata-only expiring intent bound to source tab/session, exact origin, and a SHA-256 navigation identity. Direct permission resolution and exact-origin `permissions.onAdded` continuation share one idempotent token; persisted opening/application states cannot create a second tab. Denied, expired, wrong-origin, source-navigation-changed, and revoked states fail closed without page text in the intent.
+- Copy handoff requires an explicit current-origin optional permission grant plus compatible protocol/host/port/path identity, a cloned session ID, bounded payload, owning-tab and top-frame validation, and confident content matching. The grant is checked before tab creation and again against the final URL before injection, covering revocation and cross-origin redirects. The handoff is stored before the visible tab navigates, is not consumed on retrieval, and is removed only after bounded hydration reconciliation and idempotent final-DOM acknowledgment or safe failure cleanup. Failure never removes the user-visible tab or changes the source session.
 - Comparison handoff uses a 128-bit single-use token bound to the owning extension tab; text never enters the fragment or source page.
-- Comparison uses React text rendering only; no source HTML, scripts, handlers, fields, or remote code are imported.
+- Comparison captures an allowlisted parent-before-child structural model capped at 15,000 nodes inside the 2 MB bundle. Runtime validation rejects malformed trees and unsafe URLs. React reconstructs inert semantic elements and text without parsing HTML; scripts, handlers, source CSS, frames, embeds, forms, editable regions, hidden content, fields, and remote code are excluded. Captured buttons are disabled, and safe HTTP(S) links/images use referrer suppression.
 - Uncertain/duplicate matches remain original, invalid handoffs fail closed, and end-session cleanup is tab-local.

@@ -8,6 +8,16 @@ const contentTypes = { '.html': 'text/html; charset=utf-8' };
 
 const server = createServer((request, response) => {
   const pathname = new URL(request.url ?? '/fixture.html', 'http://127.0.0.1').pathname;
+  if (pathname === '/redirect-copy') {
+    response.writeHead(302, { location: '/fixture.html' });
+    response.end();
+    return;
+  }
+  if (pathname === '/redirect-copy-wrong-site') {
+    response.writeHead(302, { location: 'http://localhost:4173/fixture.html' });
+    response.end();
+    return;
+  }
   const requestedPath = pathname === '/' ? '/fixture.html' : pathname;
   const filePath = resolve(root, `.${requestedPath}`);
   if (!filePath.startsWith(root) || !existsSync(filePath)) {

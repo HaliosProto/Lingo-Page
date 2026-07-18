@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Added bounded provider-aware incomplete-response recovery that preserves valid stable-ID records, retries unresolved IDs only through smaller subsets, continues queued work, and exposes privacy-safe recovery diagnostics and honest partial actions.
+- Added a metadata-only translated-copy permission intent so one click continues after grant even if the popup closes, while callback/event races remain idempotent and denial, expiry, wrong origin, revocation, and navigation mismatch fail closed.
+- Added explicit current-origin HTTP/HTTPS permission requests for translated copies, with denial guidance, redirect/revocation enforcement, final-DOM hydration reconciliation, and zero-call cached reuse.
+- Fixed translated-copy tabs closing on handoff errors by binding storage before navigation, retaining the visible tab on every failure, and deleting central page-text data only after destination acknowledgment.
+- Replaced the default segment-card comparison with a bounded sanitized full-page Original/Translation split, synchronized or independent scrolling, adjustable/resettable divider, swap, responsive stacking, themes, reduced motion, and BiDi isolation.
+- Made page-change checks always show no-change, changes-found, updated, or retryable-error feedback while keeping scans provider-free.
 - Added Milestone 1 page-owned translation sessions with instant zero-call original/translated switching, changed-only updates, explicit end-session cleanup, isolated translated-copy tabs, and a safe plain-text comparison page.
 - Added bounded runtime-validated session handoff, saved reduced-motion runtime behavior, mixed-direction comparison treatment, and 2,206-segment session-reuse performance/request evidence.
 
@@ -31,7 +37,7 @@
 - Added popup and options experiences for language preferences, privacy mode, sensitive-page protection, domain exclusions, dynamic content, cache policy, theme/reduced motion, and personal glossary terms.
 - Added mock and DeepL providers. DeepL credentials remain server-side; upstream responses, token restoration, timeouts, and errors are validated without a live credential.
 - Added validated translation, detection, languages, usage, and health routes with body/segment/character limits, development auth rules, per-client rate limits, session quotas, emergency disable, safe CORS, security headers, and redacted logging.
-- Kept the production manifest to `activeTab`, `contextMenus`, `scripting`, and `storage`, with only the local API host permission. The localhost fixture grant exists only in the E2E build mode.
+- Kept required production permissions to `activeTab`, `contextMenus`, `scripting`, and `storage`, with only the local API required host permission. Optional HTTP/HTTPS patterns support explicit per-origin translated-copy grants; the localhost fixture required grant exists only in E2E mode.
 - Added 36 unit/integration tests and a managed-Chromium workflow covering translation, exclusions, dynamic content, cancellation, restoration, selected text, popup, and options.
 
 ### Milestone 0 — 2026-07-15
