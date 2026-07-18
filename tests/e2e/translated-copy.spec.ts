@@ -127,6 +127,7 @@ test('keeps cached translations visible after delayed destination hydration', as
         'Lingo Page needs access to this site to open an automatically translated copy.',
       ),
     ).toBeVisible();
+
     const destinationPromise = context.waitForEvent('page');
     await popup.getByRole('button', { name: 'Open translated copy', exact: true }).click();
     const destination = await destinationPromise;
@@ -223,6 +224,91 @@ test('keeps cached translations visible after delayed destination hydration', as
     expect(translationRequestCount).toBe(requestsBeforeCopy);
     expect(runtimeErrors).toEqual([]);
     expect(observedLogs.some((message) => message.includes('Stable fixture heading'))).toBe(false);
+  } finally {
+    await context.close();
+  }
+});
+
+test('explains recovery when translated-copy site access is denied', async () => {
+  test.setTimeout(30_000);
+  const extensionPath = resolve('apps/extension/.output/chrome-mv3-e2e');
+  test.skip(!existsSync(extensionPath), 'The E2E extension bundle has not been built.');
+
+  const context = await chromium.launchPersistentContext(
+    mkdtempSync(join(tmpdir(), 'translation-copy-denial-e2e-')),
+    {
+      headless: true,
+      channel: 'chromium',
+      executablePath:
+        process.env.CHROME_PATH && existsSync(process.env.CHROME_PATH)
+          ? process.env.CHROME_PATH
+          : undefined,
+      ignoreDefaultArgs: ['--disable-extensions'],
+      args: [
+        '--enable-unsafe-extension-debugging',
+        `--disable-extensions-except=${extensionPath}`,
+        `--load-extension=${extensionPath}`,
+      ],
+    },
+  );
+
+  try {
+    const serviceWorker =
+      context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));
+    const extensionId = new URL(serviceWorker.url()).host;
+    const source = await context.newPage();
+    await source.goto('http://127.0.0.1:4173/fixture.html');
+    await source.keyboard.press('Alt+Shift+L');
+    await source.bringToFront();
+    const sourceTabId = await activeTabId(context);
+    const popup = await context.newPage();
+    await popup.goto(`chrome-extension://${extensionId}/popup.html`);
+
+    await commandForTab(popup, sourceTabId, {
+      version: 1,
+      requestId: 'req_copy_denial_start_12345',
+      type: 'START_PAGE_TRANSLATION',
+      payload: {
+        sessionId: 'session_copy_denial_12345',
+        providerId: 'mock',
+        modelId: 'mock-deterministic',
+        sourceLanguage: 'en',
+        targetLanguage: 'fr',
+        glossaryVersion: 0,
+        glossary: [],
+        autoTranslateDynamicContent: false,
+      },
+    });
+    await expect(source.locator('#heading')).toHaveText('[fr] Stable fixture heading');
+
+    await source.bringToFront();
+    await popup.reload();
+    await expect(
+      popup.getByText(
+        'Lingo Page needs access to this site to open an automatically translated copy.',
+      ),
+    ).toBeVisible();
+    await popup.evaluate(() => {
+      Object.defineProperty(chrome.permissions, 'request', {
+        configurable: true,
+        value: async () => false,
+      });
+    });
+    await popup.getByRole('button', { name: 'Open translated copy', exact: true }).click();
+    await expect(
+      popup.getByText(
+        'Site access was not granted. You can duplicate this tab and invoke Lingo Page manually there.',
+      ),
+    ).toBeVisible();
+
+    if (process.env.CAPTURE_MILESTONE_1_SCREENSHOTS === '1') {
+      const screenshotRoot = resolve('artifacts/milestone-1-visual-baseline');
+      mkdirSync(screenshotRoot, { recursive: true });
+      await popup.screenshot({
+        path: join(screenshotRoot, 'translated-copy-permission-denied.png'),
+        fullPage: true,
+      });
+    }
   } finally {
     await context.close();
   }

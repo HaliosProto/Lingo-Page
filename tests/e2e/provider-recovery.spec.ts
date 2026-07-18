@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { chromium, expect, test } from '@playwright/test';
@@ -131,6 +131,99 @@ test('recovers a partial provider batch and continues the queued page', async ()
     ).toBe(false);
     expect(new Set(requestedIds.flat()).size).toBeGreaterThan(requestedIds[0]!.length);
   } finally {
+    await context.close();
+  }
+});
+
+test('presents a provider outage with clear recovery actions', async () => {
+  test.setTimeout(30_000);
+  const extensionPath = resolve('apps/extension/.output/chrome-mv3-e2e');
+  test.skip(!existsSync(extensionPath), 'The E2E extension bundle has not been built.');
+  const context = await chromium.launchPersistentContext(
+    mkdtempSync(join(tmpdir(), 'translation-provider-error-e2e-')),
+    {
+      headless: true,
+      channel: 'chromium',
+      executablePath:
+        process.env.CHROME_PATH && existsSync(process.env.CHROME_PATH)
+          ? process.env.CHROME_PATH
+          : undefined,
+      ignoreDefaultArgs: ['--disable-extensions'],
+      args: [
+        '--enable-unsafe-extension-debugging',
+        `--disable-extensions-except=${extensionPath}`,
+        `--load-extension=${extensionPath}`,
+      ],
+    },
+  );
+  let releaseOutage = () => {};
+  const outageGate = new Promise<void>((resolveGate) => {
+    releaseOutage = resolveGate;
+  });
+  await context.route('**/v1/translate', async (route) => {
+    const body = route.request().postDataJSON() as { requestId: string };
+    await outageGate;
+    await route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      headers: { 'Access-Control-Allow-Origin': '*' },
+      body: JSON.stringify({
+        error: {
+          code: 'PROVIDER_UNAVAILABLE',
+          message: 'Synthetic provider outage.',
+          retryable: true,
+          requestId: body.requestId,
+          details: { source: 'provider', providerId: 'mock', httpStatus: 503 },
+        },
+      }),
+    });
+  });
+
+  try {
+    const serviceWorker =
+      context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));
+    const extensionId = new URL(serviceWorker.url()).host;
+    const fixture = await context.newPage();
+    await fixture.goto('http://127.0.0.1:4173/fixture.html');
+    const popup = await context.newPage();
+    await fixture.bringToFront();
+    await popup.goto(`chrome-extension://${extensionId}/popup.html`);
+    await fixture.bringToFront();
+    await popup.reload();
+
+    await popup.getByRole('button', { name: 'Translate page' }).click();
+    await expect(popup.getByRole('button', { name: 'Cancel' })).toBeVisible();
+    if (process.env.CAPTURE_MILESTONE_1_SCREENSHOTS === '1') {
+      const screenshotRoot = resolve('artifacts/milestone-1-visual-baseline');
+      mkdirSync(screenshotRoot, { recursive: true });
+      await popup.screenshot({
+        path: join(screenshotRoot, 'translation-in-progress.png'),
+        fullPage: true,
+      });
+    }
+    releaseOutage();
+    const outage = popup.getByRole('alert').filter({ hasText: 'Mock is temporarily unavailable.' });
+    await expect(outage).toBeVisible();
+    await expect(outage.getByRole('button', { name: 'Retry', exact: true })).toHaveClass(
+      /ui-button--primary/u,
+    );
+    await expect(outage.getByText('Technical details')).toBeVisible();
+    expect(
+      await popup.evaluate(
+        () => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,
+      ),
+    ).toBe(true);
+
+    if (process.env.CAPTURE_MILESTONE_1_SCREENSHOTS === '1') {
+      const screenshotRoot = resolve('artifacts/milestone-1-visual-baseline');
+      mkdirSync(screenshotRoot, { recursive: true });
+      await popup.screenshot({
+        path: join(screenshotRoot, 'provider-error.png'),
+        fullPage: true,
+      });
+    }
+  } finally {
+    releaseOutage();
     await context.close();
   }
 });

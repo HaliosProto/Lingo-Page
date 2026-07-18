@@ -80,6 +80,27 @@ test('translates, explains exclusions and cancellation, continues pending work, 
     await popup.reload();
     await fixture.evaluate(() => window.addBidiTestMatrix());
 
+    await expect(popup.getByRole('button', { name: 'Translate page' })).toBeVisible();
+    await popup.setViewportSize({ width: 360, height: 760 });
+    expect(
+      await popup.evaluate(
+        () => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,
+      ),
+    ).toBe(true);
+    await popup.keyboard.press('Tab');
+    expect(
+      await popup.evaluate(() => {
+        const active = document.activeElement;
+        return active instanceof HTMLElement && getComputedStyle(active).outlineWidth !== '0px';
+      }),
+    ).toBe(true);
+    if (captureMilestoneOne) {
+      await popup.screenshot({
+        path: join(milestoneOneScreenshotRoot, 'no-session-popup.png'),
+        fullPage: true,
+      });
+    }
+
     const original = {
       heading: await fixture.locator('#heading').textContent(),
       paragraph: await fixture.locator('#paragraph').textContent(),
@@ -118,6 +139,18 @@ test('translates, explains exclusions and cancellation, continues pending work, 
     await expect(fixture.locator('#bidi-button')).toContainText('[fa]');
     await expect(popup.getByText('Translation available')).toBeVisible();
     await expect(popup.getByRole('group', { name: 'Page view' })).toBeVisible();
+    await expect(
+      popup.getByRole('button', { name: 'Compare original and translation' }),
+    ).toHaveClass(/ui-button--primary/u);
+    await expect(
+      popup.getByRole('button', { name: 'Open translated copy', exact: true }),
+    ).toHaveClass(/ui-button--secondary/u);
+    await expect(popup.getByText('Site access needed')).toBeVisible();
+    expect(
+      await popup.evaluate(
+        () => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,
+      ),
+    ).toBe(true);
     if (captureMilestoneOne) {
       await popup.setViewportSize({ width: 360, height: 760 });
       await popup.screenshot({
@@ -925,6 +958,12 @@ test('translates, explains exclusions and cancellation, continues pending work, 
     ).toBeLessThanOrEqual(
       await comparison.evaluate(() => document.documentElement.clientWidth + 1),
     );
+    if (captureMilestoneOne) {
+      await comparison.screenshot({
+        path: join(milestoneOneScreenshotRoot, 'comparison-200-percent.png'),
+        fullPage: false,
+      });
+    }
     await serviceWorker.evaluate(
       async (tabId) => chrome.tabs.setZoom(tabId, 1),
       comparisonResponse.payload.tabId,
@@ -971,6 +1010,22 @@ test('translates, explains exclusions and cancellation, continues pending work, 
     expect(await options.evaluate(() => document.documentElement.dataset.reducedMotion)).toBe(
       'true',
     );
+    await expect(options.getByRole('button', { name: 'Save settings' })).toHaveClass(
+      /ui-button--primary/u,
+    );
+    await expect(options.getByText('No glossary terms yet.')).toBeVisible();
+    await options.setViewportSize({ width: 680, height: 900 });
+    expect(
+      await options.evaluate(
+        () => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,
+      ),
+    ).toBe(true);
+    if (captureMilestoneOne) {
+      await options.screenshot({
+        path: join(milestoneOneScreenshotRoot, 'options-dark-reduced-motion.png'),
+        fullPage: true,
+      });
+    }
 
     if (process.env.CAPTURE_BASELINE_SCREENSHOTS === '1') {
       const screenshotRoot = resolve('artifacts/milestone-0-visual-baseline');
@@ -988,6 +1043,17 @@ test('translates, explains exclusions and cancellation, continues pending work, 
     await fixture.close();
     expect(copyPage!.isClosed()).toBe(false);
     await expect(copyPage!.locator('#heading')).toHaveText('[en] Stable fixture heading');
+    const restricted = await context.newPage();
+    await restricted.goto('chrome://version/');
+    await restricted.bringToFront();
+    await popup.reload();
+    await expect(popup.getByText('This page cannot be translated')).toBeVisible();
+    if (captureMilestoneOne) {
+      await popup.screenshot({
+        path: join(milestoneOneScreenshotRoot, 'restricted-page.png'),
+        fullPage: true,
+      });
+    }
     expect(runtimeErrors).toEqual([]);
   } finally {
     await context.close();
