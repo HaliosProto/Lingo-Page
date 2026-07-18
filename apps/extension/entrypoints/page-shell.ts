@@ -9,8 +9,12 @@ import {
 import type {
   GlossaryEntry,
   ProviderId,
+  TranslationChangeScanResult,
   TranslationFailure,
   TranslationChangeSummary,
+  TranslationComparisonAttributes,
+  TranslationComparisonElementTag,
+  TranslationComparisonSnapshot,
   TranslationDisplayMode,
   TranslationProgress,
   TranslationSegment,
@@ -58,6 +62,7 @@ type Session = {
   displayMode: TranslationDisplayMode;
   lifecycle: TranslationSessionLifecycle;
   changed: TranslationChangeSummary;
+  changeScan?: TranslationChangeScanResult;
 };
 
 class TranslationFailureError extends Error {
@@ -93,6 +98,79 @@ const excludedSelector = [
 
 const MAX_SESSION_SEGMENTS = 2_500;
 const MAX_SESSION_BUNDLE_BYTES = 2_000_000;
+const MAX_COMPARISON_SNAPSHOT_NODES = 15_000;
+const MAX_COMPARISON_SNAPSHOT_DEPTH = 40;
+const comparisonElementTags = new Set<TranslationComparisonElementTag>([
+  'main',
+  'article',
+  'section',
+  'header',
+  'footer',
+  'nav',
+  'aside',
+  'div',
+  'p',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'ul',
+  'ol',
+  'li',
+  'dl',
+  'dt',
+  'dd',
+  'table',
+  'caption',
+  'thead',
+  'tbody',
+  'tfoot',
+  'tr',
+  'th',
+  'td',
+  'figure',
+  'figcaption',
+  'blockquote',
+  'hr',
+  'br',
+  'img',
+  'a',
+  'span',
+  'strong',
+  'em',
+  'b',
+  'i',
+  'small',
+  'sub',
+  'sup',
+  'time',
+  'code',
+  'kbd',
+  'samp',
+  'mark',
+  'button',
+]);
+const comparisonExcludedSelector = [
+  'script',
+  'style',
+  'noscript',
+  'iframe',
+  'object',
+  'embed',
+  'form',
+  'input',
+  'textarea',
+  'select',
+  'option',
+  'svg',
+  'canvas',
+  '[contenteditable]:not([contenteditable="false"])',
+  '[aria-hidden="true"]',
+  '#lingo-page-selection-result',
+  '#lingo-page-copy-status',
+].join(',');
 
 function emptyChangeSummary(): TranslationChangeSummary {
   return {
@@ -139,6 +217,7 @@ export default defineUnlistedScript(() => {
       displayMode: session.displayMode,
       lifecycle: session.lifecycle,
       changed: session.changed,
+      ...(session.changeScan ? { changeScan: session.changeScan } : {}),
       pageDiverged: Object.values(session.changed).some((count) => count > 0),
     };
   }
@@ -792,13 +871,17 @@ export default defineUnlistedScript(() => {
     }
 
     session.changed = summary;
+    session.changeScan = {
+      status: Object.values(summary).some((count) => count > 0) ? 'changes-found' : 'no-changes',
+      summary,
+    };
     session.lastActivityAt = Date.now();
     if (Object.values(summary).some((count) => count > 0)) session.lifecycle = 'stale';
     return summary;
   }
 
   async function updateChangedSections(session: Session): Promise<void> {
-    scanForChanges(session);
+    const scannedSummary = scanForChanges(session);
     for (const record of [...recordsByNode.values()]) {
       if (record.status !== 'removed') continue;
       recordsByNode.delete(record.node);
@@ -815,6 +898,11 @@ export default defineUnlistedScript(() => {
         uncertainSegments: session.changed.uncertainSegments,
       };
       session.lifecycle = progress.failedSegments > 0 ? 'partial' : 'complete';
+      session.changeScan = {
+        status: Object.values(scannedSummary).some((count) => count > 0) ? 'updated' : 'no-changes',
+        summary: scannedSummary,
+        ...(Object.values(scannedSummary).some((count) => count > 0) ? { updatedSegments: 0 } : {}),
+      };
       return;
     }
     for (const record of changed) record.status = 'pending';
@@ -829,6 +917,11 @@ export default defineUnlistedScript(() => {
         ).length,
       };
       session.lifecycle = session.changed.uncertainSegments > 0 ? 'partial' : 'complete';
+      session.changeScan = {
+        status: 'updated',
+        summary: scannedSummary,
+        updatedSegments: changed.length,
+      };
       progress = {
         ...progress,
         status: session.lifecycle === 'complete' ? 'completed' : 'partial',
@@ -1011,6 +1104,134 @@ export default defineUnlistedScript(() => {
     return createTextFingerprint(identity);
   }
 
+  function safeComparisonUrl(value: string | null): string | undefined {
+    if (!value) return undefined;
+    try {
+      const url = new URL(value, location.href);
+      if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
+        return undefined;
+      }
+      return url.href.slice(0, 4_096);
+    } catch {
+      return undefined;
+    }
+  }
+
+  function comparisonAttributes(element: Element): TranslationComparisonAttributes | undefined {
+    const attributes: TranslationComparisonAttributes = {};
+    const href =
+      element.tagName === 'A' ? safeComparisonUrl(element.getAttribute('href')) : undefined;
+    const src =
+      element.tagName === 'IMG' ? safeComparisonUrl(element.getAttribute('src')) : undefined;
+    const alt = element.getAttribute('alt')?.slice(0, 500);
+    const title = element.getAttribute('title')?.slice(0, 500);
+    const role = element.getAttribute('role')?.slice(0, 100);
+    const ariaLabel = element.getAttribute('aria-label')?.slice(0, 500);
+    const lang = element.getAttribute('lang');
+    const dir = element.getAttribute('dir');
+    if (href) attributes.href = href;
+    if (src) attributes.src = src;
+    if (alt) attributes.alt = alt;
+    if (title) attributes.title = title;
+    if (role) attributes.role = role;
+    if (ariaLabel) attributes.ariaLabel = ariaLabel;
+    if (lang && /^[a-zA-Z0-9-]{1,35}$/u.test(lang)) attributes.lang = lang;
+    if (dir === 'auto' || dir === 'ltr' || dir === 'rtl') attributes.dir = dir;
+    if (element instanceof HTMLTableCellElement) {
+      attributes.rowSpan = Math.min(100, Math.max(1, element.rowSpan));
+      attributes.colSpan = Math.min(100, Math.max(1, element.colSpan));
+    }
+    if (element instanceof HTMLOListElement && element.hasAttribute('start')) {
+      attributes.listStart = Math.min(10_000, Math.max(-10_000, element.start));
+    }
+    return Object.keys(attributes).length > 0 ? attributes : undefined;
+  }
+
+  function createComparisonSnapshot(): TranslationComparisonSnapshot {
+    const nodes: TranslationComparisonSnapshot['nodes'] = [];
+    const preferredRoot = document.querySelector('main, [role="main"], article') ?? document.body;
+    if (!preferredRoot) {
+      return { rootIndex: 0, nodes: [{ kind: 'element', tag: 'main' }] };
+    }
+
+    const appendNode = (node: Node, parentIndex: number | undefined, depth: number): void => {
+      if (nodes.length >= MAX_COMPARISON_SNAPSHOT_NODES || depth > MAX_COMPARISON_SNAPSHOT_DEPTH) {
+        return;
+      }
+      if (node.nodeType === Node.TEXT_NODE) {
+        if (parentIndex === undefined) return;
+        const textNode = node as Text;
+        const record = recordsByNode.get(textNode);
+        const text = textNode.nodeValue ?? '';
+        if (!record && text.length === 0) return;
+        nodes.push(
+          record
+            ? { kind: 'text', parentIndex, segmentId: record.segment.id }
+            : {
+                kind: 'text',
+                parentIndex,
+                text: (text.trim().length === 0 ? ' ' : text).slice(0, 2_200),
+              },
+        );
+        return;
+      }
+      if (!(node instanceof Element)) return;
+      if (node.matches(comparisonExcludedSelector) || !isVisible(node)) return;
+
+      const rawTag = node.tagName.toLowerCase();
+      const tag = comparisonElementTags.has(rawTag as TranslationComparisonElementTag)
+        ? (rawTag as TranslationComparisonElementTag)
+        : undefined;
+      if (!tag) {
+        for (const child of node.childNodes) appendNode(child, parentIndex, depth + 1);
+        return;
+      }
+
+      const index = nodes.length;
+      const attributes = comparisonAttributes(node);
+      nodes.push({
+        kind: 'element',
+        ...(parentIndex === undefined ? {} : { parentIndex }),
+        tag,
+        ...(attributes ? { attributes } : {}),
+      });
+      for (const child of node.childNodes) appendNode(child, index, depth + 1);
+    };
+
+    const rootAttributes = comparisonAttributes(preferredRoot);
+    nodes.push({
+      kind: 'element',
+      tag: 'main',
+      ...(rootAttributes ? { attributes: rootAttributes } : {}),
+    });
+    for (const child of preferredRoot.childNodes) appendNode(child, 0, 1);
+    return { rootIndex: 0, nodes };
+  }
+
+  function navigationCompatible(source: string, destination: string): boolean {
+    try {
+      const sourceUrl = new URL(source);
+      const destinationUrl = new URL(destination);
+      const normalizePath = (value: string) => value.replace(/\/+$/u, '') || '/';
+      const protocolCompatible =
+        sourceUrl.protocol === destinationUrl.protocol ||
+        (sourceUrl.protocol === 'http:' && destinationUrl.protocol === 'https:');
+      const portCompatible =
+        sourceUrl.protocol === destinationUrl.protocol
+          ? sourceUrl.port === destinationUrl.port
+          : (!sourceUrl.port || sourceUrl.port === '80') &&
+            (!destinationUrl.port || destinationUrl.port === '443');
+      return (
+        protocolCompatible &&
+        portCompatible &&
+        sourceUrl.hostname === destinationUrl.hostname &&
+        normalizePath(sourceUrl.pathname) === normalizePath(destinationUrl.pathname)
+      );
+    } catch {
+      return false;
+    }
+  }
+
   function exportSessionBundle(sessionId: string): TranslationSessionBundle | undefined {
     const session = currentSession;
     if (!session || session.id !== sessionId || location.href !== session.navigationId)
@@ -1042,6 +1263,7 @@ export default defineUnlistedScript(() => {
         ...(record.segment.elementRole ? { elementRole: record.segment.elementRole } : {}),
         status: record.status,
       })),
+      comparisonSnapshot: createComparisonSnapshot(),
     };
     if (new TextEncoder().encode(JSON.stringify(bundle)).byteLength > MAX_SESSION_BUNDLE_BYTES) {
       return undefined;
@@ -1049,8 +1271,12 @@ export default defineUnlistedScript(() => {
     return bundle;
   }
 
-  function importSessionBundle(bundle: TranslationSessionBundle): void {
-    if (location.href !== bundle.navigationUrl) {
+  function importSessionBundle(bundle: TranslationSessionBundle): {
+    matchedSegments: number;
+    unmatchedSegments: number;
+    uncertainSegments: number;
+  } {
+    if (!navigationCompatible(bundle.navigationUrl, location.href)) {
       throw new Error('The translated copy does not match the source navigation.');
     }
     endSession(true);
@@ -1125,6 +1351,7 @@ export default defineUnlistedScript(() => {
     };
     setDisplayMode('translated');
     startObserver();
+    return { matchedSegments, unmatchedSegments, uncertainSegments };
   }
 
   async function refreshTranslation(
@@ -1202,6 +1429,108 @@ export default defineUnlistedScript(() => {
       payload: { progress: sessionProgress() },
     });
   });
+
+  function showTranslatedCopyStatus(
+    tone: 'success' | 'warning',
+    titleText: string,
+    messageText: string,
+  ): void {
+    document.getElementById('lingo-page-copy-status')?.remove();
+    const host = document.createElement('div');
+    host.id = 'lingo-page-copy-status';
+    host.style.all = 'initial';
+    const shadow = host.attachShadow({ mode: 'closed' });
+    const style = document.createElement('style');
+    style.textContent = `
+      :host { all: initial; }
+      .status { position: fixed; z-index: 2147483647; inset: 16px 16px auto auto; width: min(380px, calc(100vw - 32px)); padding: 14px 16px; border: 1px solid ${tone === 'success' ? '#78b48a' : '#e1ad63'}; border-radius: 12px; background: #fff; color: #172033; box-shadow: 0 16px 42px rgba(20, 29, 48, .2); font: 14px/1.45 system-ui, sans-serif; }
+      .top { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+      strong { display: block; margin-bottom: 4px; font-size: 14px; } p { margin: 0; color: #4b5568; }
+      button { border: 0; border-radius: 8px; padding: 6px 8px; background: #edf1ff; color: #2744a0; cursor: pointer; font: 600 12px system-ui, sans-serif; }
+      @media (prefers-color-scheme: dark) { .status { background: #17212f; color: #f5f7fb; } p { color: #c3cad6; } button { background: #263653; color: #a9c2ff; } }
+      @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; } }
+    `;
+    const card = document.createElement('section');
+    card.className = 'status';
+    card.setAttribute('role', tone === 'success' ? 'status' : 'alert');
+    const top = document.createElement('div');
+    top.className = 'top';
+    const copy = document.createElement('div');
+    const title = document.createElement('strong');
+    title.textContent = titleText;
+    const message = document.createElement('p');
+    message.textContent = messageText;
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.textContent = 'Dismiss';
+    close.setAttribute('aria-label', 'Dismiss translated-copy status');
+    close.addEventListener('click', () => host.remove());
+    copy.append(title, message);
+    top.append(copy, close);
+    card.append(top);
+    shadow.append(style, card);
+    document.documentElement.append(host);
+  }
+
+  async function claimTranslatedCopyHandoff(): Promise<void> {
+    try {
+      const response = extensionResponseSchema.parse(
+        await browser.runtime.sendMessage({
+          version: CONTRACT_VERSION,
+          requestId: `req_copy_claim_${crypto.randomUUID().replaceAll('-', '')}`,
+          type: 'GET_TRANSLATED_COPY_HANDOFF',
+          payload: {},
+        }),
+      );
+      if (response.type === 'TRANSLATED_COPY_HANDOFF_STATUS') {
+        if (response.payload.status === 'failed') {
+          showTranslatedCopyStatus(
+            'warning',
+            'Translation reuse unavailable',
+            response.payload.message ??
+              'This tab remains open, but its saved translation could not be reused safely.',
+          );
+        }
+        return;
+      }
+      if (response.type !== 'TRANSLATED_COPY_HANDOFF') return;
+      try {
+        const summary = importSessionBundle(response.payload.bundle);
+        const acknowledgement = extensionResponseSchema.parse(
+          await browser.runtime.sendMessage({
+            version: CONTRACT_VERSION,
+            requestId: `req_copy_ack_${crypto.randomUUID().replaceAll('-', '')}`,
+            type: 'ACK_TRANSLATED_COPY_HANDOFF',
+            payload: { token: response.payload.token, ...summary },
+          }),
+        );
+        if (acknowledgement.type !== 'TRANSLATED_COPY_ACKNOWLEDGED') {
+          throw new Error('The translated-copy acknowledgment was rejected.');
+        }
+        showTranslatedCopyStatus(
+          'success',
+          'Saved translation reused',
+          `${summary.matchedSegments} sections reused, ${summary.unmatchedSegments} left original, and ${summary.uncertainSegments} left uncertain.`,
+        );
+      } catch {
+        await browser.runtime
+          .sendMessage({
+            version: CONTRACT_VERSION,
+            requestId: `req_copy_reject_${crypto.randomUUID().replaceAll('-', '')}`,
+            type: 'REJECT_TRANSLATED_COPY_HANDOFF',
+            payload: { token: response.payload.token },
+          })
+          .catch(() => undefined);
+        showTranslatedCopyStatus(
+          'warning',
+          'Translation reuse unavailable',
+          'This tab remains open, but the saved translation did not match this page safely.',
+        );
+      }
+    } catch {
+      // Ordinary pages have no translated-copy handoff. Startup remains silent for that case.
+    }
+  }
 
   function showSelectionResult(payload: {
     sourceText: string;
@@ -1389,4 +1718,6 @@ export default defineUnlistedScript(() => {
         );
     }
   });
+
+  void claimTranslatedCopyHandoff();
 });

@@ -73,7 +73,7 @@ export type TranslationStatus =
   | 'cancelled'
   | 'error';
 
-export const TRANSLATION_SESSION_VERSION = 1 as const;
+export const TRANSLATION_SESSION_VERSION = 2 as const;
 
 export type TranslationDisplayMode = 'original' | 'translated' | 'mixed-partial';
 export type TranslationSessionLifecycle =
@@ -87,6 +87,97 @@ export type TranslationChangeSummary = {
   removedSegments: number;
   reorderedSegments: number;
   uncertainSegments: number;
+};
+
+export type TranslationChangeScanResult = {
+  status: 'no-changes' | 'changes-found' | 'updated';
+  summary: TranslationChangeSummary;
+  updatedSegments?: number;
+};
+
+export type TranslationComparisonElementTag =
+  | 'main'
+  | 'article'
+  | 'section'
+  | 'header'
+  | 'footer'
+  | 'nav'
+  | 'aside'
+  | 'div'
+  | 'p'
+  | 'h1'
+  | 'h2'
+  | 'h3'
+  | 'h4'
+  | 'h5'
+  | 'h6'
+  | 'ul'
+  | 'ol'
+  | 'li'
+  | 'dl'
+  | 'dt'
+  | 'dd'
+  | 'table'
+  | 'caption'
+  | 'thead'
+  | 'tbody'
+  | 'tfoot'
+  | 'tr'
+  | 'th'
+  | 'td'
+  | 'figure'
+  | 'figcaption'
+  | 'blockquote'
+  | 'hr'
+  | 'br'
+  | 'img'
+  | 'a'
+  | 'span'
+  | 'strong'
+  | 'em'
+  | 'b'
+  | 'i'
+  | 'small'
+  | 'sub'
+  | 'sup'
+  | 'time'
+  | 'code'
+  | 'kbd'
+  | 'samp'
+  | 'mark'
+  | 'button';
+
+export type TranslationComparisonAttributes = {
+  href?: string;
+  src?: string;
+  alt?: string;
+  title?: string;
+  role?: string;
+  ariaLabel?: string;
+  lang?: string;
+  dir?: 'auto' | 'ltr' | 'rtl';
+  rowSpan?: number;
+  colSpan?: number;
+  listStart?: number;
+};
+
+export type TranslationComparisonSnapshotNode =
+  | {
+      kind: 'element';
+      parentIndex?: number;
+      tag: TranslationComparisonElementTag;
+      attributes?: TranslationComparisonAttributes;
+    }
+  | {
+      kind: 'text';
+      parentIndex: number;
+      segmentId?: string;
+      text?: string;
+    };
+
+export type TranslationComparisonSnapshot = {
+  rootIndex: 0;
+  nodes: TranslationComparisonSnapshotNode[];
 };
 
 export type TranslationSessionSegment = {
@@ -116,6 +207,7 @@ export type TranslationSessionBundle = {
   lifecycle: TranslationSessionLifecycle;
   partial: boolean;
   segments: TranslationSessionSegment[];
+  comparisonSnapshot: TranslationComparisonSnapshot;
 };
 
 export type TranslationFailureReason =
@@ -254,6 +346,7 @@ export type TranslationProgress = {
   displayMode?: TranslationDisplayMode;
   lifecycle?: TranslationSessionLifecycle;
   changed?: TranslationChangeSummary;
+  changeScan?: TranslationChangeScanResult;
   pageDiverged?: boolean;
 };
 

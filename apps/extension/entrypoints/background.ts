@@ -31,6 +31,8 @@ import {
   providerTestResponseSchema,
   translationResponseSchema,
   translationSessionBundleSchema,
+  translatedCopyHandoffIndexSchema,
+  translatedCopyHandoffRecordSchema,
   type ExtensionResponse,
 } from '@translation/shared-validation';
 
@@ -44,7 +46,19 @@ const controllersBySession = new Map<string, Set<AbortController>>();
 const progressByTab = new Map<number, TranslationProgress>();
 const comparisonTokenByTab = new Map<number, string>();
 const COMPARISON_STORAGE_PREFIX = 'comparisonSession:';
+const COPY_HANDOFF_STORAGE_PREFIX = 'translatedCopyHandoff:';
+const COPY_HANDOFF_TAB_PREFIX = 'translatedCopyTab:';
+const COPY_HANDOFF_TTL_MS = 30_000;
 const MAX_SESSION_BUNDLE_BYTES = 2_000_000;
+type CopyHandoffSummary = {
+  matchedSegments: number;
+  unmatchedSegments: number;
+  uncertainSegments: number;
+};
+const copyHandoffWaiters = new Map<
+  string,
+  { resolve: (summary: CopyHandoffSummary) => void; reject: (error: Error) => void }
+>();
 const extensionPageCommandTypes = new Set([
   'GET_TAB_STATUS',
   'GET_API_HEALTH',
@@ -63,6 +77,7 @@ const extensionPageCommandTypes = new Set([
   'UPDATE_CHANGED_SECTIONS',
   'REFRESH_TRANSLATION',
   'OPEN_TRANSLATED_COPY',
+  'OPEN_TRANSLATED_COPY_FROM_BUNDLE',
   'OPEN_COMPARISON_VIEW',
   'GET_COMPARISON_SESSION',
   'GET_TRANSLATION_PROGRESS',
@@ -73,6 +88,14 @@ const extensionPageCommandTypes = new Set([
 
 function comparisonStorageKey(token: string): string {
   return `${COMPARISON_STORAGE_PREFIX}${token}`;
+}
+
+function copyHandoffStorageKey(token: string): string {
+  return `${COPY_HANDOFF_STORAGE_PREFIX}${token}`;
+}
+
+function copyHandoffTabKey(tabId: number): string {
+  return `${COPY_HANDOFF_TAB_PREFIX}${tabId}`;
 }
 
 function bundleByteLength(bundle: TranslationSessionBundle): number {
@@ -201,6 +224,159 @@ function waitForTabComplete(tabId: number): Promise<void> {
   });
 }
 
+function navigationCompatible(source: string, destination: string): boolean {
+  try {
+    const sourceUrl = new URL(source);
+    const destinationUrl = new URL(destination);
+    const normalizePath = (value: string) => value.replace(/\/+$/u, '') || '/';
+    const protocolCompatible =
+      sourceUrl.protocol === destinationUrl.protocol ||
+      (sourceUrl.protocol === 'http:' && destinationUrl.protocol === 'https:');
+    const portCompatible =
+      sourceUrl.protocol === destinationUrl.protocol
+        ? sourceUrl.port === destinationUrl.port
+        : (!sourceUrl.port || sourceUrl.port === '80') &&
+          (!destinationUrl.port || destinationUrl.port === '443');
+    return (
+      protocolCompatible &&
+      portCompatible &&
+      sourceUrl.hostname === destinationUrl.hostname &&
+      normalizePath(sourceUrl.pathname) === normalizePath(destinationUrl.pathname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function copyHandoffIndex(tabId: number) {
+  const key = copyHandoffTabKey(tabId);
+  const stored = await browser.storage.session.get(key);
+  return translatedCopyHandoffIndexSchema.safeParse(stored[key]);
+}
+
+async function failCopyHandoff(tabId: number, token: string, message: string): Promise<void> {
+  const current = await copyHandoffIndex(tabId);
+  if (current.success && current.data.status === 'acknowledged') return;
+  await browser.storage.session.remove(copyHandoffStorageKey(token));
+  await browser.storage.session.set({
+    [copyHandoffTabKey(tabId)]: translatedCopyHandoffIndexSchema.parse({
+      version: 1,
+      status: 'failed',
+      token,
+      message,
+    }),
+  });
+  copyHandoffWaiters.get(token)?.reject(new Error(message));
+  copyHandoffWaiters.delete(token);
+}
+
+async function cleanupCopyHandoffForTab(tabId: number): Promise<void> {
+  const current = await copyHandoffIndex(tabId);
+  const keys = [copyHandoffTabKey(tabId)];
+  if (current.success) {
+    keys.push(copyHandoffStorageKey(current.data.token));
+    copyHandoffWaiters
+      .get(current.data.token)
+      ?.reject(new Error('The translated-copy tab closed.'));
+    copyHandoffWaiters.delete(current.data.token);
+  }
+  await browser.storage.session.remove(keys);
+}
+
+async function waitForCopyAcknowledgement(
+  tabId: number,
+  token: string,
+): Promise<CopyHandoffSummary> {
+  return await new Promise<CopyHandoffSummary>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      copyHandoffWaiters.delete(token);
+      reject(new Error('The translated copy did not acknowledge the saved translation in time.'));
+    }, 15_000);
+    const settle = {
+      resolve: (summary: CopyHandoffSummary) => {
+        clearTimeout(timeout);
+        copyHandoffWaiters.delete(token);
+        resolve(summary);
+      },
+      reject: (error: Error) => {
+        clearTimeout(timeout);
+        copyHandoffWaiters.delete(token);
+        reject(error);
+      },
+    };
+    copyHandoffWaiters.set(token, settle);
+    void copyHandoffIndex(tabId).then((current) => {
+      if (!current.success || current.data.token !== token) return;
+      if (current.data.status === 'acknowledged') {
+        settle.resolve({
+          matchedSegments: current.data.matchedSegments,
+          unmatchedSegments: current.data.unmatchedSegments,
+          uncertainSegments: current.data.uncertainSegments,
+        });
+      } else if (current.data.status === 'failed') {
+        settle.reject(new Error(current.data.message));
+      }
+    });
+  });
+}
+
+async function openTranslatedCopyFromBundle(
+  sourceBundle: TranslationSessionBundle,
+  requestId: string,
+): Promise<ExtensionResponse> {
+  const validatedSource = translationSessionBundleSchema.parse(sourceBundle);
+  if (bundleByteLength(validatedSource) > MAX_SESSION_BUNDLE_BYTES) {
+    throw new Error('The translation session is too large to transfer safely.');
+  }
+  const now = Date.now();
+  const clonedBundle = translationSessionBundleSchema.parse({
+    ...validatedSource,
+    sessionId: createSessionId(),
+    createdAt: now,
+    lastActivityAt: now,
+  });
+  const copyTab = await browser.tabs.create({ url: 'about:blank', active: true });
+  if (copyTab.id === undefined) throw new Error('The translated copy tab could not be created.');
+  const token = `copy_${crypto.randomUUID().replaceAll('-', '')}`;
+  const expiresAt = now + COPY_HANDOFF_TTL_MS;
+  await browser.storage.session.set({
+    [copyHandoffStorageKey(token)]: translatedCopyHandoffRecordSchema.parse({
+      version: 1,
+      token,
+      tabId: copyTab.id,
+      createdAt: now,
+      expiresAt,
+      bundle: clonedBundle,
+    }),
+    [copyHandoffTabKey(copyTab.id)]: translatedCopyHandoffIndexSchema.parse({
+      version: 1,
+      status: 'pending',
+      token,
+      expiresAt,
+    }),
+  });
+
+  try {
+    await browser.tabs.update(copyTab.id, { url: validatedSource.navigationUrl });
+    await waitForTabComplete(copyTab.id);
+    await ensurePageShell(copyTab.id);
+    const summary = await waitForCopyAcknowledgement(copyTab.id, token);
+    return extensionResponseSchema.parse({
+      version: CONTRACT_VERSION,
+      requestId,
+      type: 'TRANSLATED_COPY_OPENED',
+      payload: { tabId: copyTab.id, ...summary },
+    });
+  } catch (cause) {
+    const message =
+      cause instanceof Error
+        ? cause.message
+        : 'The saved translation could not be reused in the new tab.';
+    await failCopyHandoff(copyTab.id, token, message);
+    throw cause;
+  }
+}
+
 async function openTranslatedCopy(
   sourceTabId: number,
   sessionId: string,
@@ -210,52 +386,10 @@ async function openTranslatedCopy(
     browser.tabs.get(sourceTabId),
     exportSessionBundle(sourceTabId, sessionId, createRequestId()),
   ]);
-  if (!sourceTab.url || sourceTab.url !== sourceBundle.navigationUrl) {
+  if (!sourceTab.url || !navigationCompatible(sourceBundle.navigationUrl, sourceTab.url)) {
     throw new Error('The source tab navigation changed before the copy could open.');
   }
-  const copyTab = await browser.tabs.create({ url: sourceTab.url, active: true });
-  if (copyTab.id === undefined) throw new Error('The translated copy tab could not be created.');
-  try {
-    await waitForTabComplete(copyTab.id);
-    await ensurePageShell(copyTab.id);
-    const now = Date.now();
-    const clonedBundle = translationSessionBundleSchema.parse({
-      ...sourceBundle,
-      sessionId: createSessionId(),
-      createdAt: now,
-      lastActivityAt: now,
-    });
-    const response = await sendContentMessage(copyTab.id, {
-      version: CONTRACT_VERSION,
-      requestId: createRequestId(),
-      type: 'IMPORT_SESSION_BUNDLE',
-      payload: { bundle: clonedBundle },
-    });
-    if (response.type !== 'TRANSLATION_PROGRESS') {
-      throw new Error('The translated copy did not match the source page safely.');
-    }
-    progressByTab.set(copyTab.id, response.payload.progress);
-    const uncertainSegments = response.payload.progress.changed?.uncertainSegments ?? 0;
-    return extensionResponseSchema.parse({
-      version: CONTRACT_VERSION,
-      requestId,
-      type: 'TRANSLATED_COPY_OPENED',
-      payload: {
-        tabId: copyTab.id,
-        matchedSegments: response.payload.progress.translatedSegments,
-        unmatchedSegments: Math.max(
-          0,
-          response.payload.progress.discoveredSegments -
-            response.payload.progress.translatedSegments -
-            uncertainSegments,
-        ),
-        uncertainSegments,
-      },
-    });
-  } catch (cause) {
-    await browser.tabs.remove(copyTab.id).catch(() => undefined);
-    throw cause;
-  }
+  return await openTranslatedCopyFromBundle(sourceBundle, requestId);
 }
 
 async function openComparisonView(
@@ -787,6 +921,7 @@ async function translateSelection(tabId: number, text: string): Promise<Selectio
 export default defineBackground(() => {
   browser.tabs.onRemoved.addListener((tabId) => {
     progressByTab.delete(tabId);
+    void cleanupCopyHandoffForTab(tabId);
     const token = comparisonTokenByTab.get(tabId);
     comparisonTokenByTab.delete(tabId);
     if (token) void browser.storage.session.remove(comparisonStorageKey(token));
@@ -988,6 +1123,211 @@ export default defineBackground(() => {
             parsed.data.payload.sessionId,
             requestId,
           );
+        case 'OPEN_TRANSLATED_COPY_FROM_BUNDLE':
+          return await openTranslatedCopyFromBundle(parsed.data.payload.bundle, requestId);
+        case 'GET_TRANSLATED_COPY_HANDOFF': {
+          const tabId = sender.tab?.id;
+          const senderUrl = sender.url ?? sender.tab?.url;
+          if (
+            sender.id !== browser.runtime.id ||
+            tabId === undefined ||
+            sender.frameId !== 0 ||
+            !senderUrl
+          ) {
+            return createErrorResponse(
+              requestId,
+              'INVALID_MESSAGE',
+              'The translated-copy destination is invalid.',
+              false,
+            );
+          }
+          const index = await copyHandoffIndex(tabId);
+          if (!index.success) {
+            return extensionResponseSchema.parse({
+              version: CONTRACT_VERSION,
+              requestId,
+              type: 'TRANSLATED_COPY_HANDOFF_STATUS',
+              payload: { status: 'none' },
+            });
+          }
+          if (index.data.status === 'failed') {
+            return extensionResponseSchema.parse({
+              version: CONTRACT_VERSION,
+              requestId,
+              type: 'TRANSLATED_COPY_HANDOFF_STATUS',
+              payload: { status: 'failed', message: index.data.message },
+            });
+          }
+          if (index.data.status === 'acknowledged') {
+            return extensionResponseSchema.parse({
+              version: CONTRACT_VERSION,
+              requestId,
+              type: 'TRANSLATED_COPY_HANDOFF_STATUS',
+              payload: {
+                status: 'already-applied',
+                matchedSegments: index.data.matchedSegments,
+                unmatchedSegments: index.data.unmatchedSegments,
+                uncertainSegments: index.data.uncertainSegments,
+              },
+            });
+          }
+          if (index.data.expiresAt < Date.now()) {
+            await failCopyHandoff(
+              tabId,
+              index.data.token,
+              'The saved translation expired before this page was ready.',
+            );
+            return extensionResponseSchema.parse({
+              version: CONTRACT_VERSION,
+              requestId,
+              type: 'TRANSLATED_COPY_HANDOFF_STATUS',
+              payload: {
+                status: 'failed',
+                message: 'The saved translation expired before this page was ready.',
+              },
+            });
+          }
+          const key = copyHandoffStorageKey(index.data.token);
+          const stored = await browser.storage.session.get(key);
+          const handoff = translatedCopyHandoffRecordSchema.safeParse(stored[key]);
+          if (
+            !handoff.success ||
+            handoff.data.tabId !== tabId ||
+            handoff.data.token !== index.data.token ||
+            bundleByteLength(handoff.data.bundle) > MAX_SESSION_BUNDLE_BYTES ||
+            !navigationCompatible(handoff.data.bundle.navigationUrl, senderUrl)
+          ) {
+            await failCopyHandoff(
+              tabId,
+              index.data.token,
+              'The saved translation did not match this destination safely.',
+            );
+            return extensionResponseSchema.parse({
+              version: CONTRACT_VERSION,
+              requestId,
+              type: 'TRANSLATED_COPY_HANDOFF_STATUS',
+              payload: {
+                status: 'failed',
+                message: 'The saved translation did not match this destination safely.',
+              },
+            });
+          }
+          return extensionResponseSchema.parse({
+            version: CONTRACT_VERSION,
+            requestId,
+            type: 'TRANSLATED_COPY_HANDOFF',
+            payload: { token: handoff.data.token, bundle: handoff.data.bundle },
+          });
+        }
+        case 'ACK_TRANSLATED_COPY_HANDOFF': {
+          const tabId = sender.tab?.id;
+          const senderUrl = sender.url ?? sender.tab?.url;
+          if (
+            sender.id !== browser.runtime.id ||
+            tabId === undefined ||
+            sender.frameId !== 0 ||
+            !senderUrl
+          ) {
+            return createErrorResponse(
+              requestId,
+              'INVALID_MESSAGE',
+              'The translated-copy acknowledgment is invalid.',
+              false,
+            );
+          }
+          const index = await copyHandoffIndex(tabId);
+          if (!index.success || index.data.token !== parsed.data.payload.token) {
+            return createErrorResponse(
+              requestId,
+              'STALE_SESSION',
+              'The translated-copy handoff is unavailable.',
+              false,
+            );
+          }
+          if (index.data.status === 'acknowledged') {
+            return extensionResponseSchema.parse({
+              version: CONTRACT_VERSION,
+              requestId,
+              type: 'TRANSLATED_COPY_ACKNOWLEDGED',
+              payload: { acknowledged: true },
+            });
+          }
+          if (index.data.status !== 'pending') {
+            return createErrorResponse(
+              requestId,
+              'STALE_SESSION',
+              'The translated-copy handoff is unavailable.',
+              false,
+            );
+          }
+          const key = copyHandoffStorageKey(index.data.token);
+          const stored = await browser.storage.session.get(key);
+          const handoff = translatedCopyHandoffRecordSchema.safeParse(stored[key]);
+          if (
+            !handoff.success ||
+            handoff.data.tabId !== tabId ||
+            !navigationCompatible(handoff.data.bundle.navigationUrl, senderUrl)
+          ) {
+            await failCopyHandoff(
+              tabId,
+              index.data.token,
+              'The translated-copy acknowledgment did not match this page.',
+            );
+            return createErrorResponse(
+              requestId,
+              'INVALID_MESSAGE',
+              'The translated-copy acknowledgment did not match this page.',
+              false,
+            );
+          }
+          const summary: CopyHandoffSummary = {
+            matchedSegments: parsed.data.payload.matchedSegments,
+            unmatchedSegments: parsed.data.payload.unmatchedSegments,
+            uncertainSegments: parsed.data.payload.uncertainSegments,
+          };
+          await browser.storage.session.remove(key);
+          await browser.storage.session.set({
+            [copyHandoffTabKey(tabId)]: translatedCopyHandoffIndexSchema.parse({
+              version: 1,
+              status: 'acknowledged',
+              token: index.data.token,
+              ...summary,
+            }),
+          });
+          copyHandoffWaiters.get(index.data.token)?.resolve(summary);
+          copyHandoffWaiters.delete(index.data.token);
+          return extensionResponseSchema.parse({
+            version: CONTRACT_VERSION,
+            requestId,
+            type: 'TRANSLATED_COPY_ACKNOWLEDGED',
+            payload: { acknowledged: true },
+          });
+        }
+        case 'REJECT_TRANSLATED_COPY_HANDOFF': {
+          const tabId = sender.tab?.id;
+          if (sender.id !== browser.runtime.id || tabId === undefined || sender.frameId !== 0) {
+            return createErrorResponse(
+              requestId,
+              'INVALID_MESSAGE',
+              'The translated-copy rejection is invalid.',
+              false,
+            );
+          }
+          const index = await copyHandoffIndex(tabId);
+          if (index.success && index.data.token === parsed.data.payload.token) {
+            await failCopyHandoff(
+              tabId,
+              index.data.token,
+              'The saved translation did not match this page safely.',
+            );
+          }
+          return extensionResponseSchema.parse({
+            version: CONTRACT_VERSION,
+            requestId,
+            type: 'TRANSLATED_COPY_ACKNOWLEDGED',
+            payload: { acknowledged: true },
+          });
+        }
         case 'OPEN_COMPARISON_VIEW':
           return await openComparisonView(
             parsed.data.payload.tabId,
