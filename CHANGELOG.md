@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Milestone 1.5 repository and frontend foundation - 2026-07-18
+
+- Established a canonical documentation hierarchy and index, archived historical evidence with Git history intact, and separated current task, operating-instruction, Beads, and project-memory responsibilities.
+- Replaced overlapping roadmap material with an extension-first M1-M12 sequence and a hard M8 commercial extension General Availability gate before desktop or mobile implementation.
+- Added a provider-neutral billing, entitlement, usage, reconciliation, cancellation, refund, retention, and jurisdiction architecture without selecting or configuring a payment provider.
+- Added shared light/dark design tokens and accessible UI primitives, then applied a consistent action, status, permission, progress, and disclosure hierarchy across popup, Options, and comparison.
+- Expanded managed-Chromium coverage for translating, provider outage, permission denial, restricted pages, keyboard focus, responsive layouts, 200% zoom, dark/reduced-motion settings, and RTL/LTR/mixed-direction comparison.
+- Added repeatable Markdown-link and workspace dependency-cycle checks plus an LF repository policy with CRLF reserved for batch and command files.
+
 - Added bounded provider-aware incomplete-response recovery that preserves valid stable-ID records, retries unresolved IDs only through smaller subsets, continues queued work, and exposes privacy-safe recovery diagnostics and honest partial actions.
 - Added a metadata-only translated-copy permission intent so one click continues after grant even if the popup closes, while callback/event races remain idempotent and denial, expiry, wrong origin, revocation, and navigation mismatch fail closed.
 - Added explicit current-origin HTTP/HTTPS permission requests for translated copies, with denial guidance, redirect/revocation enforcement, final-DOM hydration reconciliation, and zero-call cached reuse.

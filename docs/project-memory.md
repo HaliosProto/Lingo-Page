@@ -10,6 +10,7 @@ Last reconciled: 2026-07-18
 - Canonical authority: `PRODUCT_CONSTITUTION.md`, `PRODUCT_VISION.md`, `ROADMAP.md`, approved milestone specifications, ADRs/contracts, then Beads execution state.
 - Current milestone: M1.5 repository cleanup, extension-first roadmap, and frontend foundation (`translation-2np`).
 - Current branch: `chore/repository-cleanup-roadmap-and-extension-ux`, based on `1a11629` after PR #2 merged.
+- Current verification: automated/static, managed-Chromium, performance, security, documentation, packaging, and Git-hygiene evidence is recorded in `docs/milestones/milestone-1-5-verification-report.md`; owner review remains pending.
 - Next milestone: M2 reliability/lifecycle/performance, blocked until M1.5 review and acceptance.
 - Hard product gate: desktop/mobile implementation remains blocked until M8 extension General Availability acceptance.
 - Verified provider baseline: deterministic mock. Live calls require explicit approval, backend-only secrets, synthetic text, and cost/terms review.

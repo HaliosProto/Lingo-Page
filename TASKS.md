@@ -13,10 +13,11 @@ M1.5 — Repository cleanup, extension-first roadmap, and frontend foundation.
 - Beads issue: `translation-2np`
 - Branch: `chore/repository-cleanup-roadmap-and-extension-ux`
 - Starting commit: `1a1162962768c60f29b2848eafa8be76acdd919c`
-- Pull request: not opened yet
+- Pull request: draft publication pending after final branch verification
 - Specification: the accepted Milestone 1.5 task and Beads acceptance criteria
 - Inventory: `docs/repository-cleanup-inventory.md`
 - Canonical documentation map: `docs/INDEX.md`
+- Verification: `docs/milestones/milestone-1-5-verification-report.md`
 
 ## Previous accepted milestone
 
@@ -36,9 +37,7 @@ See `ROADMAP.md`, `docs/acceptance-criteria.md`, and `docs/verification-matrix.m
 
 ## Active blockers and owner decisions
 
-- Complete M1.5 runtime/frontend evidence and repository gates.
 - Review and accept the M1.5 branch and draft pull request; do not merge automatically.
-- Re-authenticate the repository hosting CLI before pull-request creation if its current credential remains invalid.
 - Formal branded-browser accessibility, BiDi, zoom, motion, and owner acceptance remain separate release evidence.
 - Live provider calls, payment-provider selection, accounts, deployment, publication, pricing, legal entity/jurisdiction decisions, and public resources require explicit approval.
 
