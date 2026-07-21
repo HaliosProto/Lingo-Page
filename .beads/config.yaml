@@ -65,4 +65,10 @@
 # - linear.api_key  → use LINEAR_API_KEY env var instead
 # - github.token    → use GITHUB_TOKEN env var instead
 
-sync.remote: "git+https://github.com/HaliosProto/Translation-Extension.git"
+sync.remote: "git+https://github.com/HaliosProto/Lingo-Page.git"
+repos:
+    primary: "."
+    additional:
+        - "C:\\Users\\hussa\\Documents\\Non_work_programming\\Lingo_Page\\translation_extension_second_brain\\lingo-page-planning"
+export:
+    auto: true

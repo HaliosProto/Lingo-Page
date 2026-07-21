@@ -2,6 +2,6 @@
   "database": "dolt",
   "backend": "dolt",
   "dolt_mode": "embedded",
-  "dolt_database": "translation",
-  "project_id": "bae2ec7c-4d63-420c-a17f-b1d089847208"
+  "dolt_database": "Lingo_Page",
+  "project_id": "1242a6ec-02ea-4abf-9c05-476368596621"
 }
