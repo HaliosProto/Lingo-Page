@@ -248,3 +248,11 @@ bd prime                # Refresh Beads context
 
 **Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See https://github.com/gastownhall/beads/blob/main/docs/SYNC_CONCEPTS.md for details and anti-patterns.
 <!-- END BEADS CODEX SETUP -->
+
+## Personal Workspace: Second Brain (Karpathy LLM Wiki Pattern)
+The adjacent directory `../translation-extension-second-brain/lingo-page-brain/` is an LLM-managed knowledge base:
+- **`raw/`**: Source files, clipped articles, and rough inputs.
+- **`wiki/`**: Synthesized notes, technical concepts, and feature specifications.
+- **Operations:**
+  - **Ingest:** When asked to process or ingest a note, read from `../translation-extension-second-brain/lingo-page-brain/raw/`, compile synthesized markdown into `../translation-extension-second-brain/lingo-page-brain/wiki/`, and update `index.md` and `log.md`.
+  - **Plan:** Before starting non-trivial features, check or draft specifications in `../translation-extension-second-brain/lingo-page-brain/wiki/specs/` before implementing code in `Lingo-Page/`.
