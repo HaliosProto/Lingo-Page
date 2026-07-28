@@ -18,7 +18,7 @@ export default defineConfig({
     version: '0.1.0',
     description: 'Translate eligible webpage text in place with privacy-first controls.',
     default_locale: 'en',
-    permissions: ['activeTab', 'contextMenus', 'scripting', 'storage'],
+    permissions: ['activeTab', 'alarms', 'contextMenus', 'scripting', 'sessions', 'storage'],
     optional_host_permissions: ['http://*/*', 'https://*/*'],
     host_permissions: [
       `${getApiOrigin()}/*`,

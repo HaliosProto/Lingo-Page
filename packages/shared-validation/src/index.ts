@@ -691,7 +691,21 @@ export const translationRecoveryRecordSchema = z.object({
   frameId: z.literal(0),
   sessionId: sessionIdSchema,
   operationId: z.string().regex(/^op_[a-f0-9]{32}$/u),
+  normalizedOrigin: z
+    .string()
+    .url()
+    .max(2_048)
+    .refine((value) => {
+      try {
+        const parsed = new URL(value);
+        return /^https?:$/u.test(parsed.protocol) && parsed.origin === value;
+      } catch {
+        return false;
+      }
+    }),
+  originIdentity: z.string().regex(/^[a-f0-9]{64}$/u),
   navigationIdentity: z.string().regex(/^[a-f0-9]{64}$/u),
+  translationIdentity: z.string().regex(/^[a-f0-9]{64}$/u),
   navigationGeneration: z.number().int().nonnegative().max(1_000_000),
   pageFingerprint: z.string().min(4).max(160),
   sourceLanguage: z.union([z.literal('auto'), languageCodeSchema]),
@@ -714,6 +728,45 @@ export const translationRecoveryRecordSchema = z.object({
   ]),
   partial: z.boolean(),
   cancelled: z.boolean(),
+  restartRecoveryEnabled: z.boolean(),
+  claim: z
+    .object({
+      state: z.enum(['owned', 'orphaned', 'claiming']),
+      ownerTabId: z.number().int().nonnegative().optional(),
+      browserInstanceId: z.string().regex(/^[a-f0-9]{32}$/u),
+      claimId: z
+        .string()
+        .regex(/^claim_[a-f0-9]{32}$/u)
+        .optional(),
+      reason: z
+        .enum(['window-closing', 'tab-closed', 'browser-restart', 'tab-replaced'])
+        .optional(),
+      detachedAt: z.number().int().nonnegative().optional(),
+      claimStartedAt: z.number().int().nonnegative().optional(),
+      claimExpiresAt: z.number().int().nonnegative().optional(),
+    })
+    .superRefine((claim, context) => {
+      if (claim.state === 'owned' && claim.ownerTabId === undefined) {
+        context.addIssue({
+          code: 'custom',
+          path: ['ownerTabId'],
+          message: 'Owned recovery claims require a tab owner.',
+        });
+      }
+      if (
+        claim.state === 'claiming' &&
+        (claim.ownerTabId === undefined ||
+          claim.claimId === undefined ||
+          claim.claimStartedAt === undefined ||
+          claim.claimExpiresAt === undefined ||
+          claim.claimExpiresAt <= claim.claimStartedAt)
+      ) {
+        context.addIssue({
+          code: 'custom',
+          message: 'In-flight recovery claims require a bounded claim identity and owner.',
+        });
+      }
+    }),
   progress: translationProgressSchema,
   completedSegmentIds: z.array(sessionSegmentIdSchema).max(2_500),
   segments: z
@@ -821,6 +874,7 @@ const translateCommandPayloadSchema = z.object({
   glossaryVersion: z.number().int().nonnegative(),
   glossary: z.array(glossaryEntrySchema).max(500),
   autoTranslateDynamicContent: z.boolean(),
+  restartRecoveryEnabled: z.boolean().default(false),
 });
 
 export const extensionRequestSchema = z.discriminatedUnion('type', [

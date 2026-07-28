@@ -50,10 +50,18 @@ import {
 } from '../src/translated-copy-intent';
 import {
   MAX_RECOVERY_RECORD_BYTES,
+  RECENTLY_CLOSED_RESTORE_SIGNAL_MS,
+  RECOVERY_STARTUP_CLAIM_WINDOW_MS,
+  RecoveryClaimCoordinator,
   evaluateRecoveryRecord,
+  evaluateRestoredRecoveryRecord,
   pruneRecoveryRecords,
   recoveryNavigationIdentity,
+  recoveryOriginIdentity,
+  recoveryPermissionRemovalMatches,
   recoveryRecordByteLength,
+  recoveryTranslationIdentity,
+  type RecoveryRestoreSignal,
 } from '../src/session-recovery';
 
 type CacheEntry = { translatedText: string; createdAt: number };
@@ -74,6 +82,10 @@ const COPY_HANDOFF_STORAGE_PREFIX = 'translatedCopyHandoff:';
 const COPY_HANDOFF_TAB_PREFIX = 'translatedCopyTab:';
 const COPY_INTENT_STORAGE_PREFIX = 'translatedCopyIntent:';
 const RECOVERY_STORAGE_PREFIX = 'translationRecovery:';
+const RECOVERY_BROWSER_INSTANCE_KEY = 'translationRecoveryBrowserInstance';
+const RECOVERY_STARTUP_DEADLINE_KEY = 'translationRecoveryStartupDeadline';
+const RECOVERY_CLEANUP_ALARM = 'translationRecoveryCleanup';
+const RECENTLY_CLOSED_IDENTITY_PREFIX = 'translationRecentlyClosed:';
 const COPY_HANDOFF_TTL_MS = 30_000;
 const MAX_SESSION_BUNDLE_BYTES = 2_000_000;
 type CopyHandoffSummary = {
@@ -138,13 +150,95 @@ function copyIntentStorageKey(intentId: string): string {
   return `${COPY_INTENT_STORAGE_PREFIX}${intentId}`;
 }
 
-function recoveryStorageKey(tabId: number): string {
-  return `${RECOVERY_STORAGE_PREFIX}${tabId}`;
+function recoveryStorageKey(sessionId: string): string {
+  return `${RECOVERY_STORAGE_PREFIX}${sessionId}`;
+}
+
+async function readAllRecoveryRecords(): Promise<
+  Array<{ key: string; record: TranslationRecoveryRecord }>
+> {
+  const stored = await browser.storage.local.get(null);
+  const records: Array<{ key: string; record: TranslationRecoveryRecord }> = [];
+  const invalidKeys: string[] = [];
+  for (const [key, value] of Object.entries(stored)) {
+    if (!key.startsWith(RECOVERY_STORAGE_PREFIX)) continue;
+    const parsed = translationRecoveryRecordSchema.safeParse(value);
+    if (!parsed.success || recoveryRecordByteLength(parsed.data) > MAX_RECOVERY_RECORD_BYTES) {
+      invalidKeys.push(key);
+    } else {
+      records.push({ key, record: parsed.data });
+    }
+  }
+  if (invalidKeys.length > 0) await browser.storage.local.remove(invalidKeys);
+  return records;
+}
+
+async function readRecoveryRecordBySession(
+  sessionId: string,
+): Promise<TranslationRecoveryRecord | undefined> {
+  const key = recoveryStorageKey(sessionId);
+  const stored = await browser.storage.local.get(key);
+  const parsed = translationRecoveryRecordSchema.safeParse(stored[key]);
+  if (!parsed.success || recoveryRecordByteLength(parsed.data) > MAX_RECOVERY_RECORD_BYTES) {
+    if (stored[key] !== undefined) await browser.storage.local.remove(key);
+    return undefined;
+  }
+  return parsed.data;
+}
+
+async function writeRecoveryRecord(record: TranslationRecoveryRecord): Promise<void> {
+  const validated = translationRecoveryRecordSchema.parse(record);
+  if (recoveryRecordByteLength(validated) > MAX_RECOVERY_RECORD_BYTES) {
+    throw new Error('Recovery record exceeds the bounded storage policy.');
+  }
+  await browser.storage.local.set({ [recoveryStorageKey(validated.sessionId)]: validated });
+}
+
+async function removeRecoveryRecordBySession(sessionId: string): Promise<void> {
+  await browser.storage.local.remove(recoveryStorageKey(sessionId));
+}
+
+async function recoveryRecordsForTab(tabId: number): Promise<TranslationRecoveryRecord[]> {
+  return (await readAllRecoveryRecords())
+    .map(({ record }) => record)
+    .filter(
+      (record) =>
+        record.sourceTabId === tabId ||
+        (record.claim.state !== 'orphaned' && record.claim.ownerTabId === tabId),
+    );
 }
 
 async function removeRecoveryRecord(tabId: number): Promise<void> {
-  await browser.storage.local.remove(recoveryStorageKey(tabId));
+  const matching = await recoveryRecordsForTab(tabId);
+  if (matching.length > 0) {
+    await browser.storage.local.remove(
+      matching.map((record) => recoveryStorageKey(record.sessionId)),
+    );
+  }
 }
+
+let browserInstancePromise:
+  Promise<{ id: string; startedAfterBrowserRestart: boolean }> | undefined;
+
+function getBrowserInstance(): Promise<{ id: string; startedAfterBrowserRestart: boolean }> {
+  browserInstancePromise ??= (async () => {
+    const stored = await browser.storage.session.get(RECOVERY_BROWSER_INSTANCE_KEY);
+    const existing = stored[RECOVERY_BROWSER_INSTANCE_KEY];
+    if (typeof existing === 'string' && /^[a-f0-9]{32}$/u.test(existing)) {
+      return { id: existing, startedAfterBrowserRestart: false };
+    }
+    const id = crypto.randomUUID().replaceAll('-', '');
+    await browser.storage.session.set({ [RECOVERY_BROWSER_INSTANCE_KEY]: id });
+    return { id, startedAfterBrowserRestart: true };
+  })();
+  return browserInstancePromise;
+}
+
+const recoveryClaimCoordinator = new RecoveryClaimCoordinator({
+  read: readRecoveryRecordBySession,
+  write: writeRecoveryRecord,
+  remove: removeRecoveryRecordBySession,
+});
 
 async function saveRecoveryRecord(
   tabId: number,
@@ -155,10 +249,16 @@ async function saveRecoveryRecord(
     await removeRecoveryRecord(tabId);
     return;
   }
+  const browserInstance = await getBrowserInstance();
   const record = translationRecoveryRecordSchema.parse({
     ...candidate,
     sourceTabId: tabId,
     frameId: 0,
+    claim: {
+      state: 'owned',
+      ownerTabId: tabId,
+      browserInstanceId: browserInstance.id,
+    },
   });
   if (
     recoveryRecordByteLength(record) > MAX_RECOVERY_RECORD_BYTES ||
@@ -167,40 +267,286 @@ async function saveRecoveryRecord(
     await removeRecoveryRecord(tabId);
     return;
   }
-  const existing = await readRecoveryRecord(tabId);
+  const existing = await readRecoveryRecordBySession(record.sessionId);
   if (existing && existing.updatedAt > record.updatedAt) return;
-  await browser.storage.local.set({ [recoveryStorageKey(tabId)]: record });
+  await writeRecoveryRecord(record);
 }
 
 async function readRecoveryRecord(tabId: number): Promise<TranslationRecoveryRecord | undefined> {
-  const key = recoveryStorageKey(tabId);
-  const stored = await browser.storage.local.get(key);
-  const record = translationRecoveryRecordSchema.safeParse(stored[key]);
-  if (!record.success || recoveryRecordByteLength(record.data) > MAX_RECOVERY_RECORD_BYTES) {
-    if (stored[key] !== undefined) await browser.storage.local.remove(key);
-    return undefined;
-  }
-  return record.data;
+  const records = await recoveryRecordsForTab(tabId);
+  return records.sort((left, right) => right.updatedAt - left.updatedAt)[0];
 }
 
 async function cleanupRecoveryRecords(): Promise<void> {
-  const stored = await browser.storage.local.get(null);
-  const entries = Object.entries(stored).filter(([key]) => key.startsWith(RECOVERY_STORAGE_PREFIX));
-  const records: TranslationRecoveryRecord[] = [];
-  const invalidKeys: string[] = [];
-  for (const [key, value] of entries) {
-    const parsed = translationRecoveryRecordSchema.safeParse(value);
-    if (!parsed.success) invalidKeys.push(key);
-    else records.push(parsed.data);
-  }
-  const pruned = pruneRecoveryRecords(records);
+  const entries = await readAllRecoveryRecords();
+  const pruned = pruneRecoveryRecords(entries.map(({ record }) => record));
   const retained = new Set(pruned.retained.map((record) => record.sessionId));
-  const obsoleteKeys = records
-    .filter((record) => !retained.has(record.sessionId))
-    .map((record) => recoveryStorageKey(record.sourceTabId));
-  if (invalidKeys.length > 0 || obsoleteKeys.length > 0) {
-    await browser.storage.local.remove([...invalidKeys, ...obsoleteKeys]);
+  const obsoleteKeys = entries
+    .filter(({ record }) => !retained.has(record.sessionId))
+    .map(({ key }) => key);
+  if (obsoleteKeys.length > 0) {
+    await browser.storage.local.remove(obsoleteKeys);
   }
+}
+
+async function hasRecoveryOriginAccess(rawUrl: string): Promise<boolean> {
+  const originPattern = translatedCopyOriginPattern(rawUrl);
+  if (!originPattern) return false;
+  const requiredOrigins = browser.runtime.getManifest().host_permissions ?? [];
+  return (
+    requiredOrigins.includes(originPattern) ||
+    (await browser.permissions.contains({ origins: [originPattern] }))
+  );
+}
+
+async function releaseRecoveryForTab(
+  tabId: number,
+  reason: 'window-closing' | 'tab-closed' | 'browser-restart' | 'tab-replaced',
+): Promise<void> {
+  const browserInstance = await getBrowserInstance();
+  const records = await recoveryRecordsForTab(tabId);
+  await Promise.all(
+    records.map(async (record) => {
+      if (!record.restartRecoveryEnabled) {
+        await removeRecoveryRecordBySession(record.sessionId);
+        return;
+      }
+      await recoveryClaimCoordinator.release({
+        sessionId: record.sessionId,
+        tabId,
+        browserInstanceId: browserInstance.id,
+        reason,
+      });
+      if (reason === 'tab-closed') {
+        recentlyClosedIdentities.add(record.navigationIdentity);
+        await browser.storage.session.set({
+          [`${RECENTLY_CLOSED_IDENTITY_PREFIX}${record.navigationIdentity}`]:
+            Date.now() + RECENTLY_CLOSED_RESTORE_SIGNAL_MS,
+        });
+      }
+    }),
+  );
+}
+
+async function attemptRestoredRecovery(
+  tabId: number,
+  rawUrl: string,
+  restoreSignal: RecoveryRestoreSignal,
+): Promise<boolean> {
+  if (!(await hasRecoveryOriginAccess(rawUrl))) return false;
+  const [navigationIdentity, originIdentity, browserInstance, entries, tabs] = await Promise.all([
+    recoveryNavigationIdentity(rawUrl),
+    recoveryOriginIdentity(rawUrl),
+    getBrowserInstance(),
+    readAllRecoveryRecords(),
+    browser.tabs.query({}),
+  ]);
+  const eligibility = await Promise.all(
+    entries.map(async ({ record }) => ({
+      record,
+      translationIdentityMatches:
+        record.translationIdentity ===
+        (await recoveryTranslationIdentity({
+          sessionId: record.sessionId,
+          operationId: record.operationId,
+          sourceLanguage: record.sourceLanguage,
+          targetLanguage: record.targetLanguage,
+          providerId: record.providerId,
+          modelId: record.modelId,
+        })),
+      decision: evaluateRestoredRecoveryRecord(record, {
+        navigationIdentity,
+        originIdentity,
+        restoreSignal,
+      }),
+    })),
+  );
+  const records = eligibility
+    .filter(
+      ({ record, decision, translationIdentityMatches }) =>
+        translationIdentityMatches &&
+        (decision.state === 'eligible' ||
+          (record.claim.state === 'claiming' &&
+            record.claim.ownerTabId === tabId &&
+            record.claim.browserInstanceId === browserInstance.id)),
+    )
+    .map(({ record }) => record);
+  if (records.length !== 1) return false;
+
+  const compatibleTabs = await Promise.all(
+    tabs
+      .filter(
+        (tab) => tab.id !== undefined && typeof tab.url === 'string' && /^https?:/u.test(tab.url),
+      )
+      .map(async (tab) => ({
+        id: tab.id!,
+        compatible:
+          (await recoveryNavigationIdentity(tab.url!)) === navigationIdentity &&
+          (await recoveryOriginIdentity(tab.url!)) === originIdentity,
+      })),
+  );
+  if (compatibleTabs.filter((tab) => tab.compatible).length !== 1) return false;
+
+  const record = records[0]!;
+  const requestedClaimId = `claim_${crypto.randomUUID().replaceAll('-', '')}`;
+  const claimed = await recoveryClaimCoordinator.claim({
+    sessionId: record.sessionId,
+    tabId,
+    browserInstanceId: browserInstance.id,
+    navigationIdentity,
+    originIdentity,
+    restoreSignal,
+    claimId: requestedClaimId,
+  });
+  if (claimed.state !== 'claimed') return false;
+
+  try {
+    await ensurePageShell(tabId);
+    const response = await sendContentMessage(tabId, {
+      version: CONTRACT_VERSION,
+      requestId: createRequestId(),
+      type: 'IMPORT_RECOVERY_RECORD',
+      payload: { recovery: claimed.record },
+    });
+    if (
+      response.type !== 'TRANSLATION_PROGRESS' ||
+      response.payload.progress.recoveryState !== 'recovered'
+    ) {
+      await recoveryClaimCoordinator.release({
+        sessionId: record.sessionId,
+        tabId,
+        browserInstanceId: browserInstance.id,
+        reason: 'browser-restart',
+      });
+      return false;
+    }
+    const completed = await recoveryClaimCoordinator.complete({
+      sessionId: record.sessionId,
+      tabId,
+      browserInstanceId: browserInstance.id,
+      claimId: claimed.claimId,
+    });
+    if (completed.state !== 'claimed' && completed.state !== 'already-claimed') return false;
+    progressByTab.set(tabId, response.payload.progress);
+    return true;
+  } catch {
+    await recoveryClaimCoordinator.release({
+      sessionId: record.sessionId,
+      tabId,
+      browserInstanceId: browserInstance.id,
+      reason: 'browser-restart',
+    });
+    return false;
+  }
+}
+
+async function prepareBrowserRestartRecovery(): Promise<void> {
+  const browserInstance = await getBrowserInstance();
+  if (!browserInstance.startedAfterBrowserRestart) return;
+  const startupDeadline = Date.now() + RECOVERY_STARTUP_CLAIM_WINDOW_MS;
+  await browser.storage.session.set({ [RECOVERY_STARTUP_DEADLINE_KEY]: startupDeadline });
+  const records = await readAllRecoveryRecords();
+  for (const { record } of records) {
+    if (!record.restartRecoveryEnabled) {
+      await removeRecoveryRecordBySession(record.sessionId);
+      continue;
+    }
+    if (record.claim.state === 'owned' || record.claim.state === 'claiming') {
+      await writeRecoveryRecord({
+        ...record,
+        updatedAt: Date.now(),
+        claim: {
+          state: 'orphaned',
+          browserInstanceId: record.claim.browserInstanceId,
+          reason: 'browser-restart',
+          detachedAt: Date.now(),
+        },
+      });
+    }
+  }
+
+  const tabs = await browser.tabs.query({});
+  for (const tab of tabs) {
+    if (Date.now() > startupDeadline) break;
+    if (tab.id === undefined || !tab.url || !/^https?:/u.test(tab.url)) continue;
+    await attemptRestoredRecovery(tab.id, tab.url, 'browser-startup');
+  }
+}
+
+async function attemptBrowserStartupRecoveryForTab(
+  tabId: number,
+  rawUrl: string,
+): Promise<boolean> {
+  const stored = await browser.storage.session.get(RECOVERY_STARTUP_DEADLINE_KEY);
+  const deadline = stored[RECOVERY_STARTUP_DEADLINE_KEY];
+  if (typeof deadline !== 'number' || deadline <= Date.now()) return false;
+  return await attemptRestoredRecovery(tabId, rawUrl, 'browser-startup');
+}
+
+const recentlyClosedIdentities = new Set<string>();
+const pendingRecentlyClosedRestores = new Map<string, number>();
+
+async function recentlyClosedNavigationIdentities(): Promise<Set<string>> {
+  const sessions = await browser.sessions.getRecentlyClosed({ maxResults: 25 });
+  const urls = sessions.flatMap((session) =>
+    session.tab?.url
+      ? [session.tab.url]
+      : (session.window?.tabs ?? []).flatMap((tab) => (tab.url ? [tab.url] : [])),
+  );
+  return new Set(
+    await Promise.all(urls.filter((url) => /^https?:/u.test(url)).map(recoveryNavigationIdentity)),
+  );
+}
+
+async function refreshRecentlyClosedRecoverySignals(): Promise<void> {
+  const current = await recentlyClosedNavigationIdentities();
+  const now = Date.now();
+  for (const identity of recentlyClosedIdentities) {
+    if (!current.has(identity)) {
+      pendingRecentlyClosedRestores.set(identity, now + RECENTLY_CLOSED_RESTORE_SIGNAL_MS);
+    }
+  }
+  recentlyClosedIdentities.clear();
+  for (const identity of current) recentlyClosedIdentities.add(identity);
+  for (const [identity, expiresAt] of pendingRecentlyClosedRestores) {
+    if (expiresAt <= now) pendingRecentlyClosedRestores.delete(identity);
+  }
+
+  const tabs = await browser.tabs.query({});
+  for (const tab of tabs) {
+    if (tab.id === undefined || !tab.url || !/^https?:/u.test(tab.url)) continue;
+    const identity = await recoveryNavigationIdentity(tab.url);
+    if ((pendingRecentlyClosedRestores.get(identity) ?? 0) <= now) continue;
+    if (await attemptRestoredRecovery(tab.id, tab.url, 'recently-closed')) {
+      pendingRecentlyClosedRestores.delete(identity);
+    }
+  }
+}
+
+async function attemptRecentlyClosedRecoveryForTab(
+  tabId: number,
+  rawUrl: string,
+): Promise<boolean> {
+  const identity = await recoveryNavigationIdentity(rawUrl);
+  const tokenKey = `${RECENTLY_CLOSED_IDENTITY_PREFIX}${identity}`;
+  const [stored, currentRecentlyClosed] = await Promise.all([
+    browser.storage.session.get(tokenKey),
+    recentlyClosedNavigationIdentities(),
+  ]);
+  const persistedSignal = stored[tokenKey];
+  const hasRestoreSignal =
+    (pendingRecentlyClosedRestores.get(identity) ?? 0) > Date.now() ||
+    (((typeof persistedSignal === 'number' && persistedSignal > Date.now()) ||
+      recentlyClosedIdentities.has(identity)) &&
+      !currentRecentlyClosed.has(identity));
+  if (!hasRestoreSignal) return false;
+  const recovered = await attemptRestoredRecovery(tabId, rawUrl, 'recently-closed');
+  if (recovered) {
+    pendingRecentlyClosedRestores.delete(identity);
+    recentlyClosedIdentities.delete(identity);
+    await browser.storage.session.remove(tokenKey);
+  }
+  return recovered;
 }
 
 function bundleByteLength(bundle: TranslationSessionBundle): number {
@@ -659,11 +1005,17 @@ async function getPageProgress(tabId: number, requestId: string): Promise<Transl
     if (response.type !== 'TRANSLATION_PROGRESS') return progressByTab.get(tabId) ?? idleProgress();
     const current = response.payload.progress;
     if (current.status === 'idle') {
-      const [record, tab] = await Promise.all([readRecoveryRecord(tabId), browser.tabs.get(tabId)]);
+      const [record, tab, browserInstance] = await Promise.all([
+        readRecoveryRecord(tabId),
+        browser.tabs.get(tabId),
+        getBrowserInstance(),
+      ]);
       if (record && tab.url) {
         const decision = evaluateRecoveryRecord(record, {
           tabId,
           navigationIdentity: await recoveryNavigationIdentity(tab.url),
+          originIdentity: await recoveryOriginIdentity(tab.url),
+          browserInstanceId: browserInstance.id,
         });
         if (decision.state === 'recover' || decision.state === 'paused') {
           const recovered = await sendContentMessage(tabId, {
@@ -1213,6 +1565,11 @@ async function translateSelection(tabId: number, text: string): Promise<Selectio
 export default defineBackground(() => {
   void translatedCopyIntentCoordinator.cleanupAbandoned();
   void cleanupRecoveryRecords();
+  void recentlyClosedNavigationIdentities().then((identities) => {
+    for (const identity of identities) recentlyClosedIdentities.add(identity);
+  });
+  void prepareBrowserRestartRecovery();
+  void browser.alarms.create(RECOVERY_CLEANUP_ALARM, { periodInMinutes: 5 });
 
   browser.permissions.onAdded.addListener((permissions) => {
     void translatedCopyIntentCoordinator.resumeForAddedOrigins(permissions.origins ?? []);
@@ -1220,18 +1577,53 @@ export default defineBackground(() => {
 
   browser.permissions.onRemoved.addListener((permissions) => {
     void translatedCopyIntentCoordinator.handleRemovedOrigins(permissions.origins ?? []);
+    void readAllRecoveryRecords().then(async (records) => {
+      for (const { record } of records) {
+        if (recoveryPermissionRemovalMatches(permissions.origins ?? [], record.normalizedOrigin)) {
+          await removeRecoveryRecordBySession(record.sessionId);
+        }
+      }
+    });
   });
 
-  browser.tabs.onRemoved.addListener((tabId) => {
+  browser.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === RECOVERY_CLEANUP_ALARM) void cleanupRecoveryRecords();
+  });
+
+  browser.runtime.onStartup.addListener(() => {
+    browserInstancePromise = undefined;
+    void prepareBrowserRestartRecovery();
+  });
+
+  browser.sessions.onChanged.addListener(() => {
+    void refreshRecentlyClosedRecoverySignals();
+  });
+
+  browser.tabs.onCreated.addListener((tab) => {
+    if (tab.id !== undefined && tab.url && /^https?:/u.test(tab.url)) {
+      void attemptRecentlyClosedRecoveryForTab(tab.id, tab.url);
+      void attemptBrowserStartupRecoveryForTab(tab.id, tab.url);
+    }
+  });
+
+  browser.tabs.onRemoved.addListener((tabId, removeInfo) => {
     progressByTab.delete(tabId);
-    void removeRecoveryRecord(tabId);
+    void releaseRecoveryForTab(tabId, removeInfo.isWindowClosing ? 'window-closing' : 'tab-closed');
     void cleanupCopyHandoffForTab(tabId);
     const token = comparisonTokenByTab.get(tabId);
     comparisonTokenByTab.delete(tabId);
     if (token) void browser.storage.session.remove(comparisonStorageKey(token));
   });
 
-  browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    if (
+      (changeInfo.status === 'complete' || changeInfo.url !== undefined) &&
+      tab.url &&
+      /^https?:/u.test(tab.url)
+    ) {
+      void attemptRecentlyClosedRecoveryForTab(tabId, tab.url);
+      void attemptBrowserStartupRecoveryForTab(tabId, tab.url);
+    }
     if (!changeInfo.url) return;
     void readRecoveryRecord(tabId).then(async (record) => {
       if (
@@ -1241,6 +1633,15 @@ export default defineBackground(() => {
         cancelSession(record.sessionId);
         progressByTab.delete(tabId);
         await removeRecoveryRecord(tabId);
+      }
+    });
+  });
+
+  browser.tabs.onReplaced.addListener((addedTabId, removedTabId) => {
+    void releaseRecoveryForTab(removedTabId, 'tab-replaced').then(async () => {
+      const tab = await browser.tabs.get(addedTabId);
+      if (tab.url && /^https?:/u.test(tab.url)) {
+        await attemptRestoredRecovery(addedTabId, tab.url, 'recently-closed');
       }
     });
   });
@@ -1368,11 +1769,15 @@ export default defineBackground(() => {
           progressByTab.delete(tabId);
           await removeRecoveryRecord(tabId);
           await ensurePageShell(tabId);
+          const restartRecoveryEnabled =
+            payload.restartRecoveryEnabled === true &&
+            typeof tab.url === 'string' &&
+            (await hasRecoveryOriginAccess(tab.url));
           return await sendContentMessage(tabId, {
             version: CONTRACT_VERSION,
             requestId,
             type: 'START_PAGE_TRANSLATION',
-            payload,
+            payload: { ...payload, restartRecoveryEnabled },
           });
         }
         case 'CONTINUE_PAGE_TRANSLATION': {

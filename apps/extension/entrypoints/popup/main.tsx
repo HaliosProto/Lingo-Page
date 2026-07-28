@@ -126,6 +126,7 @@ function PopupApp() {
   const [activeSessionCommand, setActiveSessionCommand] = useState<SessionCommandType>();
   const [retrySessionCommand, setRetrySessionCommand] = useState<SessionCommandType>();
   const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
+  const [restartRecoveryNotice, setRestartRecoveryNotice] = useState<string>();
   const deniedTranslatedCopyOrigins = useRef(new Set<string>());
 
   const refreshProgress = useCallback(async (activeTabId: number) => {
@@ -236,10 +237,21 @@ function PopupApp() {
 
   async function startTranslation(): Promise<void> {
     if (tabId === undefined) return;
+    const originPattern = translatedCopyOriginPattern(tabStatus?.url ?? '');
+    const siteAccessRequest = originPattern
+      ? browser.permissions.request({ origins: [originPattern] })
+      : Promise.resolve(false);
     setWorking(true);
     setError(undefined);
+    setRestartRecoveryNotice(undefined);
     const sessionId = createSessionId();
     try {
+      const restartRecoveryEnabled = await siteAccessRequest;
+      if (!restartRecoveryEnabled && originPattern) {
+        setRestartRecoveryNotice(
+          'Translation will work now, but this session cannot restore automatically after Chrome restarts.',
+        );
+      }
       const response = await sendMessage({
         version: 1,
         requestId: createRequestId(),
@@ -254,6 +266,7 @@ function PopupApp() {
           glossaryVersion: settings.glossaryVersion,
           glossary: settings.glossary,
           autoTranslateDynamicContent: settings.autoTranslateDynamicContent,
+          restartRecoveryEnabled,
         },
       });
       if (response.type === 'TRANSLATION_PROGRESS') setProgress(response.payload.progress);
@@ -964,6 +977,19 @@ function PopupApp() {
         );
       })}
 
+      {!failure && !hasSession && supported && (
+        <p className="failure-secondary" dir="auto">
+          Lingo Page needs access to this site to restore this translation after Chrome restarts.
+        </p>
+      )}
+      {restartRecoveryNotice && (
+        <StatusCard
+          tone="warning"
+          title="Browser-restart recovery is off"
+          description={restartRecoveryNotice}
+          aria-live="polite"
+        />
+      )}
       {busy ? (
         <Button variant="destructive" fullWidth onClick={() => void cancelTranslation()}>
           Cancel translation

@@ -10,6 +10,9 @@ export const MAX_RECOVERY_RECORDS = 12;
 export const MAX_MUTATION_BACKLOG = 256;
 export const MAX_MUTATION_ROOTS_PER_SLICE = 48;
 export const MUTATION_SLICE_BUDGET_MS = 8;
+export const RECOVERY_CLAIM_TTL_MS = 15_000;
+export const RECOVERY_STARTUP_CLAIM_WINDOW_MS = 30_000;
+export const RECENTLY_CLOSED_RESTORE_SIGNAL_MS = 10_000;
 
 export type RecoveryDecision =
   | { state: 'recover'; record: TranslationRecoveryRecord }
@@ -28,18 +31,90 @@ export async function recoveryNavigationIdentity(navigationUrl: string): Promise
   return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, '0')).join('');
 }
 
+async function sha256Identity(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+export function normalizedRecoveryOrigin(navigationUrl: string): string | undefined {
+  try {
+    const parsed = new URL(navigationUrl);
+    return /^https?:$/u.test(parsed.protocol) ? parsed.origin : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function recoveryOriginIdentity(navigationUrl: string): Promise<string> {
+  const origin = normalizedRecoveryOrigin(navigationUrl);
+  if (!origin) throw new Error('Only HTTP and HTTPS origins can use browser-restart recovery.');
+  return await sha256Identity(origin);
+}
+
+export function recoveryPermissionRemovalMatches(
+  removedPatterns: readonly string[],
+  normalizedOrigin: string,
+): boolean {
+  const origin = normalizedRecoveryOrigin(normalizedOrigin);
+  if (!origin) return true;
+  const protocol = new URL(origin).protocol;
+  return removedPatterns.some(
+    (pattern) => pattern === `${origin}/*` || pattern === `${protocol}//*/*`,
+  );
+}
+
+export async function recoveryTranslationIdentity(input: {
+  sessionId: string;
+  operationId: string;
+  sourceLanguage: string;
+  targetLanguage: string;
+  providerId: string;
+  modelId: string;
+}): Promise<string> {
+  return await sha256Identity(
+    [
+      input.sessionId,
+      input.operationId,
+      input.sourceLanguage,
+      input.targetLanguage,
+      input.providerId,
+      input.modelId,
+    ].join('\u001f'),
+  );
+}
+
 export function recoveryRecordByteLength(record: TranslationRecoveryRecord): number {
   return new TextEncoder().encode(JSON.stringify(record)).byteLength;
 }
 
 export function evaluateRecoveryRecord(
   record: TranslationRecoveryRecord,
-  input: { tabId: number; navigationIdentity: string; now?: number },
+  input: {
+    tabId: number;
+    navigationIdentity: string;
+    originIdentity?: string;
+    browserInstanceId?: string;
+    now?: number;
+  },
 ): RecoveryDecision {
   const now = input.now ?? Date.now();
   if (record.expiresAt <= now) return { state: 'expired', remove: true };
-  if (record.sourceTabId !== input.tabId || record.frameId !== 0) {
+  if (
+    record.sourceTabId !== input.tabId ||
+    record.claim.state !== 'owned' ||
+    record.claim.ownerTabId !== input.tabId ||
+    record.frameId !== 0
+  ) {
     return { state: 'incompatible', remove: false };
+  }
+  if (
+    input.browserInstanceId !== undefined &&
+    record.claim.browserInstanceId !== input.browserInstanceId
+  ) {
+    return { state: 'incompatible', remove: false };
+  }
+  if (input.originIdentity !== undefined && record.originIdentity !== input.originIdentity) {
+    return { state: 'stale', remove: true };
   }
   if (record.navigationIdentity !== input.navigationIdentity) {
     return { state: 'stale', remove: true };
@@ -49,6 +124,234 @@ export function evaluateRecoveryRecord(
   }
   if (record.cancelled) return { state: 'paused', record };
   return { state: 'recover', record };
+}
+
+export type RecoveryRestoreSignal = 'browser-startup' | 'recently-closed';
+
+export type RestoredRecoveryDecision =
+  | { state: 'eligible'; record: TranslationRecoveryRecord }
+  | {
+      state:
+        | 'expired'
+        | 'terminal'
+        | 'cancelled'
+        | 'owned'
+        | 'claiming'
+        | 'wrong-frame'
+        | 'wrong-origin'
+        | 'wrong-navigation'
+        | 'restart-disabled'
+        | 'missing-restore-signal';
+      remove: boolean;
+    };
+
+export function evaluateRestoredRecoveryRecord(
+  record: TranslationRecoveryRecord,
+  input: {
+    navigationIdentity: string;
+    originIdentity: string;
+    restoreSignal?: RecoveryRestoreSignal;
+    now?: number;
+  },
+): RestoredRecoveryDecision {
+  const now = input.now ?? Date.now();
+  if (record.expiresAt <= now) return { state: 'expired', remove: true };
+  if (record.lifecycle === 'ended' || record.lifecycle === 'invalidated') {
+    return { state: 'terminal', remove: true };
+  }
+  if (record.cancelled) return { state: 'cancelled', remove: true };
+  if (!record.restartRecoveryEnabled) return { state: 'restart-disabled', remove: false };
+  if (!input.restoreSignal) return { state: 'missing-restore-signal', remove: false };
+  if (record.frameId !== 0) return { state: 'wrong-frame', remove: true };
+  if (record.originIdentity !== input.originIdentity) {
+    return { state: 'wrong-origin', remove: false };
+  }
+  if (record.navigationIdentity !== input.navigationIdentity) {
+    return { state: 'wrong-navigation', remove: false };
+  }
+  if (record.claim.state === 'owned') return { state: 'owned', remove: false };
+  if (record.claim.state === 'claiming' && (record.claim.claimExpiresAt ?? 0) > now) {
+    return { state: 'claiming', remove: false };
+  }
+  return { state: 'eligible', record };
+}
+
+type ClaimStorage = {
+  read(sessionId: string): Promise<TranslationRecoveryRecord | undefined>;
+  write(record: TranslationRecoveryRecord): Promise<void>;
+  remove(sessionId: string): Promise<void>;
+};
+
+export type RecoveryClaimResult =
+  | { state: 'claimed'; record: TranslationRecoveryRecord; claimId: string }
+  | {
+      state: 'already-claimed' | 'ineligible' | 'lost-race' | 'missing' | 'removed';
+    };
+
+export class RecoveryClaimCoordinator {
+  private tail: Promise<void> = Promise.resolve();
+
+  constructor(private readonly storage: ClaimStorage) {}
+
+  private async exclusive<T>(work: () => Promise<T>): Promise<T> {
+    const previous = this.tail;
+    let release!: () => void;
+    this.tail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      return await work();
+    } finally {
+      release();
+    }
+  }
+
+  async claim(input: {
+    sessionId: string;
+    tabId: number;
+    browserInstanceId: string;
+    navigationIdentity: string;
+    originIdentity: string;
+    restoreSignal: RecoveryRestoreSignal;
+    claimId: string;
+    now?: number;
+  }): Promise<RecoveryClaimResult> {
+    return await this.exclusive(async () => {
+      const now = input.now ?? Date.now();
+      const current = await this.storage.read(input.sessionId);
+      if (!current) return { state: 'missing' };
+      if (
+        current.translationIdentity !==
+        (await recoveryTranslationIdentity({
+          sessionId: current.sessionId,
+          operationId: current.operationId,
+          sourceLanguage: current.sourceLanguage,
+          targetLanguage: current.targetLanguage,
+          providerId: current.providerId,
+          modelId: current.modelId,
+        }))
+      ) {
+        return { state: 'ineligible' };
+      }
+      if (
+        current.claim.state === 'claiming' &&
+        current.claim.ownerTabId === input.tabId &&
+        current.claim.browserInstanceId === input.browserInstanceId &&
+        current.claim.claimId
+      ) {
+        return { state: 'claimed', record: current, claimId: current.claim.claimId };
+      }
+      if (current.claim.state === 'owned' && current.claim.ownerTabId === input.tabId) {
+        return { state: 'already-claimed' };
+      }
+      const decision = evaluateRestoredRecoveryRecord(current, {
+        navigationIdentity: input.navigationIdentity,
+        originIdentity: input.originIdentity,
+        restoreSignal: input.restoreSignal,
+        now,
+      });
+      if (decision.state !== 'eligible') {
+        if (decision.remove) {
+          await this.storage.remove(input.sessionId);
+          return { state: 'removed' };
+        }
+        return { state: 'ineligible' };
+      }
+      const claiming = {
+        ...decision.record,
+        sourceTabId: input.tabId,
+        navigationGeneration: decision.record.navigationGeneration + 1,
+        updatedAt: now,
+        claim: {
+          state: 'claiming' as const,
+          ownerTabId: input.tabId,
+          browserInstanceId: input.browserInstanceId,
+          claimId: input.claimId,
+          claimStartedAt: now,
+          claimExpiresAt: now + RECOVERY_CLAIM_TTL_MS,
+          ...(decision.record.claim.reason ? { reason: decision.record.claim.reason } : {}),
+          ...(decision.record.claim.detachedAt !== undefined
+            ? { detachedAt: decision.record.claim.detachedAt }
+            : {}),
+        },
+      };
+      await this.storage.write(claiming);
+      const stored = await this.storage.read(input.sessionId);
+      if (
+        !stored ||
+        stored.claim.state !== 'claiming' ||
+        stored.claim.claimId !== input.claimId ||
+        stored.claim.ownerTabId !== input.tabId
+      ) {
+        return { state: 'lost-race' };
+      }
+      return { state: 'claimed', record: stored, claimId: input.claimId };
+    });
+  }
+
+  async complete(input: {
+    sessionId: string;
+    tabId: number;
+    browserInstanceId: string;
+    claimId: string;
+    now?: number;
+  }): Promise<RecoveryClaimResult> {
+    return await this.exclusive(async () => {
+      const current = await this.storage.read(input.sessionId);
+      if (!current) return { state: 'missing' };
+      if (
+        current.claim.state === 'owned' &&
+        current.claim.ownerTabId === input.tabId &&
+        current.claim.browserInstanceId === input.browserInstanceId
+      ) {
+        return { state: 'already-claimed' };
+      }
+      if (
+        current.claim.state !== 'claiming' ||
+        current.claim.claimId !== input.claimId ||
+        current.claim.ownerTabId !== input.tabId
+      ) {
+        return { state: 'lost-race' };
+      }
+      const owned: TranslationRecoveryRecord = {
+        ...current,
+        sourceTabId: input.tabId,
+        updatedAt: input.now ?? Date.now(),
+        claim: {
+          state: 'owned',
+          ownerTabId: input.tabId,
+          browserInstanceId: input.browserInstanceId,
+        },
+      };
+      await this.storage.write(owned);
+      return { state: 'claimed', record: owned, claimId: input.claimId };
+    });
+  }
+
+  async release(input: {
+    sessionId: string;
+    tabId: number;
+    browserInstanceId: string;
+    reason: 'window-closing' | 'tab-closed' | 'browser-restart' | 'tab-replaced';
+    now?: number;
+  }): Promise<void> {
+    await this.exclusive(async () => {
+      const current = await this.storage.read(input.sessionId);
+      if (!current || current.sourceTabId !== input.tabId) return;
+      const now = input.now ?? Date.now();
+      await this.storage.write({
+        ...current,
+        updatedAt: now,
+        claim: {
+          state: 'orphaned',
+          browserInstanceId: input.browserInstanceId,
+          reason: input.reason,
+          detachedAt: now,
+        },
+      });
+    });
+  }
 }
 
 export function pruneRecoveryRecords(

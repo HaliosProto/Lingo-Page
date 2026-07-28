@@ -44,8 +44,11 @@ import {
   MAX_MUTATION_BACKLOG,
   MutationBackpressureQueue,
   RECOVERY_RECORD_TTL_MS,
+  normalizedRecoveryOrigin,
   recoveryNavigationIdentity,
+  recoveryOriginIdentity,
   recoveryRecordByteLength,
+  recoveryTranslationIdentity,
 } from '../src/session-recovery';
 
 type NodeRecord = {
@@ -72,6 +75,7 @@ type Session = {
   glossaryVersion: number;
   glossary: GlossaryEntry[];
   autoTranslateDynamicContent: boolean;
+  restartRecoveryEnabled: boolean;
   navigationId: string;
   cancelled: boolean;
   cancellationEpoch: number;
@@ -271,13 +275,25 @@ export default defineUnlistedScript(() => {
     }
     const records = [...recordsByNode.values()].filter((record) => record.status !== 'removed');
     const now = Date.now();
+    const normalizedOrigin = normalizedRecoveryOrigin(location.href);
+    if (!normalizedOrigin) return undefined;
     const recovery: TranslationRecoveryRecord = {
       version: TRANSLATION_RECOVERY_VERSION,
       sourceTabId,
       frameId: 0,
       sessionId: session.id,
       operationId: session.operationId,
+      normalizedOrigin,
+      originIdentity: await recoveryOriginIdentity(location.href),
       navigationIdentity: await recoveryNavigationIdentity(location.href),
+      translationIdentity: await recoveryTranslationIdentity({
+        sessionId: session.id,
+        operationId: session.operationId,
+        sourceLanguage: session.sourceLanguage,
+        targetLanguage: session.targetLanguage,
+        providerId: session.providerId,
+        modelId: session.modelId,
+      }),
       navigationGeneration: session.navigationGeneration,
       pageFingerprint: createPageFingerprint(records),
       sourceLanguage: session.sourceLanguage,
@@ -294,6 +310,12 @@ export default defineUnlistedScript(() => {
       lifecycle: session.lifecycle,
       partial: session.lifecycle !== 'complete',
       cancelled: session.cancelled,
+      restartRecoveryEnabled: session.restartRecoveryEnabled,
+      claim: {
+        state: 'owned',
+        ownerTabId: sourceTabId,
+        browserInstanceId: '0'.repeat(32),
+      },
       progress: sessionProgress(),
       completedSegmentIds: records
         .filter((record) => record.status === 'translated' && record.translatedText)
@@ -1282,6 +1304,7 @@ export default defineUnlistedScript(() => {
     glossaryVersion: number;
     glossary: GlossaryEntry[];
     autoTranslateDynamicContent: boolean;
+    restartRecoveryEnabled: boolean;
   }): Promise<void> {
     endSession(true);
     const now = Date.now();
@@ -1296,6 +1319,7 @@ export default defineUnlistedScript(() => {
       glossaryVersion: payload.glossaryVersion,
       glossary: payload.glossary,
       autoTranslateDynamicContent: payload.autoTranslateDynamicContent,
+      restartRecoveryEnabled: payload.restartRecoveryEnabled,
       navigationId: location.href,
       cancelled: false,
       cancellationEpoch: 0,
@@ -1653,6 +1677,7 @@ export default defineUnlistedScript(() => {
       glossaryVersion: 0,
       glossary: [],
       autoTranslateDynamicContent: false,
+      restartRecoveryEnabled: false,
       navigationId: location.href,
       cancelled: false,
       cancellationEpoch: 0,
@@ -1747,6 +1772,19 @@ export default defineUnlistedScript(() => {
       matchedSegments += 1;
     }
     const unmatchedSegments = records.length - matchedSegments - uncertainSegments;
+    const reusableSourceCount = recovery.segments.filter(
+      (segment) => segment.status === 'translated' && segment.translatedText,
+    ).length;
+    const compatibleDenominator = Math.max(
+      1,
+      Math.min(records.length, Math.max(1, reusableSourceCount)),
+    );
+    if (
+      !samePageFingerprint &&
+      (matchedSegments === 0 || matchedSegments / compatibleDenominator < 0.5)
+    ) {
+      throw new Error('The recoverable page fingerprint is incompatible.');
+    }
     const navigationGeneration = recovery.navigationGeneration + 1;
     currentSession = {
       id: recovery.sessionId,
@@ -1759,6 +1797,7 @@ export default defineUnlistedScript(() => {
       glossaryVersion: 0,
       glossary: [],
       autoTranslateDynamicContent: false,
+      restartRecoveryEnabled: recovery.restartRecoveryEnabled,
       navigationId: location.href,
       cancelled: recovery.cancelled,
       cancellationEpoch: recovery.cancelled ? 1 : 0,

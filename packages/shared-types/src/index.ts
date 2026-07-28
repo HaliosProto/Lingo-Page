@@ -74,7 +74,7 @@ export type TranslationStatus =
   | 'error';
 
 export const TRANSLATION_SESSION_VERSION = 2 as const;
-export const TRANSLATION_RECOVERY_VERSION = 1 as const;
+export const TRANSLATION_RECOVERY_VERSION = 2 as const;
 
 export type TranslationDisplayMode = 'original' | 'translated' | 'mixed-partial';
 export type TranslationSessionLifecycle =
@@ -272,13 +272,27 @@ export type TranslationRecoverySegment = {
   status: TranslationSegmentStatus;
 };
 
+export type TranslationRecoveryClaim = {
+  state: 'owned' | 'orphaned' | 'claiming';
+  ownerTabId?: number;
+  browserInstanceId: string;
+  claimId?: string;
+  reason?: 'window-closing' | 'tab-closed' | 'browser-restart' | 'tab-replaced';
+  detachedAt?: number;
+  claimStartedAt?: number;
+  claimExpiresAt?: number;
+};
+
 export type TranslationRecoveryRecord = {
   version: typeof TRANSLATION_RECOVERY_VERSION;
   sourceTabId: number;
   frameId: 0;
   sessionId: string;
   operationId: string;
+  normalizedOrigin: string;
+  originIdentity: string;
   navigationIdentity: string;
+  translationIdentity: string;
   navigationGeneration: number;
   pageFingerprint: string;
   sourceLanguage: string;
@@ -293,6 +307,8 @@ export type TranslationRecoveryRecord = {
   lifecycle: TranslationSessionLifecycle;
   partial: boolean;
   cancelled: boolean;
+  restartRecoveryEnabled: boolean;
+  claim: TranslationRecoveryClaim;
   progress: TranslationProgress;
   completedSegmentIds: string[];
   segments: TranslationRecoverySegment[];
