@@ -36,6 +36,7 @@ See `ROADMAP.md`, `docs/acceptance-criteria.md`, and `docs/verification-matrix.m
 ## Active blockers and owner decisions
 
 - Review M2 evidence and the milestone branch; do not merge automatically.
+- Retest the corrected browser-restart build with branded-Chrome Tests A-E. The `fa2135b` restart/Ctrl+Shift+T result remains FAIL until owner evidence replaces it.
 - Formal branded-browser accessibility, BiDi, zoom, motion, and owner acceptance remain separate release evidence.
 - Live provider calls, payment-provider selection, accounts, deployment, publication, pricing, legal entity/jurisdiction decisions, and public resources require explicit approval.
 

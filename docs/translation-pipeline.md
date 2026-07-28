@@ -44,6 +44,6 @@ Canvas-rendered text, image-only text, inaccessible cross-origin frames, browser
 
 ## Lifecycle and mutation pipeline
 
-Reload recovery hashes the current fragment-free navigation, rediscovers eligible text, and matches the bounded recovery record by source fingerprint, structural fingerprint, and element role. Exact originals always come from the current DOM. Unmatched or ambiguous content remains original and is reported; reconstruction never invokes a provider.
+Reload recovery hashes the current fragment-free navigation, rediscovers eligible text, and matches the bounded recovery record by source fingerprint, structural fingerprint, and element role. Exact originals always come from the current DOM. A browser-restored replacement first proves current-origin access, Chrome restoration evidence, record/tab uniqueness, and an atomic claim; it increments the navigation generation before the same DOM reconciliation. Unmatched, changed, or ambiguous content remains original and is reported; reconstruction never creates a provider attempt.
 
 The mutation observer queues at most 256 unique roots for the active navigation generation. It processes at most 48 roots or 8 ms per slice and yields 16 ms before additional work. Compatible root replacement rebinds unique matches; route generation changes discard queued roots and reject late provider results. The 2,500-section ceiling remains a hard safety limit and deferred eligible sections are surfaced in progress.

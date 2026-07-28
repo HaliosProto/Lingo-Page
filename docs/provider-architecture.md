@@ -50,3 +50,5 @@ Every registry entry identifies the data recipient and whether page text leaves 
 ## Lifecycle retry and idempotency
 
 The page shell coordinates bounded adaptive recovery and sends only unresolved IDs after a valid partial response. Each attempt includes stable session/operation/navigation identity plus a batch and attempt ID. The worker reuses a duplicate living attempt promise and never auto-resends provider work during reload or worker reconstruction. Rate-limit, timeout, unavailable, authentication, quota, invalid output, offline/backend, cancellation, and exhaustion remain distinct. Automated M2 checks use deterministic providers only; no live provider result is M2 evidence.
+
+Restored-tab reconstruction is outside the provider retry path. It reuses only completed translated values from a schema-valid recovery record, increments the navigation generation during ownership transfer, and never recreates a batch/attempt or calls `/v1/translate`. Completed IDs and previous-process responses remain stale against the new generation. An ended or cancelled operation cannot be claimed.

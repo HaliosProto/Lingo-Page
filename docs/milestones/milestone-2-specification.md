@@ -11,6 +11,10 @@
 
 Make the Manifest V3 extension recover safely and remain responsive through service-worker suspension, page and browser lifecycle changes, SPA navigation, delayed hydration, mutation storms, large pages, transient provider failures, and temporary network/backend outages. Recovery must preserve completed work, avoid duplicate provider calls, reject stale work, remain bounded, and retain the established privacy and least-privilege model.
 
+## Browser-restart acceptance correction
+
+Branded Chrome exposed that the initial implementation at `fa2135b` could not recover after Chrome closed and Ctrl+Shift+T restored the page. Numeric tab IDs are browser-session scoped, the old `tabs.onRemoved` path deleted the record, and `activeTab` ended when the original tab closed. ADR 0016 therefore replaces exact-tab-only restart recovery with current-origin permission plus restoration signals, session-keyed records, browser-instance epochs, strong DOM/identity compatibility, and an atomic unique-candidate claim. The historical failure remains part of the verification record until the owner retests the corrected build.
+
 ## Scope and non-goals
 
 Milestone 2 covers bounded active-session recovery, lifecycle reconstruction, navigation generations, hydration rebinding, mutation backpressure, large-page scheduling and ceilings, provider/network recovery, idempotency, cleanup, compact recovery UX, and deterministic verification.
@@ -25,25 +29,25 @@ The milestone remains open until the implementation, minimum 68 deterministic ac
 
 ## State ownership and persistence contract
 
-| State                                                                                | Owner                                        | Persistence                                       | Lifetime and bounds                                                                   |
-| ------------------------------------------------------------------------------------ | -------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| Exact live `Text` node bindings and exact originals                                  | top-frame page shell                         | memory only                                       | current document/session; released on end, incompatible navigation, or unload         |
-| Current navigation generation and DOM reconciliation queues                          | page shell                                   | memory, reconstructable from validated metadata   | current document; bounded queues and generation checks                                |
-| Active recovery record                                                               | `chrome.storage.session`                     | versioned, runtime validated                      | active tab/session only; short expiry; bounded segments and bytes                     |
-| Progress and operation ledger                                                        | service worker plus `chrome.storage.session` | privacy-safe metadata and translated reuse values | bounded active operation; terminal/expired/tab-close cleanup                          |
-| Copy intents and comparison handoffs                                                 | service worker plus `chrome.storage.session` | existing M1 temporary contract                    | single destination/consumer; explicit expiry and cleanup                              |
-| User settings and optional translated-text cache                                     | `chrome.storage.local`                       | existing validated M0/M1 contract                 | until cleared/uninstalled; cache remains opt-in, capped, and disabled by privacy mode |
-| Provider credentials, endpoints, retry policy, and upstream calls                    | backend                                      | never stored in extension state                   | backend policy                                                                        |
-| Raw page HTML, input values, hidden/protected text, credentials, raw provider bodies | prohibited                                   | never                                             | not persisted, logged, placed in URLs, or exposed in diagnostics                      |
+| State                                                                                | Owner                                        | Persistence                                     | Lifetime and bounds                                                                   |
+| ------------------------------------------------------------------------------------ | -------------------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Exact live `Text` node bindings and exact originals                                  | top-frame page shell                         | memory only                                     | current document/session; released on end, incompatible navigation, or unload         |
+| Current navigation generation and DOM reconciliation queues                          | page shell                                   | memory, reconstructable from validated metadata | current document; bounded queues and generation checks                                |
+| Active recovery record                                                               | `chrome.storage.local`                       | versioned, runtime validated                    | active session only; 30-minute expiry; bounded segments and bytes                     |
+| Browser epoch, startup/recently-closed signals, and temporary handoff metadata       | service worker plus `chrome.storage.session` | privacy-safe hashes, IDs, and deadlines         | current browser process; short bounded windows                                        |
+| Copy intents and comparison handoffs                                                 | service worker plus `chrome.storage.session` | existing M1 temporary contract                  | single destination/consumer; explicit expiry and cleanup                              |
+| User settings and optional translated-text cache                                     | `chrome.storage.local`                       | existing validated M0/M1 contract               | until cleared/uninstalled; cache remains opt-in, capped, and disabled by privacy mode |
+| Provider credentials, endpoints, retry policy, and upstream calls                    | backend                                      | never stored in extension state                 | backend policy                                                                        |
+| Raw page HTML, input values, hidden/protected text, credentials, raw provider bodies | prohibited                                   | never                                           | not persisted, logged, placed in URLs, or exposed in diagnostics                      |
 
 The recoverable record uses an explicit schema version and contains only the minimum material needed to reconstruct a compatible active session: session/operation identity, tab/frame ownership, normalized navigation identity and generation, page fingerprint, source/target/provider/model identifiers, display/lifecycle state, bounded segment fingerprints/status, completed translated text needed for the active recovery window, progress counters, idempotency ledger, deadlines, and timestamps.
 
 The record must:
 
-- be limited to the top frame and owning tab;
+- be limited to the top frame and either its owning tab or one atomically claimed Chrome-restored replacement;
 - be capped at 2,500 segment records and 2 MiB serialized size;
 - expire after a bounded active-session retention window;
-- be removed for ended, cancelled, expired, corrupt, incompatible, cross-tab, or cross-navigation work;
+- be removed for ended, cancelled, expired, corrupt, incompatible, revoked, cross-tab, or cross-navigation work;
 - fail closed on unknown versions or invalid fields;
 - migrate only through explicit validated migrations;
 - never trigger an automatic provider call during reconstruction;
@@ -85,7 +89,7 @@ Unsafe reconstruction leaves the normal page untouched, marks the recovery stale
 
 ### Browser restart, tab discard, and sleep/wake
 
-Recovery is bounded to validated, unexpired records supported by the selected storage semantics. Browser restart never triggers provider work automatically. Elapsed Retry-After and cooldown deadlines are reconciled from absolute time. Cancelled/ended work cannot resume. Tab discard/back-forward-cache behavior must be tested where managed Chromium exposes it and otherwise documented as unknown.
+Recovery is bounded to validated, unexpired records supported by the selected storage semantics. A new browser-instance epoch or a consumed `chrome.sessions` recently-closed entry supplies restoration evidence; neither a URL nor a new tab alone is enough. A unique compatible candidate performs an idempotent `orphaned` → `claiming` → `owned` transition and rebinds only confident page fingerprints. Browser restart never triggers provider work automatically. Elapsed Retry-After and cooldown deadlines are reconciled from absolute time. Cancelled/ended work cannot resume. Tab discard/back-forward-cache behavior must be tested where managed Chromium exposes it and otherwise documented as unknown.
 
 ### Navigation
 
@@ -148,13 +152,13 @@ Primary text is plain-language, reports exact remaining counts, preserves succes
 
 ## Security, privacy, and permissions
 
-Required permissions remain `activeTab`, `contextMenus`, `scripting`, and `storage`; no required `<all_urls>` or broad host grant is added. Optional HTTP/HTTPS origins remain for explicit current-origin translated-copy permission only.
+Required API permissions are `activeTab`, `alarms`, `contextMenus`, `scripting`, `sessions`, and `storage`; no required `<all_urls>` or broad host grant is added. `alarms` supports expiry sweeps and `sessions` supplies recently-closed restoration evidence. Optional HTTP/HTTPS origins are requested only from an explicit user gesture and only for the current origin, for translated-copy injection or browser-restart recovery.
 
 All persisted and message data is runtime validated, versioned, size/retention bounded, and bound to tab, top frame, session, navigation, generation, and operation. Corrupt, expired, revoked, cross-tab, cross-navigation, or replayed state fails closed and is cleaned. Diagnostics and logs exclude page text, full URLs/query strings, forms, credentials, raw provider bodies, and unbounded stacks.
 
 ## Cleanup contract
 
-End session, tab close, incompatible navigation, expiry, permission denial/revocation, destination failure, comparison close, restart reconciliation, and corrupt state remove their owned observers, listeners, timers/alarms, storage entries, queues, maps, bundles, intents, handoffs, abort controllers, and popup subscriptions. Closing a translated copy or comparison does not mutate the source session. Cleanup is idempotent and scoped to the owning tab/session.
+End session, incompatible navigation, expiry, permission denial/revocation, destination failure, comparison close, restart reconciliation, and corrupt state remove their owned observers, listeners, timers/alarms, storage entries, queues, maps, bundles, intents, handoffs, abort controllers, and popup subscriptions. A tab close instead orphans restart-enabled recovery for the bounded restore window; ordinary same-URL tabs cannot claim it, and expiry alarms remove abandoned records. Closing a translated copy or comparison does not mutate the source session. Cleanup is idempotent and scoped to the owning tab/session.
 
 ## Required automated acceptance matrix
 

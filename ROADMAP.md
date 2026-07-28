@@ -49,8 +49,9 @@ M1.5 must not begin M2 features, accounts, payments, deployment, publication, de
 
 Status: ACTIVE on `milestone/02-reliability-lifecycle-performance`.
 
-- Implemented a versioned, 30-minute, exact-tab/navigation recovery record containing fingerprints and translated reuse values but no raw source text or page HTML.
-- Added zero-provider-call reload reconstruction, paused cancellation recovery, worker-map reconstruction, duplicate-attempt coordination, navigation generations, and stale-route rejection.
+- Implemented a versioned, 30-minute, session-keyed recovery record containing origin/navigation/translation identities, claim state, fingerprints, and translated reuse values but no raw source text, full URL, or page HTML.
+- Added zero-provider-call reload reconstruction and safe restored-tab reattachment across changed numeric tab IDs using current-origin permission, Chrome restoration evidence, unique-candidate checks, and atomic claims; the old branded-Chrome build failed and the corrected build awaits owner Tests A-E.
+- Added worker-map reconstruction, duplicate-attempt coordination, navigation generations, and stale-route rejection; cancelled or ended work never reattaches automatically.
 - Added compatible root-replacement rebinding and a generation-aware 256-root mutation backlog with bounded 48-root/8 ms slices.
 - Retained adaptive partial-response recovery and added explicit operation/batch/attempt/generation identity plus offline/backend recovery states.
 - Added 68 deterministic lifecycle cases and managed Chromium reload/hydration/mutation/SPA evidence; final security, packaging, and manual-browser evidence remain the closure gate.

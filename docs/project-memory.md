@@ -37,8 +37,8 @@ External recipients, paid calls, accounts, public resources, deployment/publicat
 - Branch: `milestone/02-reliability-lifecycle-performance`
 - Starting point: `d7b28468744e3c7111d3d8a33e524c554b511c31`
 - State: implementation and automated verification complete; draft PR #4 and owner/manual review pending
-- Decisions: ADRs 0011–0015 define bounded active recovery, worker reconstruction, navigation generations, mutation backpressure, and retry idempotency
-- Evidence: 68 deterministic recovery cases, six managed Chromium E2E tests, and the performance suite pass; 2,206 segments complete in 445 ms with zero long tasks
+- Decisions: ADRs 0011–0016 define bounded active recovery, worker reconstruction, navigation generations, mutation backpressure, retry idempotency, and atomic restored-tab reattachment
+- Evidence: the 68 deterministic recovery baseline plus restored-tab/atomic-claim tests; managed Chromium covers reload and different-tab-ID `chrome.sessions.restore()` with zero-call reuse; the old branded-Chrome restart result at `fa2135b` remains FAIL pending owner Tests A-E
 - Limitations: branded Chrome, physical sleep/restart/discard/BFCache, forced GC, and formal accessibility remain manual
 - Pull request: draft PR #4 is open against `main`; branch is unmerged
 - M3 dependency: M2 owner review and acceptance; M3 implementation has not begun

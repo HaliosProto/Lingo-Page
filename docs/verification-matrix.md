@@ -14,7 +14,7 @@ Legend: `U` unit, `I` integration, `E` managed browser E2E, `P` performance brow
 | Restore/cancellation/stale work | Full/partial/cancel/navigation/end-session and exact-original checks                                                     | U/E         | M1-M2         |
 | Provider isolation/recovery     | Mock determinism, stable-ID partial recovery, bounded retries, no silent recipient fallback                              | U/I/E/S     | M1-M3/M8      |
 | Secret/permission boundary      | Config/history/bundle/source-map scan, keys absent client-side, least-privilege manifest                                 | S/D         | Every release |
-| Dynamic/lifecycle behavior      | Mutation/SPA/infinite scroll, worker/browser/reload/sleep-wake recovery                                                  | U/E/M       | M2/M8         |
+| Dynamic/lifecycle behavior      | Mutation/SPA/infinite scroll; worker/reload; changed-tab-ID browser/recently-closed claims; sleep-wake recovery          | U/E/M       | M2/M8         |
 | Frontend states                 | Loading, empty, success, warning, disabled, error, retry, partial, restore, offline/restricted                           | E/M         | M1.5/M4/M8    |
 | Action hierarchy/components     | Shared token/component use and semantic primary/secondary/tertiary/destructive/link controls                             | U/E/D       | M1.5/M4       |
 | Accessibility                   | Keyboard/focus/labels/live regions, screen reader, zoom, contrast/high contrast, reduced motion                          | E/M         | M1.5/M4/M8    |
