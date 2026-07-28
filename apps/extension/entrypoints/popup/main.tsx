@@ -92,6 +92,8 @@ function diagnosticLabel(key: string): string {
 }
 
 function sessionStateLabel(progress: TranslationProgress): string {
+  if (progress.recoveryState === 'recovering') return 'Recovering';
+  if (progress.recoveryState === 'recovered') return 'Recovered';
   if (progress.lifecycle === 'stale') return 'Changed';
   if (progress.lifecycle === 'complete') return 'Complete';
   if (progress.lifecycle === 'partial') return 'Partial';
@@ -687,9 +689,46 @@ function PopupApp() {
             <span>{progress.waitingSegments ?? 0} waiting</span>
             <span>{progress.retryingSegments ?? 0} retrying</span>
             <span>{progress.failedSegments} failed</span>
+            {progress.deferredSegments !== undefined && progress.deferredSegments > 0 && (
+              <span>
+                {progress.deferredSegments} deferred by the {progress.safetyLimit ?? 2_500}-section
+                safety limit
+              </span>
+            )}
           </div>
         }
       />
+
+      {progress.recoveryState && (
+        <section
+          className="session-panel"
+          aria-live="polite"
+          aria-label="Session recovery status"
+          data-recovery-state={progress.recoveryState}
+        >
+          <div className="session-heading">
+            <div>
+              <strong>
+                {progress.recoveryState === 'recovering'
+                  ? 'Recovering session'
+                  : progress.recoveryState === 'recovered'
+                    ? 'Session recovered'
+                    : progress.recoveryState === 'expired'
+                      ? 'Session expired'
+                      : progress.recoveryState === 'offline'
+                        ? 'You are offline'
+                        : progress.recoveryState === 'backend-unavailable'
+                          ? 'Local service unavailable'
+                          : 'Page changed'}
+              </strong>
+              <p dir="auto">
+                {progress.recoveryMessage ??
+                  'Completed translation work remains available where it can be matched safely.'}
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
 
       {translatedCopy && !hasSession && (
         <section

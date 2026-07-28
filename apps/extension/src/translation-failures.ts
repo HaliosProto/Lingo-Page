@@ -146,7 +146,9 @@ export function failurePresentation(
     case 'BACKEND_UNAVAILABLE':
       return {
         message:
-          'The local translation service stopped responding. Restart the local backend, then continue the remaining translation.',
+          failure.metadata.failureCategory === 'offline'
+            ? 'You appear to be offline. Completed sections were preserved. Reconnect, then continue the remaining translation.'
+            : 'The local translation service stopped responding. Restart the local backend, then continue the remaining translation.',
         actions: [
           { id: 'retry-connection', label: 'Retry connection' },
           { id: 'continue', label: 'Continue after reconnecting' },
@@ -204,6 +206,18 @@ export function failurePresentation(
 }
 
 export function progressLabel(progress: TranslationProgress): string {
+  if (progress.recoveryState === 'recovering') return 'Recovering translation session…';
+  if (progress.recoveryState === 'recovered') {
+    return `${progress.translatedSegments} sections restored from the saved session`;
+  }
+  if (progress.recoveryState === 'expired') return 'Saved translation session expired';
+  if (progress.recoveryState === 'stale' || progress.recoveryState === 'incompatible') {
+    return 'Saved translation does not match this page';
+  }
+  if (progress.recoveryState === 'offline') return 'Offline. Completed sections are preserved.';
+  if (progress.recoveryState === 'backend-unavailable') {
+    return 'Local translation service unavailable';
+  }
   const total = progress.discoveredSegments;
   const translated = progress.translatedSegments;
   const remaining = Math.max(0, total - translated);

@@ -15,6 +15,7 @@ import type {
   SelectionResult,
   TranslationFailure,
   TranslationProgress,
+  TranslationRecoveryRecord,
   TranslationRequest,
   TranslationResponse,
   TranslationSessionBundle,
@@ -31,6 +32,7 @@ import {
   providersResponseSchema,
   providerTestResponseSchema,
   translationResponseSchema,
+  translationRecoveryRecordSchema,
   translationSessionBundleSchema,
   translatedCopyHandoffIndexSchema,
   translatedCopyHandoffRecordSchema,
@@ -46,6 +48,13 @@ import {
   translatedCopyNavigationIdentity,
   type TranslatedCopyIntentExecutionHooks,
 } from '../src/translated-copy-intent';
+import {
+  MAX_RECOVERY_RECORD_BYTES,
+  evaluateRecoveryRecord,
+  pruneRecoveryRecords,
+  recoveryNavigationIdentity,
+  recoveryRecordByteLength,
+} from '../src/session-recovery';
 
 type CacheEntry = { translatedText: string; createdAt: number };
 type CacheStore = Record<string, CacheEntry>;
@@ -55,11 +64,16 @@ const maxPersistentCacheEntries = 200;
 const memoryCache = new Map<string, CacheEntry>();
 const controllersBySession = new Map<string, Set<AbortController>>();
 const progressByTab = new Map<number, TranslationProgress>();
+const translationAttempts = new Map<
+  string,
+  { startedAt: number; response: Promise<ExtensionResponse> }
+>();
 const comparisonTokenByTab = new Map<number, string>();
 const COMPARISON_STORAGE_PREFIX = 'comparisonSession:';
 const COPY_HANDOFF_STORAGE_PREFIX = 'translatedCopyHandoff:';
 const COPY_HANDOFF_TAB_PREFIX = 'translatedCopyTab:';
 const COPY_INTENT_STORAGE_PREFIX = 'translatedCopyIntent:';
+const RECOVERY_STORAGE_PREFIX = 'translationRecovery:';
 const COPY_HANDOFF_TTL_MS = 30_000;
 const MAX_SESSION_BUNDLE_BYTES = 2_000_000;
 type CopyHandoffSummary = {
@@ -122,6 +136,71 @@ function copyHandoffTabKey(tabId: number): string {
 
 function copyIntentStorageKey(intentId: string): string {
   return `${COPY_INTENT_STORAGE_PREFIX}${intentId}`;
+}
+
+function recoveryStorageKey(tabId: number): string {
+  return `${RECOVERY_STORAGE_PREFIX}${tabId}`;
+}
+
+async function removeRecoveryRecord(tabId: number): Promise<void> {
+  await browser.storage.local.remove(recoveryStorageKey(tabId));
+}
+
+async function saveRecoveryRecord(
+  tabId: number,
+  candidate: TranslationRecoveryRecord,
+  senderUrl?: string,
+): Promise<void> {
+  if ((await getSettings()).privacyMode) {
+    await removeRecoveryRecord(tabId);
+    return;
+  }
+  const record = translationRecoveryRecordSchema.parse({
+    ...candidate,
+    sourceTabId: tabId,
+    frameId: 0,
+  });
+  if (
+    recoveryRecordByteLength(record) > MAX_RECOVERY_RECORD_BYTES ||
+    (senderUrl && record.navigationIdentity !== (await recoveryNavigationIdentity(senderUrl)))
+  ) {
+    await removeRecoveryRecord(tabId);
+    return;
+  }
+  const existing = await readRecoveryRecord(tabId);
+  if (existing && existing.updatedAt > record.updatedAt) return;
+  await browser.storage.local.set({ [recoveryStorageKey(tabId)]: record });
+}
+
+async function readRecoveryRecord(tabId: number): Promise<TranslationRecoveryRecord | undefined> {
+  const key = recoveryStorageKey(tabId);
+  const stored = await browser.storage.local.get(key);
+  const record = translationRecoveryRecordSchema.safeParse(stored[key]);
+  if (!record.success || recoveryRecordByteLength(record.data) > MAX_RECOVERY_RECORD_BYTES) {
+    if (stored[key] !== undefined) await browser.storage.local.remove(key);
+    return undefined;
+  }
+  return record.data;
+}
+
+async function cleanupRecoveryRecords(): Promise<void> {
+  const stored = await browser.storage.local.get(null);
+  const entries = Object.entries(stored).filter(([key]) => key.startsWith(RECOVERY_STORAGE_PREFIX));
+  const records: TranslationRecoveryRecord[] = [];
+  const invalidKeys: string[] = [];
+  for (const [key, value] of entries) {
+    const parsed = translationRecoveryRecordSchema.safeParse(value);
+    if (!parsed.success) invalidKeys.push(key);
+    else records.push(parsed.data);
+  }
+  const pruned = pruneRecoveryRecords(records);
+  const retained = new Set(pruned.retained.map((record) => record.sessionId));
+  const obsoleteKeys = records
+    .filter((record) => !retained.has(record.sessionId))
+    .map((record) => recoveryStorageKey(record.sourceTabId));
+  if (invalidKeys.length > 0 || obsoleteKeys.length > 0) {
+    await browser.storage.local.remove([...invalidKeys, ...obsoleteKeys]);
+  }
 }
 
 function bundleByteLength(bundle: TranslationSessionBundle): number {
@@ -579,6 +658,37 @@ async function getPageProgress(tabId: number, requestId: string): Promise<Transl
     });
     if (response.type !== 'TRANSLATION_PROGRESS') return progressByTab.get(tabId) ?? idleProgress();
     const current = response.payload.progress;
+    if (current.status === 'idle') {
+      const [record, tab] = await Promise.all([readRecoveryRecord(tabId), browser.tabs.get(tabId)]);
+      if (record && tab.url) {
+        const decision = evaluateRecoveryRecord(record, {
+          tabId,
+          navigationIdentity: await recoveryNavigationIdentity(tab.url),
+        });
+        if (decision.state === 'recover' || decision.state === 'paused') {
+          const recovered = await sendContentMessage(tabId, {
+            version: CONTRACT_VERSION,
+            requestId,
+            type: 'IMPORT_RECOVERY_RECORD',
+            payload: { recovery: decision.record },
+          });
+          if (recovered.type === 'TRANSLATION_PROGRESS') {
+            progressByTab.set(tabId, recovered.payload.progress);
+            return recovered.payload.progress;
+          }
+        } else {
+          if (decision.remove) await removeRecoveryRecord(tabId);
+          return {
+            ...idleProgress(),
+            recoveryState: decision.state,
+            recoveryMessage:
+              decision.state === 'expired'
+                ? 'The saved translation session expired and was removed.'
+                : 'The saved translation no longer matches this page.',
+          };
+        }
+      }
+    }
     const stored = progressByTab.get(tabId);
     if (
       current.status === 'idle' &&
@@ -972,6 +1082,7 @@ async function translateRequest(request: TranslationRequest): Promise<ExtensionR
       await persistCache(persistentCache, settings);
     } catch {
       const cancelled = controllersBySession.get(request.sessionId) === undefined;
+      const offline = !cancelled && !timedOut && globalThis.navigator?.onLine === false;
       return createErrorResponse(
         request.requestId,
         cancelled ? 'CANCELLED' : timedOut ? 'REQUEST_TIMEOUT' : 'BACKEND_UNAVAILABLE',
@@ -988,6 +1099,13 @@ async function translateRequest(request: TranslationRequest): Promise<ExtensionR
             requestId: request.requestId,
             automaticRetry: false,
             changingProviderMayHelp: false,
+            ...(!cancelled && !timedOut
+              ? {
+                  failureCategory: offline
+                    ? ('offline' as const)
+                    : ('backend-unavailable' as const),
+                }
+              : {}),
           },
         },
       );
@@ -1033,6 +1151,24 @@ async function translateRequest(request: TranslationRequest): Promise<ExtensionR
   });
 }
 
+async function translateRequestIdempotently(
+  request: TranslationRequest,
+): Promise<ExtensionResponse> {
+  if (!request.operationId || !request.batchId || !request.attemptId) {
+    return await translateRequest(request);
+  }
+  const key = `${request.operationId}:${request.batchId}:${request.attemptId}:${request.navigationGeneration ?? 0}`;
+  const existing = translationAttempts.get(key);
+  if (existing) return await existing.response;
+  const response = translateRequest(request);
+  translationAttempts.set(key, { startedAt: Date.now(), response });
+  for (const [attemptKey, attempt] of translationAttempts) {
+    if (translationAttempts.size <= 128 && attempt.startedAt + 5 * 60_000 > Date.now()) break;
+    translationAttempts.delete(attemptKey);
+  }
+  return await response;
+}
+
 async function translateSelection(tabId: number, text: string): Promise<SelectionResult> {
   const settings = await getSettings();
   const sessionId = createSessionId();
@@ -1076,6 +1212,7 @@ async function translateSelection(tabId: number, text: string): Promise<Selectio
 
 export default defineBackground(() => {
   void translatedCopyIntentCoordinator.cleanupAbandoned();
+  void cleanupRecoveryRecords();
 
   browser.permissions.onAdded.addListener((permissions) => {
     void translatedCopyIntentCoordinator.resumeForAddedOrigins(permissions.origins ?? []);
@@ -1087,10 +1224,25 @@ export default defineBackground(() => {
 
   browser.tabs.onRemoved.addListener((tabId) => {
     progressByTab.delete(tabId);
+    void removeRecoveryRecord(tabId);
     void cleanupCopyHandoffForTab(tabId);
     const token = comparisonTokenByTab.get(tabId);
     comparisonTokenByTab.delete(tabId);
     if (token) void browser.storage.session.remove(comparisonStorageKey(token));
+  });
+
+  browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
+    if (!changeInfo.url) return;
+    void readRecoveryRecord(tabId).then(async (record) => {
+      if (
+        record &&
+        record.navigationIdentity !== (await recoveryNavigationIdentity(changeInfo.url!))
+      ) {
+        cancelSession(record.sessionId);
+        progressByTab.delete(tabId);
+        await removeRecoveryRecord(tabId);
+      }
+    });
   });
 
   void browser.contextMenus
@@ -1186,13 +1338,21 @@ export default defineBackground(() => {
             type: 'SETTINGS',
             payload: { settings: await getSettings() },
           });
-        case 'UPDATE_SETTINGS':
+        case 'UPDATE_SETTINGS': {
+          const settings = await saveSettings(parsed.data.payload.settings);
+          if (settings.privacyMode) {
+            const stored = await browser.storage.local.get(null);
+            await browser.storage.local.remove(
+              Object.keys(stored).filter((key) => key.startsWith(RECOVERY_STORAGE_PREFIX)),
+            );
+          }
           return extensionResponseSchema.parse({
             version: CONTRACT_VERSION,
             requestId,
             type: 'SETTINGS',
-            payload: { settings: await saveSettings(parsed.data.payload.settings) },
+            payload: { settings },
           });
+        }
         case 'START_PAGE_TRANSLATION': {
           const { tabId, ...payload } = parsed.data.payload;
           const tab = await browser.tabs.get(tabId);
@@ -1206,6 +1366,7 @@ export default defineBackground(() => {
             );
           }
           progressByTab.delete(tabId);
+          await removeRecoveryRecord(tabId);
           await ensurePageShell(tabId);
           return await sendContentMessage(tabId, {
             version: CONTRACT_VERSION,
@@ -1266,6 +1427,7 @@ export default defineBackground(() => {
             payload,
           });
           progressByTab.delete(tabId);
+          await removeRecoveryRecord(tabId);
           return response;
         }
         case 'SCAN_PAGE_CHANGES':
@@ -1706,7 +1868,7 @@ export default defineBackground(() => {
               false,
             );
           }
-          return await translateRequest(parsed.data.payload.request);
+          return await translateRequestIdempotently(parsed.data.payload.request);
         case 'REPORT_TRANSLATION_PROGRESS':
           if (
             sender.id !== browser.runtime.id ||
@@ -1721,6 +1883,18 @@ export default defineBackground(() => {
             );
           }
           progressByTab.set(sender.tab.id, parsed.data.payload.progress);
+          if (parsed.data.payload.recovery) {
+            await saveRecoveryRecord(
+              sender.tab.id,
+              parsed.data.payload.recovery,
+              sender.url ?? sender.tab.url,
+            );
+          } else if (
+            parsed.data.payload.progress.lifecycle === 'ended' ||
+            parsed.data.payload.progress.lifecycle === 'invalidated'
+          ) {
+            await removeRecoveryRecord(sender.tab.id);
+          }
           return extensionResponseSchema.parse({
             version: CONTRACT_VERSION,
             requestId,
@@ -1739,7 +1913,13 @@ export default defineBackground(() => {
           });
         case 'CLEAR_LOCAL_DATA':
           memoryCache.clear();
-          await browser.storage.local.remove(CACHE_STORAGE_KEY);
+          {
+            const stored = await browser.storage.local.get(null);
+            await browser.storage.local.remove([
+              CACHE_STORAGE_KEY,
+              ...Object.keys(stored).filter((key) => key.startsWith(RECOVERY_STORAGE_PREFIX)),
+            ]);
+          }
           return extensionResponseSchema.parse({
             version: CONTRACT_VERSION,
             requestId,
