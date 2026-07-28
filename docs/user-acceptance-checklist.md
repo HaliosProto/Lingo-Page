@@ -26,5 +26,9 @@ Run `pnpm local:test`, load `artifacts/translation-extension-local-rc/extension`
 - [ ] Stopping the backend produces a clear unavailable state; restarting permits retry.
 - [ ] `pnpm verify` and `pnpm test:e2e` pass; managed Chromium and branded Chrome results are recorded separately.
 - [ ] Source, Git history, production bundle, source maps, logs, env files, and staged RC contain no provider key.
+- [ ] Reload a completed and partial translated page; confirm confident text is restored, changed/uncertain text remains original, and the network shows zero reconstruction provider calls.
+- [ ] Suspend/restart the extension worker where Chrome tooling permits; confirm popup state reconstructs and no duplicate tab or provider attempt appears.
+- [ ] Exercise SPA navigation, root hydration, infinite-scroll/mutation bursts, offline/reconnect, Retry-After, cancellation, expiry, tab close, and privacy-mode cleanup.
+- [ ] Confirm required permissions are unchanged and recovery storage contains no raw source text, HTML, title, full URL, form value, credential, or provider body.
 
 Record any failure with the exact step, expected result, actual result, browser/channel, extension version, and the diagnostics file if safe to share. Do not attach page text, full URLs, cookies, form values, or secrets.

@@ -2,7 +2,7 @@
 
 Status: CURRENT
 
-Last reconciled: 2026-07-18
+Last reconciled: 2026-07-28
 
 ## Source-of-truth hierarchy
 
@@ -28,7 +28,7 @@ Each requirement or decision has one canonical home. Operational indexes and his
 | `PRODUCT_CONSTITUTION.md`                              | Durable product, data-rights, engineering, and decision constraints      | CURRENT | Product owner                          | All               | All lower-level policy                | ADRs and milestone reports                  |
 | `PRODUCT_VISION.md`                                    | Product direction and family boundaries                                  | CURRENT | Product owner                          | All               | Product-family prose elsewhere        | `docs/current-state-audit.md`               |
 | `ROADMAP.md`                                           | Sole milestone order and extension-GA gate                               | CURRENT | Product owner                          | M1-M12            | Archived pre-M1.5 roadmaps            | Changelog and milestone reports             |
-| `TASKS.md`                                             | Concise current operational index                                        | ACTIVE  | Current milestone owner                | M1.5              | Historical task dumps                 | Beads closure evidence                      |
+| `TASKS.md`                                             | Concise current operational index                                        | ACTIVE  | Current milestone owner                | M2                | Historical task dumps                 | Beads closure evidence                      |
 | `docs/product-spec.md`                                 | Current browser-extension product behavior                               | CURRENT | Product specification                  | M1-M8             | Feature summaries elsewhere           | MVP and milestone reports                   |
 | `docs/architecture.md`                                 | Implemented system boundaries and state ownership                        | CURRENT | Architecture contract                  | M1-M8             | Audit descriptions when they conflict | Architecture audits and ADRs                |
 | `docs/api-contracts.md`                                | Cross-boundary messages and API behavior                                 | CURRENT | Runtime schemas and API implementation | M1-M8             | Duplicated message prose              | Integration tests                           |
@@ -41,6 +41,8 @@ Each requirement or decision has one canonical home. Operational indexes and his
 | `docs/testing-strategy.md`                             | Test layers and fixture policy                                           | CURRENT | Repository commands and tests          | All               | Test prose elsewhere                  | Verification reports                        |
 | `docs/verification-matrix.md`                          | Required evidence by behavior/milestone                                  | CURRENT | Acceptance process                     | All               | Informal checklists                   | Milestone reports                           |
 | `docs/milestones/milestone-1-5-verification-report.md` | M1.5 repository, frontend, and verification evidence                     | CURRENT | M1.5 acceptance process                | M1.5              | Informal completion claims            | Commands, browser evidence, and limitations |
+| `docs/milestones/milestone-2-specification.md`         | Accepted lifecycle, resilience, privacy, and performance contract        | CURRENT | Product-owner M2 brief                 | M2                | Broad roadmap prose                   | M2 baseline and verification report         |
+| `docs/milestones/milestone-2-verification-report.md`   | M2 implementation and acceptance evidence                                | ACTIVE  | M2 acceptance process                  | M2                | Informal completion claims            | Commands, browser evidence, and limitations |
 | `docs/known-limitations.md`                            | Current unverified or unsupported behavior                               | CURRENT | Latest verified state                  | Current           | Stale limitation claims               | Dated reports                               |
 | `docs/project-memory.md`                               | Concise orientation and links only                                       | ACTIVE  | Canonical sources above                | Current           | Duplicated specifications             | Beads memories                              |
 

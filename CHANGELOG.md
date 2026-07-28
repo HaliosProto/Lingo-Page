@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — Milestone 2
+
+- Added privacy-minimized, versioned, bounded active-session recovery and zero-call reload reconstruction.
+- Added operation/batch/attempt/navigation-generation identities, in-process duplicate-attempt reuse, and conservative stale-route rejection.
+- Added compatible hydration rebinding, mutation batching/backpressure, safety-ceiling metrics, offline/backend recovery states, and cleanup for expiry, navigation, tab close, privacy mode, and clear-data.
+- Added five lifecycle ADRs, 68 deterministic recovery cases, and managed Chromium lifecycle/performance coverage.
+
 ## Unreleased
 
 ### Milestone 1.5 repository and frontend foundation - 2026-07-18

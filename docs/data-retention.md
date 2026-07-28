@@ -28,3 +28,9 @@ Purpose, data classification, minimum fields, owner/controller, storage region, 
 Translated-copy bundles are transferred through tab-bound `chrome.storage.session` and cloned into independent page-shell memory. Central page-text data is not consumed on retrieval: it is removed after the destination acknowledges its validated local copy, or on rejection, expiry, validation failure, tab close, or browser-session loss. Failure metadata is bounded and contains no page text. A user-visible destination tab is not cleanup data and remains open. Ending one page session cannot clear another.
 
 Comparison snapshots are captured only after an explicit action and contain allowlisted inert structure plus original/translated session text. Bundle validation limits a session to 2,500 segments, a snapshot to 15,000 nodes, and the full serialized transfer to 2 MB. Invalid, oversized, stale, or mismatched data is rejected and cleaned up. Neither transfer is history, account data, analytics, or durable restart state.
+
+## Active-session recovery
+
+Milestone 2 adds a separate `translationRecovery:<tabId>` record in `chrome.storage.local` so Chrome-restored same-tab sessions can survive worker/page lifecycle loss. It is versioned, runtime validated, capped at 2,500 segments and 2 MiB, and expires 30 minutes after the latest page-shell report. It contains translated reuse values and fingerprints but no raw source text, exact original text, full URL, title, HTML, form value, comparison snapshot, credential, or provider payload.
+
+The record is removed on end session, tab close, incompatible navigation, expiry, corruption/unknown version, clear-data, or privacy-mode activation. Cancelled records may reconstruct completed text as paused but cannot restart provider work. At most 12 recent records survive startup pruning. This is active recovery, not history, sync, or analytics.

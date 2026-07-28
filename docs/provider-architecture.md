@@ -46,3 +46,7 @@ Controls are provider-independent: request bytes, segments, input/output charact
 ## Privacy metadata
 
 Every registry entry identifies the data recipient and whether page text leaves the local backend. Gemini and OpenAI requests explicitly set `store=false`. Other implementations use single stateless requests without application conversation state; this is not a claim about provider retention. Qwen region is selected through one of the three allowlisted official DashScope regional base URLs. Provider terms, retention, training, and geographic processing must be reviewed by the owner before public use.
+
+## Lifecycle retry and idempotency
+
+The page shell coordinates bounded adaptive recovery and sends only unresolved IDs after a valid partial response. Each attempt includes stable session/operation/navigation identity plus a batch and attempt ID. The worker reuses a duplicate living attempt promise and never auto-resends provider work during reload or worker reconstruction. Rate-limit, timeout, unavailable, authentication, quota, invalid output, offline/backend, cancellation, and exhaustion remain distinct. Automated M2 checks use deterministic providers only; no live provider result is M2 evidence.

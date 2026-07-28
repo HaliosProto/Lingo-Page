@@ -81,3 +81,11 @@ Permission audit, dependency audit, secret scan, bundle scan, schema-fuzz tests,
 - Comparison handoff uses a 128-bit single-use token bound to the owning extension tab; text never enters the fragment or source page.
 - Comparison captures an allowlisted parent-before-child structural model capped at 15,000 nodes inside the 2 MB bundle. Runtime validation rejects malformed trees and unsafe URLs. React reconstructs inert semantic elements and text without parsing HTML; scripts, handlers, source CSS, frames, embeds, forms, editable regions, hidden content, fields, and remote code are excluded. Captured buttons are disabled, and safe HTTP(S) links/images use referrer suppression.
 - Uncertain/duplicate matches remain original, invalid handoffs fail closed, and end-session cleanup is tab-local.
+
+## Lifecycle persistence controls
+
+- Recovery records are validated, versioned, size/retention bounded, exact-tab/top-frame/navigation bound, and disabled in privacy mode.
+- Persisted segments contain fingerprints and translated values only; current source originals are rediscovered from the owning document.
+- Unknown versions, malformed records, expiry, wrong tab/navigation, terminal lifecycle, and oversized values fail closed and are removed.
+- Navigation generations and operation/batch/attempt IDs reject obsolete mutations and responses. Duplicate living attempts share one result.
+- Required and optional permissions are unchanged; no required `<all_urls>` or broad host grant was added.

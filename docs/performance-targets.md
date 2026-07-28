@@ -26,3 +26,9 @@ These are initial product targets for local representative fixtures; measure and
 ## Measurement rules
 
 Use browser Performance APIs and Playwright traces for page work, API timing for backend calls, and Chrome task/memory inspection during manual runs. Report p50/p95 where repeated measurements are meaningful. Do not optimize by weakening eligibility or safety limits.
+
+## Milestone 2 measured result
+
+Managed Chromium after M2 completed 2,206 segments in 445 ms, matching the frozen pre-change 445 ms run, with zero reported long tasks. Repeated switching remained zero-call; cached copy/comparison reuse made zero provider calls. The compatible-copy match/application measured 2,078 ms versus the 2,063 ms pre-change run. The deterministic dynamic-content measurement improved from 792 ms to 190 ms after bounded mutation scheduling. Heap values remain directional without forced GC and are not leak-proof evidence.
+
+Mutation work is capped at 256 queued roots, 48 roots per slice, and an 8 ms slice budget. Recovery records are capped at 2,500 segments, 2 MiB, 12 recent records, and a 30-minute lifetime.

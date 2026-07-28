@@ -96,3 +96,9 @@ sequenceDiagram
 ## API-key boundary
 
 The extension bundle may contain only `WXT_API_BASE_URL`. Provider keys and server administrator keys are backend secrets. The API accepts stable provider/model IDs only after registry and allowlist validation; it never accepts an upstream endpoint. Secret scanning covers source, history where practical, bundles, source maps, logs, and configuration.
+
+## Milestone 2 lifecycle authority
+
+The page shell still owns exact originals and live DOM references. A separate version-1 recovery record stores only tab/session/operation/navigation identities, source/structure fingerprints, status, and completed translated values for at most 30 minutes in `chrome.storage.local`; it never stores source text, page HTML, page titles, form values, or comparison structure. The worker treats its maps as caches and reconstructs an idle page shell only after schema, size, tab, frame, navigation, lifecycle, expiry, and privacy-mode checks.
+
+Every provider request carries operation, batch, attempt, navigation-generation, and segment identities. A route generation invalidates old responses and queued mutations. Reload reconstruction rediscovers current originals and rebinds only confident matches without a provider call. ADRs 0011–0015 define persistence, worker reconstruction, navigation, mutation, and retry boundaries.

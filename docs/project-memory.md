@@ -30,3 +30,13 @@ Do not store secrets, keys, tokens, raw page/user text, private endpoints, provi
 ## Owner gates
 
 External recipients, paid calls, accounts, public resources, deployment/publication, purchases, repository visibility, legal/compliance claims, pricing, production retention, branding, irreversible platform decisions, and material risk acceptance require explicit product-owner approval.
+
+## Milestone 2 orientation
+
+- Branch: `milestone/02-reliability-lifecycle-performance`
+- Starting point: `d7b28468744e3c7111d3d8a33e524c554b511c31`
+- State: implementation and automated verification complete; final evidence/PR review pending
+- Decisions: ADRs 0011–0015 define bounded active recovery, worker reconstruction, navigation generations, mutation backpressure, and retry idempotency
+- Evidence: 68 deterministic recovery cases, six managed Chromium E2E tests, and the performance suite pass; 2,206 segments complete in 445 ms with zero long tasks
+- Limitations: branded Chrome, physical sleep/restart/discard/BFCache, forced GC, and formal accessibility remain manual
+- M3 dependency: M2 owner review and acceptance; M3 implementation has not begun

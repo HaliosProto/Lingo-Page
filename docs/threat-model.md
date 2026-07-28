@@ -57,3 +57,14 @@
 - Any remote provider may see submitted text; provider terms and regional routing remain product decisions.
 - Web pages can replace DOM nodes after translation; restoration is best-effort and must avoid corrupting new content.
 - Cross-origin iframes and canvas/image text cannot be fully handled by a normal content script.
+
+## Milestone 2 lifecycle threats
+
+| Threat                                  | Mitigation                                                                                                      | Residual risk                                                                                  |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Cross-tab recovery leakage              | exact source tab, top frame, SHA-256 navigation identity, session and operation validation                      | browser restart recovery depends on Chrome restoring the same tab identity                     |
+| Persisted page content exposure         | no raw source/original text, HTML, title, form data, or full URL; 30-minute/2 MiB bounds; privacy-mode deletion | translated values can still be sensitive and exist during the active recovery window           |
+| Stale response after SPA navigation     | navigation generations, URL/content identity checks, cancellation, obsolete mutation dropping                   | conservative invalidation can lose otherwise reusable mappings                                 |
+| Worker replay or duplicate popup action | validated storage reconstruction and in-process attempt-promise deduplication                                   | ambiguous in-flight backend work is paused instead of durably deduplicated across worker death |
+| Mutation-storm denial of service        | 256-root queue, 48-root/8 ms slices, deduplication, yielding, generation cleanup                                | global rescans still cost more on pathological pages up to the hard ceiling                    |
+| Corrupt/oversized recovery storage      | runtime schema, version, byte, segment, record-count, expiry, and terminal checks                               | storage implementation failure yields no recovery rather than unsafe partial trust             |

@@ -24,3 +24,7 @@ This local release candidate is intentionally bounded. These are known limitatio
 - Saved reduced motion now applies in popup, Options, and comparison surfaces and is covered in managed Chromium; OS-level and branded-Chrome visual confirmation remain manual.
 - Chromium heap snapshots are not leak proof. The very-large final-original snapshot remained elevated without forced collection; repeatable GC-aware lifecycle profiling remains a dedicated follow-up.
 - Comparison handoff is single-use. Reload before retrieval, service-worker failure during handoff, mismatched navigation, oversized sessions, or invalid data fail closed instead of reconstructing the session.
+- Recovery is exact-tab bound. Browser restart recovery works only when Chrome restores the same tab identity and compatible page within 30 minutes; physical browser restart, laptop sleep/wake, tab discard, and BFCache certification were not available in the managed run.
+- An ambiguous in-flight provider request is never auto-replayed after lifecycle loss. Completed cached values reconstruct, while remaining work is paused for deliberate user resume.
+- SPA route handling is conservative: path/query/origin content changes invalidate the recovery record. Same-URL compatible DOM replacement can rebind unique matches, but framework-specific React/Vue/Angular certification remains fixture-based rather than exhaustive.
+- Forced-GC leak proof, branded-Chrome recovery screenshots, screen-reader behavior, 400% zoom, high contrast, and OS-level reduced motion remain manual evidence.
