@@ -1,13 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import type { TranslationRecoveryRecord, TranslationSegment } from '@translation/shared-types';
+import { translationRecoveryRecordSchema } from '@translation/shared-validation';
 import {
   MAX_MUTATION_BACKLOG,
   MutationBackpressureQueue,
+  RecoveryClaimCoordinator,
   RequestIdempotencyLedger,
   classifyNetworkRecovery,
   evaluateRecoveryRecord,
+  evaluateRestoredRecoveryRecord,
   pruneRecoveryRecords,
   recoveryNavigationIdentity,
+  recoveryOriginIdentity,
+  recoveryPermissionRemovalMatches,
+  recoveryTranslationIdentity,
   remainingRetryDelayMs,
   retryDeadline,
   unresolvedSegments,
@@ -19,12 +25,15 @@ function recoveryRecord(
   overrides: Partial<TranslationRecoveryRecord> = {},
 ): TranslationRecoveryRecord {
   return {
-    version: 1,
+    version: 2,
     sourceTabId: 7,
     frameId: 0,
     sessionId: 'session_recovery_case',
     operationId: 'op_11111111111111111111111111111111',
+    normalizedOrigin: 'https://example.test',
+    originIdentity: 'c'.repeat(64),
     navigationIdentity: 'a'.repeat(64),
+    translationIdentity: 'd'.repeat(64),
     navigationGeneration: 3,
     pageFingerprint: 'fp_page',
     sourceLanguage: 'auto',
@@ -38,6 +47,12 @@ function recoveryRecord(
     lifecycle: 'complete',
     partial: false,
     cancelled: false,
+    restartRecoveryEnabled: true,
+    claim: {
+      state: 'owned',
+      ownerTabId: 7,
+      browserInstanceId: 'e'.repeat(32),
+    },
     progress: {
       sessionId: 'session_recovery_case',
       status: 'completed',
@@ -56,6 +71,30 @@ function recoveryRecord(
       },
     ],
     ...overrides,
+  };
+}
+
+async function recoveryRecordWithIdentity(
+  overrides: Partial<TranslationRecoveryRecord> = {},
+): Promise<TranslationRecoveryRecord> {
+  const record = recoveryRecord(overrides);
+  record.translationIdentity = await recoveryTranslationIdentity(record);
+  return record;
+}
+
+function claimStorage(initial: TranslationRecoveryRecord[]) {
+  const records = new Map(initial.map((record) => [record.sessionId, structuredClone(record)]));
+  return {
+    records,
+    adapter: {
+      read: async (sessionId: string) => structuredClone(records.get(sessionId)),
+      write: async (record: TranslationRecoveryRecord) => {
+        records.set(record.sessionId, structuredClone(record));
+      },
+      remove: async (sessionId: string) => {
+        records.delete(sessionId);
+      },
+    },
   };
 }
 
@@ -310,5 +349,246 @@ describe('Milestone 2 lifecycle acceptance matrix', () => {
       text: id,
     }));
     expect(unresolvedSegments(segments, completed).map((segment) => segment.id)).toEqual(expected);
+  });
+});
+
+describe('browser-restored tab identity and atomic claiming', () => {
+  it('allows a compatible restored tab with a different numeric tab ID', async () => {
+    const record = await recoveryRecordWithIdentity({
+      claim: {
+        state: 'orphaned',
+        browserInstanceId: 'e'.repeat(32),
+        reason: 'browser-restart',
+      },
+    });
+    expect(
+      evaluateRestoredRecoveryRecord(record, {
+        navigationIdentity: record.navigationIdentity,
+        originIdentity: record.originIdentity,
+        restoreSignal: 'browser-startup',
+        now,
+      }).state,
+    ).toBe('eligible');
+    const storage = claimStorage([record]);
+    const coordinator = new RecoveryClaimCoordinator(storage.adapter);
+    const claimed = await coordinator.claim({
+      sessionId: record.sessionId,
+      tabId: 41,
+      browserInstanceId: 'f'.repeat(32),
+      navigationIdentity: record.navigationIdentity,
+      originIdentity: record.originIdentity,
+      restoreSignal: 'browser-startup',
+      claimId: `claim_${'1'.repeat(32)}`,
+      now,
+    });
+    expect(claimed).toMatchObject({
+      state: 'claimed',
+      record: { sourceTabId: 41, navigationGeneration: 4 },
+    });
+  });
+
+  it.each([
+    [
+      'manual same-URL tab has no restore signal',
+      {},
+      undefined,
+      'missing-restore-signal',
+      undefined,
+    ],
+    [
+      'wrong origin is rejected',
+      {},
+      'browser-startup',
+      'wrong-origin',
+      { originIdentity: '9'.repeat(64) },
+    ],
+    [
+      'wrong navigation is rejected',
+      {},
+      'browser-startup',
+      'wrong-navigation',
+      { navigationIdentity: '9'.repeat(64) },
+    ],
+    ['expired record is rejected', { expiresAt: now }, 'browser-startup', 'expired', undefined],
+    [
+      'cancelled record is rejected',
+      { cancelled: true },
+      'browser-startup',
+      'cancelled',
+      undefined,
+    ],
+    ['ended record is rejected', { lifecycle: 'ended' }, 'browser-startup', 'terminal', undefined],
+    [
+      'restart-disabled record is rejected',
+      { restartRecoveryEnabled: false },
+      'browser-startup',
+      'restart-disabled',
+      undefined,
+    ],
+  ] as const)('%s', async (_name, overrides, restoreSignal, expected, inputOverrides) => {
+    const record = await recoveryRecordWithIdentity({
+      claim: { state: 'orphaned', browserInstanceId: 'e'.repeat(32) },
+      ...overrides,
+    } as Partial<TranslationRecoveryRecord>);
+    expect(
+      evaluateRestoredRecoveryRecord(record, {
+        navigationIdentity: record.navigationIdentity,
+        originIdentity: record.originIdentity,
+        ...(restoreSignal ? { restoreSignal } : {}),
+        now,
+        ...(inputOverrides ?? {}),
+      }),
+    ).toMatchObject({ state: expected });
+  });
+
+  it('permits only one of two compatible tabs to claim a record', async () => {
+    const record = await recoveryRecordWithIdentity({
+      claim: { state: 'orphaned', browserInstanceId: 'e'.repeat(32) },
+    });
+    const storage = claimStorage([record]);
+    const coordinator = new RecoveryClaimCoordinator(storage.adapter);
+    const input = {
+      sessionId: record.sessionId,
+      browserInstanceId: 'f'.repeat(32),
+      navigationIdentity: record.navigationIdentity,
+      originIdentity: record.originIdentity,
+      restoreSignal: 'browser-startup' as const,
+      now,
+    };
+    const [first, second] = await Promise.all([
+      coordinator.claim({ ...input, tabId: 41, claimId: `claim_${'1'.repeat(32)}` }),
+      coordinator.claim({ ...input, tabId: 42, claimId: `claim_${'2'.repeat(32)}` }),
+    ]);
+    expect([first.state, second.state].sort()).toEqual(['claimed', 'ineligible']);
+  });
+
+  it('reuses an in-flight claim idempotently after a worker restart', async () => {
+    const record = await recoveryRecordWithIdentity({
+      claim: { state: 'orphaned', browserInstanceId: 'e'.repeat(32) },
+    });
+    const storage = claimStorage([record]);
+    const firstWorker = new RecoveryClaimCoordinator(storage.adapter);
+    const input = {
+      sessionId: record.sessionId,
+      tabId: 41,
+      browserInstanceId: 'f'.repeat(32),
+      navigationIdentity: record.navigationIdentity,
+      originIdentity: record.originIdentity,
+      restoreSignal: 'browser-startup' as const,
+      claimId: `claim_${'1'.repeat(32)}`,
+      now,
+    };
+    const first = await firstWorker.claim(input);
+    const secondWorker = new RecoveryClaimCoordinator(storage.adapter);
+    const resumed = await secondWorker.claim({
+      ...input,
+      claimId: `claim_${'2'.repeat(32)}`,
+    });
+    expect(first).toMatchObject({ state: 'claimed', claimId: `claim_${'1'.repeat(32)}` });
+    expect(resumed).toMatchObject({ state: 'claimed', claimId: `claim_${'1'.repeat(32)}` });
+  });
+
+  it('atomically transfers ownership and increments the navigation generation', async () => {
+    const record = await recoveryRecordWithIdentity({
+      claim: { state: 'orphaned', browserInstanceId: 'e'.repeat(32) },
+    });
+    const storage = claimStorage([record]);
+    const coordinator = new RecoveryClaimCoordinator(storage.adapter);
+    const claimId = `claim_${'1'.repeat(32)}`;
+    await coordinator.claim({
+      sessionId: record.sessionId,
+      tabId: 41,
+      browserInstanceId: 'f'.repeat(32),
+      navigationIdentity: record.navigationIdentity,
+      originIdentity: record.originIdentity,
+      restoreSignal: 'browser-startup',
+      claimId,
+      now,
+    });
+    await coordinator.complete({
+      sessionId: record.sessionId,
+      tabId: 41,
+      browserInstanceId: 'f'.repeat(32),
+      claimId,
+      now: now + 1,
+    });
+    expect(storage.records.get(record.sessionId)).toMatchObject({
+      sourceTabId: 41,
+      navigationGeneration: 4,
+      claim: { state: 'owned', ownerTabId: 41, browserInstanceId: 'f'.repeat(32) },
+    });
+  });
+
+  it('rejects an already-owned record from another tab', async () => {
+    const record = await recoveryRecordWithIdentity();
+    const storage = claimStorage([record]);
+    const coordinator = new RecoveryClaimCoordinator(storage.adapter);
+    const result = await coordinator.claim({
+      sessionId: record.sessionId,
+      tabId: 41,
+      browserInstanceId: 'f'.repeat(32),
+      navigationIdentity: record.navigationIdentity,
+      originIdentity: record.originIdentity,
+      restoreSignal: 'browser-startup',
+      claimId: `claim_${'1'.repeat(32)}`,
+      now,
+    });
+    expect(result.state).toBe('ineligible');
+  });
+
+  it('rejects a target-language change that does not match translation identity', async () => {
+    const record = await recoveryRecordWithIdentity({
+      claim: { state: 'orphaned', browserInstanceId: 'e'.repeat(32) },
+    });
+    record.targetLanguage = 'de';
+    const storage = claimStorage([record]);
+    const coordinator = new RecoveryClaimCoordinator(storage.adapter);
+    const result = await coordinator.claim({
+      sessionId: record.sessionId,
+      tabId: 41,
+      browserInstanceId: 'f'.repeat(32),
+      navigationIdentity: record.navigationIdentity,
+      originIdentity: record.originIdentity,
+      restoreSignal: 'browser-startup',
+      claimId: `claim_${'1'.repeat(32)}`,
+      now,
+    });
+    expect(result.state).toBe('ineligible');
+  });
+
+  it('normalizes origin without retaining a full URL', async () => {
+    expect(await recoveryOriginIdentity('https://example.test/private?q=secret#fragment')).toBe(
+      await recoveryOriginIdentity('https://example.test/'),
+    );
+  });
+
+  it.each([
+    ['exact HTTPS revocation removes the record', ['https://example.test/*'], true],
+    ['HTTPS wildcard revocation removes the record', ['https://*/*'], true],
+    ['wrong-origin revocation preserves the record', ['https://other.test/*'], false],
+    ['wrong-protocol revocation preserves the record', ['http://*/*'], false],
+  ] as const)('%s', (_name, removed, expected) => {
+    expect(recoveryPermissionRemovalMatches(removed, 'https://example.test')).toBe(expected);
+  });
+
+  it('rejects corrupted owned and in-flight claim states', async () => {
+    const record = await recoveryRecordWithIdentity();
+    expect(
+      translationRecoveryRecordSchema.safeParse({
+        ...record,
+        claim: { state: 'owned', browserInstanceId: 'e'.repeat(32) },
+      }).success,
+    ).toBe(false);
+    expect(
+      translationRecoveryRecordSchema.safeParse({
+        ...record,
+        claim: {
+          state: 'claiming',
+          ownerTabId: 41,
+          browserInstanceId: 'e'.repeat(32),
+          claimId: `claim_${'1'.repeat(32)}`,
+        },
+      }).success,
+    ).toBe(false);
   });
 });

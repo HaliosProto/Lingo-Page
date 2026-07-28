@@ -84,7 +84,7 @@ test('keeps cached translations visible after delayed destination hydration', as
     const popup = await context.newPage();
     await popup.goto(`chrome-extension://${extensionId}/popup.html`);
 
-    await commandForTab(popup, sourceTabId, {
+    const startResponse = await commandForTab(popup, sourceTabId, {
       version: 1,
       requestId: 'req_copy_hydration_start_12345',
       type: 'START_PAGE_TRANSLATION',
@@ -99,6 +99,7 @@ test('keeps cached translations visible after delayed destination hydration', as
         autoTranslateDynamicContent: false,
       },
     });
+    expect(startResponse).toMatchObject({ type: 'TRANSLATION_PROGRESS' });
     await expect(source.locator('#heading')).toHaveText('[fr] Stable fixture heading');
 
     const exported = await popup.evaluate(
@@ -264,7 +265,7 @@ test('explains recovery when translated-copy site access is denied', async () =>
     const popup = await context.newPage();
     await popup.goto(`chrome-extension://${extensionId}/popup.html`);
 
-    await commandForTab(popup, sourceTabId, {
+    const denialStartResponse = await commandForTab(popup, sourceTabId, {
       version: 1,
       requestId: 'req_copy_denial_start_12345',
       type: 'START_PAGE_TRANSLATION',
@@ -279,6 +280,7 @@ test('explains recovery when translated-copy site access is denied', async () =>
         autoTranslateDynamicContent: false,
       },
     });
+    expect(denialStartResponse).toMatchObject({ type: 'TRANSLATION_PROGRESS' });
     await expect(source.locator('#heading')).toHaveText('[fr] Stable fixture heading');
 
     await source.bringToFront();
