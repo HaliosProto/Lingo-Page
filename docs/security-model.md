@@ -24,7 +24,7 @@
 ## Extension controls
 
 - Manifest V3 service worker; no remotely hosted executable code.
-- Retain `activeTab` and `scripting` for normal translation. Translated-copy support may declare optional HTTP/HTTPS host patterns, but it requests only the current page origin directly from the explicit open-copy gesture. It never requests an all-site grant or adds required `<all_urls>` access.
+- Retain `activeTab` and `scripting` for normal translation. Translated-copy and browser-restart recovery may declare optional HTTP/HTTPS host patterns, but each requests only the current page origin directly from the relevant explicit gesture. Neither requests an all-site grant nor adds required `<all_urls>` access. `sessions` supplies restoration evidence and `alarms` supplies bounded cleanup; neither grants page-content access.
 - Use isolated-world content scripts and avoid main-world injection.
 - Validate every message at runtime. Never trust a TypeScript cast.
 - Treat `sender.tab.id`, frame ID, URL identity, and navigation token as required context.
@@ -32,7 +32,7 @@
 - Use `textContent`/text-node replacement only; never `innerHTML` for provider output.
 - Do not use `eval`, string timers, dynamic script injection, or remote code.
 - Keep extension UI in an extension-owned root and mark it so the DOM engine excludes it.
-- Clear session content on restore, cancellation completion, navigation, tab close, logout, and explicit clear-data action.
+- Clear session content on explicit End session, cancellation, incompatible navigation, permission revocation, expiry, logout, and explicit clear-data action. A tab close may retain only the bounded recovery record described in ADR 0016.
 
 ## API controls
 
@@ -81,3 +81,19 @@ Permission audit, dependency audit, secret scan, bundle scan, schema-fuzz tests,
 - Comparison handoff uses a 128-bit single-use token bound to the owning extension tab; text never enters the fragment or source page.
 - Comparison captures an allowlisted parent-before-child structural model capped at 15,000 nodes inside the 2 MB bundle. Runtime validation rejects malformed trees and unsafe URLs. React reconstructs inert semantic elements and text without parsing HTML; scripts, handlers, source CSS, frames, embeds, forms, editable regions, hidden content, fields, and remote code are excluded. Captured buttons are disabled, and safe HTTP(S) links/images use referrer suppression.
 - Uncertain/duplicate matches remain original, invalid handoffs fail closed, and end-session cleanup is tab-local.
+
+## Milestone 2 restored-tab controls
+
+- Recovery records are keyed by translation session, not trusted by URL alone, and are bound to top frame, normalized-origin/navigation hashes, translation identity, page fingerprint, target language, generation, expiry, and an explicit claim state.
+- Browser-startup or recently-closed Chrome evidence is required. A pasted/History/duplicate same-URL tab has no signal; two compatible candidates or multiple ambiguous recently-closed entries fail closed.
+- A serialized, storage-verified `orphaned` → `claiming` → `owned` transition prevents two tabs from owning one session. In-flight claims expire after 15 seconds and same-tab retries reuse the persisted claim ID.
+- Injection after `activeTab` ends requires the previously granted exact current origin. Revocation deletes matching recovery state.
+- The page shell completes ownership only after bounded DOM rediscovery accepts confident fingerprint/structure/role matches. Changed, unmatched, and uncertain content remains original. Provider output remains plain text and no provider request occurs.
+
+## Lifecycle persistence controls
+
+- Recovery records are validated, versioned, size/retention bounded, exact-tab/top-frame/navigation bound, and disabled in privacy mode.
+- Persisted segments contain fingerprints and translated values only; current source originals are rediscovered from the owning document.
+- Unknown versions, malformed records, expiry, wrong tab/navigation, terminal lifecycle, and oversized values fail closed and are removed.
+- Navigation generations and operation/batch/attempt IDs reject obsolete mutations and responses. Duplicate living attempts share one result.
+- Required API permissions add `alarms` and `sessions` for expiry and restored-session evidence. Optional host declarations remain HTTP/HTTPS capability declarations; no required `<all_urls>` or broad host grant was added.

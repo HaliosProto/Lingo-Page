@@ -30,6 +30,7 @@
       <div id="bulk"></div>
     </main>
     <script>
+      const fixtureInitialMainMarkup = document.querySelector('main').innerHTML;
       window.addDynamicText = () => {
         const paragraph = document.createElement('p');
         paragraph.id = 'dynamic-paragraph';
@@ -116,17 +117,54 @@
           document.querySelector('#dynamic').append(paragraph);
         }
       };
+      window.replaceMainWithCompatibleHydration = () => {
+        const currentMain = document.querySelector('main');
+        const hydratedMain = document.createElement('main');
+        hydratedMain.innerHTML = fixtureInitialMainMarkup;
+        hydratedMain.dataset.hydrated = 'true';
+        currentMain.replaceWith(hydratedMain);
+      };
+      window.addMutationStorm = (count) => {
+        const container = document.querySelector('#dynamic');
+        const fragment = document.createDocumentFragment();
+        for (let index = 0; index < count; index += 1) {
+          const paragraph = document.createElement('p');
+          paragraph.dataset.storm = String(index);
+          paragraph.textContent = `Mutation storm section ${index} remains responsive.`;
+          fragment.append(paragraph);
+        }
+        container.append(fragment);
+        for (let index = 0; index < Math.min(count, 100); index += 1) {
+          container.querySelector(`[data-storm="${index}"]`).textContent =
+            `Mutation storm section ${index} was updated once.`;
+        }
+      };
+      window.navigateFixtureRoute = (routeName) => {
+        history.pushState(
+          { routeName },
+          '',
+          `/fixture.html?route=${encodeURIComponent(routeName)}`,
+        );
+        const nextMain = document.createElement('main');
+        const heading = document.createElement('h1');
+        heading.id = 'route-heading';
+        heading.textContent = `Route ${routeName} has a new content identity.`;
+        const paragraph = document.createElement('p');
+        paragraph.id = 'route-paragraph';
+        paragraph.textContent = 'Old translation results must not modify this route.';
+        nextMain.append(heading, paragraph);
+        document.querySelector('main').replaceWith(nextMain);
+      };
       const initialBulkCount = Number(new URLSearchParams(location.search).get('bulk') ?? 0);
       if (Number.isInteger(initialBulkCount) && initialBulkCount > 0 && initialBulkCount <= 2200) {
         window.addBulkText(initialBulkCount);
       }
       const hydrationDelay = Number(new URLSearchParams(location.search).get('hydrateDelay') ?? 0);
       if (Number.isInteger(hydrationDelay) && hydrationDelay > 0 && hydrationDelay <= 5000) {
-        const initialMainMarkup = document.querySelector('main').innerHTML;
         window.setTimeout(() => {
           const currentMain = document.querySelector('main');
           const hydratedMain = document.createElement('main');
-          hydratedMain.innerHTML = initialMainMarkup;
+          hydratedMain.innerHTML = fixtureInitialMainMarkup;
           hydratedMain.dataset.hydrated = 'true';
           currentMain.replaceWith(hydratedMain);
         }, hydrationDelay);

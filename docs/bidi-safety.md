@@ -40,3 +40,5 @@ No critical identifier is visually reordered ambiguously; source/translation con
 ## Milestone 1 implementation status
 
 Popup content and both comparison documents use content-boundary direction; comparison text uses `unicode-bidi: plaintext` and logical layout without changing stored strings or host ancestors. Managed Chromium covers English to Persian, Persian to English, Arabic with Arabic numerals, Hebrew with a URL, technical model numbers, Persian digits, lists, table cells, buttons, original/translated switching, copy-tab application, light/dark themes, 200% zoom, and narrow stacked comparison. Clipboard equality, screen-reader order, 400% zoom, high contrast, broader forms, and branded Chrome remain manual release evidence.
+
+Milestone 2 recovery messages use `dir="auto"` and never transform stored strings. Reconstruction restores the existing translated text and current DOM originals byte-for-byte, so mixed-direction identifiers, URLs, numbers, tables, and lists follow the established M1 BiDi boundaries. The existing managed Chromium BiDi matrix remains passing; no new string-reversal or physical-direction CSS was added.

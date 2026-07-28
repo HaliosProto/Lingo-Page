@@ -2,7 +2,7 @@
 
 Status: CURRENT
 
-Last approved sequence: 2026-07-18
+Last approved sequence: 2026-07-28
 
 This is the sole authority for milestone order. The browser extension must be commercially launch-ready before desktop or mobile product implementation begins. Work advances one approved milestone at a time; planning does not authorize implementation.
 
@@ -11,8 +11,8 @@ This is the sole authority for milestone order. The browser extension must be co
 | Milestone | Outcome                                                          | Status    | Hard dependency                                             |
 | --------- | ---------------------------------------------------------------- | --------- | ----------------------------------------------------------- |
 | M1        | Durable translation sessions and comparison                      | COMPLETED | Accepted Milestone 1 specification and evidence             |
-| M1.5      | Repository cleanup, roadmap realignment, and frontend foundation | ACTIVE    | M1 acceptance fixes merged to `main`                        |
-| M2        | Reliability, lifecycle resilience, and performance               | PLANNED   | M1.5 accepted                                               |
+| M1.5      | Repository cleanup, roadmap realignment, and frontend foundation | COMPLETED | M1 acceptance fixes merged to `main`                        |
+| M2        | Reliability, lifecycle resilience, and performance               | ACTIVE    | M1.5 accepted                                               |
 | M3        | Translation quality, context, and terminology                    | PLANNED   | M2 reliability baseline                                     |
 | M4        | Finished extension frontend and user experience                  | PLANNED   | M2 and M3 contracts                                         |
 | M5        | Advanced browser-extension capabilities                          | PLANNED   | M4 extension UX                                             |
@@ -34,7 +34,7 @@ The accepted contract and dated evidence are in `docs/milestones/milestone-1-spe
 
 ## M1.5 — Repository cleanup, roadmap realignment, and frontend foundation
 
-Status: ACTIVE.
+Status: COMPLETED and merged to `main`.
 
 - Establish one canonical document hierarchy and a searchable documentation index.
 - Keep task state in Beads and concise operational links in `TASKS.md`.
@@ -47,11 +47,14 @@ M1.5 must not begin M2 features, accounts, payments, deployment, publication, de
 
 ## M2 — Reliability, lifecycle resilience, and performance
 
-- Browser restart and extension service-worker restart recovery.
-- Page reload reconstruction and sleep/wake recovery.
-- Complex SPA navigation, history transitions, infinite scroll, and mutation storms.
-- Large-page performance, viewport-aware work, adaptive provider batching, and memory-leak profiling.
-- Partial-response recovery, provider backoff/resilience, cancellation, offline, and degraded states.
+Status: ACTIVE on `milestone/02-reliability-lifecycle-performance`.
+
+- Implemented a versioned, 30-minute, session-keyed recovery record containing origin/navigation/translation identities, claim state, fingerprints, and translated reuse values but no raw source text, full URL, or page HTML.
+- Added zero-provider-call reload reconstruction and safe restored-tab reattachment across changed numeric tab IDs using current-origin permission, Chrome restoration evidence, unique-candidate checks, and atomic claims; the old branded-Chrome build failed and the corrected build awaits owner Tests A-E.
+- Added worker-map reconstruction, duplicate-attempt coordination, navigation generations, and stale-route rejection; cancelled or ended work never reattaches automatically.
+- Added compatible root-replacement rebinding and a generation-aware 256-root mutation backlog with bounded 48-root/8 ms slices.
+- Retained adaptive partial-response recovery and added explicit operation/batch/attempt/generation identity plus offline/backend recovery states.
+- Added 68 deterministic lifecycle cases and managed Chromium reload/hydration/mutation/SPA evidence; final security, packaging, and manual-browser evidence remain the closure gate.
 
 Acceptance requires bounded performance evidence, stale-session rejection, exact restore safety, lifecycle recovery tests, and no privacy regression.
 

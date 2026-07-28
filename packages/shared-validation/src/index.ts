@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import { CONTRACT_VERSION, TRANSLATION_SESSION_VERSION } from '@translation/shared-types';
+import {
+  CONTRACT_VERSION,
+  TRANSLATION_RECOVERY_VERSION,
+  TRANSLATION_SESSION_VERSION,
+} from '@translation/shared-types';
 
 export const requestIdSchema = z.string().regex(/^req_[a-zA-Z0-9_-]{8,96}$/);
 export const sessionIdSchema = z.string().regex(/^session_[a-zA-Z0-9_-]{8,96}$/);
@@ -193,6 +197,19 @@ export const translationSegmentSchema = z.object({
 export const translationRequestSchema = z.object({
   requestId: requestIdSchema,
   sessionId: sessionIdSchema,
+  operationId: z
+    .string()
+    .regex(/^op_[a-f0-9]{32}$/u)
+    .optional(),
+  batchId: z
+    .string()
+    .regex(/^batch_[a-f0-9]{32}$/u)
+    .optional(),
+  attemptId: z
+    .string()
+    .regex(/^attempt_[a-f0-9]{32}$/u)
+    .optional(),
+  navigationGeneration: z.number().int().nonnegative().max(1_000_000).optional(),
   providerId: providerIdSchema.optional(),
   modelId: modelIdSchema.optional(),
   sourceLanguage: languageCodeSchema.optional(),
@@ -367,6 +384,8 @@ const translationFailureMetadataSchema = z.object({
       'authentication',
       'quota',
       'provider-refusal',
+      'offline',
+      'backend-unavailable',
       'retry-exhaustion',
     ])
     .optional(),
@@ -467,6 +486,21 @@ export const translationProgressSchema = z.object({
     .optional(),
   translatedCopy: translatedCopyApplicationSummarySchema.optional(),
   pageDiverged: z.boolean().optional(),
+  recoveryState: z
+    .enum([
+      'recovering',
+      'recovered',
+      'expired',
+      'stale',
+      'incompatible',
+      'offline',
+      'backend-unavailable',
+    ])
+    .optional(),
+  recoveryMessage: z.string().max(300).optional(),
+  processedSegments: z.number().int().nonnegative().max(5_000).optional(),
+  deferredSegments: z.number().int().nonnegative().max(5_000).optional(),
+  safetyLimit: z.number().int().positive().max(5_000).optional(),
 });
 
 const translationDisplayModeSchema = z.enum(['original', 'translated']);
@@ -651,6 +685,104 @@ export const translationSessionBundleSchema = z.object({
   comparisonSnapshot: comparisonSnapshotSchema,
 });
 
+export const translationRecoveryRecordSchema = z.object({
+  version: z.literal(TRANSLATION_RECOVERY_VERSION),
+  sourceTabId: z.number().int().nonnegative(),
+  frameId: z.literal(0),
+  sessionId: sessionIdSchema,
+  operationId: z.string().regex(/^op_[a-f0-9]{32}$/u),
+  normalizedOrigin: z
+    .string()
+    .url()
+    .max(2_048)
+    .refine((value) => {
+      try {
+        const parsed = new URL(value);
+        return /^https?:$/u.test(parsed.protocol) && parsed.origin === value;
+      } catch {
+        return false;
+      }
+    }),
+  originIdentity: z.string().regex(/^[a-f0-9]{64}$/u),
+  navigationIdentity: z.string().regex(/^[a-f0-9]{64}$/u),
+  translationIdentity: z.string().regex(/^[a-f0-9]{64}$/u),
+  navigationGeneration: z.number().int().nonnegative().max(1_000_000),
+  pageFingerprint: z.string().min(4).max(160),
+  sourceLanguage: z.union([z.literal('auto'), languageCodeSchema]),
+  targetLanguage: languageCodeSchema,
+  providerId: providerIdSchema,
+  modelId: modelIdSchema,
+  createdAt: z.number().int().nonnegative(),
+  updatedAt: z.number().int().nonnegative(),
+  expiresAt: z.number().int().nonnegative(),
+  retryDeadlineAt: z.number().int().nonnegative().optional(),
+  displayMode: z.enum(['original', 'translated', 'mixed-partial']),
+  lifecycle: z.enum([
+    'active',
+    'translating',
+    'partial',
+    'complete',
+    'stale',
+    'ended',
+    'invalidated',
+  ]),
+  partial: z.boolean(),
+  cancelled: z.boolean(),
+  restartRecoveryEnabled: z.boolean(),
+  claim: z
+    .object({
+      state: z.enum(['owned', 'orphaned', 'claiming']),
+      ownerTabId: z.number().int().nonnegative().optional(),
+      browserInstanceId: z.string().regex(/^[a-f0-9]{32}$/u),
+      claimId: z
+        .string()
+        .regex(/^claim_[a-f0-9]{32}$/u)
+        .optional(),
+      reason: z
+        .enum(['window-closing', 'tab-closed', 'browser-restart', 'tab-replaced'])
+        .optional(),
+      detachedAt: z.number().int().nonnegative().optional(),
+      claimStartedAt: z.number().int().nonnegative().optional(),
+      claimExpiresAt: z.number().int().nonnegative().optional(),
+    })
+    .superRefine((claim, context) => {
+      if (claim.state === 'owned' && claim.ownerTabId === undefined) {
+        context.addIssue({
+          code: 'custom',
+          path: ['ownerTabId'],
+          message: 'Owned recovery claims require a tab owner.',
+        });
+      }
+      if (
+        claim.state === 'claiming' &&
+        (claim.ownerTabId === undefined ||
+          claim.claimId === undefined ||
+          claim.claimStartedAt === undefined ||
+          claim.claimExpiresAt === undefined ||
+          claim.claimExpiresAt <= claim.claimStartedAt)
+      ) {
+        context.addIssue({
+          code: 'custom',
+          message: 'In-flight recovery claims require a bounded claim identity and owner.',
+        });
+      }
+    }),
+  progress: translationProgressSchema,
+  completedSegmentIds: z.array(sessionSegmentIdSchema).max(2_500),
+  segments: z
+    .array(
+      z.object({
+        id: sessionSegmentIdSchema,
+        sourceFingerprint: z.string().min(2).max(120),
+        structuralFingerprint: z.string().min(2).max(300),
+        translatedText: z.string().max(16_000).optional(),
+        elementRole: z.string().max(100).optional(),
+        status: z.enum(['pending', 'translated', 'failed', 'changed', 'uncertain', 'removed']),
+      }),
+    )
+    .max(2_500),
+});
+
 export const translatedCopyHandoffRecordSchema = z.object({
   version: z.literal(1),
   token: translatedCopyTokenSchema,
@@ -742,6 +874,7 @@ const translateCommandPayloadSchema = z.object({
   glossaryVersion: z.number().int().nonnegative(),
   glossary: z.array(glossaryEntrySchema).max(500),
   autoTranslateDynamicContent: z.boolean(),
+  restartRecoveryEnabled: z.boolean().default(false),
 });
 
 export const extensionRequestSchema = z.discriminatedUnion('type', [
@@ -897,7 +1030,10 @@ export const extensionRequestSchema = z.discriminatedUnion('type', [
   }),
   messageBaseSchema.extend({
     type: z.literal('REPORT_TRANSLATION_PROGRESS'),
-    payload: z.object({ progress: translationProgressSchema }),
+    payload: z.object({
+      progress: translationProgressSchema,
+      recovery: translationRecoveryRecordSchema.optional(),
+    }),
   }),
   messageBaseSchema.extend({
     type: z.literal('TRANSLATE_SELECTION'),
@@ -957,6 +1093,10 @@ export const contentRequestSchema = z.discriminatedUnion('type', [
   messageBaseSchema.extend({
     type: z.literal('IMPORT_SESSION_BUNDLE'),
     payload: z.object({ bundle: translationSessionBundleSchema }),
+  }),
+  messageBaseSchema.extend({
+    type: z.literal('IMPORT_RECOVERY_RECORD'),
+    payload: z.object({ recovery: translationRecoveryRecordSchema }),
   }),
   messageBaseSchema.extend({ type: z.literal('GET_TRANSLATION_PROGRESS'), payload: z.object({}) }),
   messageBaseSchema.extend({

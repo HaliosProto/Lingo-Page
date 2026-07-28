@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — Milestone 2
+
+- Added privacy-minimized, versioned, bounded active-session recovery and zero-call reload reconstruction.
+- Fixed browser-restart recovery so a genuine Chrome-restored page can atomically reclaim an unexpired compatible session even when its numeric tab ID changes; same-URL manual/ambiguous tabs fail closed.
+- Added direct-gesture current-origin permission for automatic restart reconstruction, browser-instance/recently-closed signals, expiry alarms, and zero-call cached DOM reconciliation.
+- Added operation/batch/attempt/navigation-generation identities, in-process duplicate-attempt reuse, and conservative stale-route rejection.
+- Added compatible hydration rebinding, mutation batching/backpressure, safety-ceiling metrics, offline/backend recovery states, and cleanup for expiry, navigation, tab close, privacy mode, and clear-data.
+- Added six lifecycle ADRs, the 68-case baseline plus restored-tab/atomic-claim cases, and managed Chromium lifecycle/performance/restored-tab coverage.
+
 ## Unreleased
 
 ### Milestone 1.5 repository and frontend foundation - 2026-07-18

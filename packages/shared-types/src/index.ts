@@ -74,6 +74,7 @@ export type TranslationStatus =
   | 'error';
 
 export const TRANSLATION_SESSION_VERSION = 2 as const;
+export const TRANSLATION_RECOVERY_VERSION = 2 as const;
 
 export type TranslationDisplayMode = 'original' | 'translated' | 'mixed-partial';
 export type TranslationSessionLifecycle =
@@ -253,6 +254,66 @@ export type TranslationSessionBundle = {
   comparisonSnapshot: TranslationComparisonSnapshot;
 };
 
+export type TranslationRecoveryState =
+  | 'recovering'
+  | 'recovered'
+  | 'expired'
+  | 'stale'
+  | 'incompatible'
+  | 'offline'
+  | 'backend-unavailable';
+
+export type TranslationRecoverySegment = {
+  id: string;
+  sourceFingerprint: string;
+  structuralFingerprint: string;
+  translatedText?: string;
+  elementRole?: string;
+  status: TranslationSegmentStatus;
+};
+
+export type TranslationRecoveryClaim = {
+  state: 'owned' | 'orphaned' | 'claiming';
+  ownerTabId?: number;
+  browserInstanceId: string;
+  claimId?: string;
+  reason?: 'window-closing' | 'tab-closed' | 'browser-restart' | 'tab-replaced';
+  detachedAt?: number;
+  claimStartedAt?: number;
+  claimExpiresAt?: number;
+};
+
+export type TranslationRecoveryRecord = {
+  version: typeof TRANSLATION_RECOVERY_VERSION;
+  sourceTabId: number;
+  frameId: 0;
+  sessionId: string;
+  operationId: string;
+  normalizedOrigin: string;
+  originIdentity: string;
+  navigationIdentity: string;
+  translationIdentity: string;
+  navigationGeneration: number;
+  pageFingerprint: string;
+  sourceLanguage: string;
+  targetLanguage: string;
+  providerId: ProviderId;
+  modelId: string;
+  createdAt: number;
+  updatedAt: number;
+  expiresAt: number;
+  retryDeadlineAt?: number;
+  displayMode: TranslationDisplayMode;
+  lifecycle: TranslationSessionLifecycle;
+  partial: boolean;
+  cancelled: boolean;
+  restartRecoveryEnabled: boolean;
+  claim: TranslationRecoveryClaim;
+  progress: TranslationProgress;
+  completedSegmentIds: string[];
+  segments: TranslationRecoverySegment[];
+};
+
 export type TranslationFailureReason =
   | 'LOCAL_RATE_LIMIT'
   | 'UPSTREAM_RATE_LIMIT'
@@ -292,6 +353,8 @@ export type TranslationFailureMetadata = {
     | 'authentication'
     | 'quota'
     | 'provider-refusal'
+    | 'offline'
+    | 'backend-unavailable'
     | 'retry-exhaustion';
   requestedCount?: number;
   returnedValidCount?: number;
@@ -367,6 +430,10 @@ export type TranslationSegment = {
 export type TranslationRequest = {
   requestId: string;
   sessionId: string;
+  operationId?: string;
+  batchId?: string;
+  attemptId?: string;
+  navigationGeneration?: number;
   providerId?: ProviderId;
   modelId?: string;
   sourceLanguage?: string;
@@ -448,6 +515,11 @@ export type TranslationProgress = {
   changeScan?: TranslationChangeScanResult;
   translatedCopy?: TranslatedCopyApplicationSummary;
   pageDiverged?: boolean;
+  recoveryState?: TranslationRecoveryState;
+  recoveryMessage?: string;
+  processedSegments?: number;
+  deferredSegments?: number;
+  safetyLimit?: number;
 };
 
 export type LanguageDetectionResult = {

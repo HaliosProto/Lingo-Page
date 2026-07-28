@@ -26,5 +26,47 @@ Run `pnpm local:test`, load `artifacts/translation-extension-local-rc/extension`
 - [ ] Stopping the backend produces a clear unavailable state; restarting permits retry.
 - [ ] `pnpm verify` and `pnpm test:e2e` pass; managed Chromium and branded Chrome results are recorded separately.
 - [ ] Source, Git history, production bundle, source maps, logs, env files, and staged RC contain no provider key.
+- [ ] Reload a completed and partial translated page; confirm confident text is restored, changed/uncertain text remains original, and the network shows zero reconstruction provider calls.
+- [ ] Suspend/restart the extension worker where Chrome tooling permits; confirm popup state reconstructs and no duplicate tab or provider attempt appears.
+- [ ] Exercise SPA navigation, root hydration, infinite-scroll/mutation bursts, offline/reconnect, Retry-After, cancellation, expiry, tab close, and privacy-mode cleanup.
+- [ ] Confirm required permissions are limited to `activeTab`, `alarms`, `contextMenus`, `scripting`, `sessions`, and `storage`; there is no required `<all_urls>`; recovery storage contains no raw source text, HTML, title, full URL, form value, credential, or provider body.
+
+## Milestone 2 browser-restart acceptance retest
+
+Load the unpacked production extension from `D:\Chat GPT Projects\Translation Extension + App - M2\apps\extension\.output\chrome-mv3`. Use a normal non-sensitive HTTP(S) page and approve only that current origin when Translate explains restart recovery. For each test record Chrome version, extension commit, build path, time, whether the backend was running, provider-call count/delta, result, visible status, and any console error.
+
+### Test A — Same-tab reload
+
+1. Translate the page.
+2. Press Ctrl+R.
+3. Confirm cached translated state restores and Original/Translated switching works.
+4. Confirm no new full translation or provider request starts.
+
+### Test B — Browser restart with Continue where you left off
+
+1. Translate the page and do not click End session.
+2. Close Chrome completely with the translated tab open.
+3. Reopen Chrome with Continue where you left off.
+4. Confirm the restored page recovers cached translations, changed/uncertain sections remain original, and provider-call delta is zero.
+
+### Test C — Recently closed tab
+
+1. Translate the page and do not click End session.
+2. Close the tab.
+3. Restore it promptly with Ctrl+Shift+T.
+4. Confirm a new tab ID can own the recovered session, Original/Translated switching works, and provider-call delta is zero.
+
+### Test D — Manual History safety
+
+1. Keep one translated page/session active.
+2. Open the same URL manually from History, a pasted address, or a normal second tab.
+3. Confirm the new tab remains original and does not steal or inherit the active translation.
+
+### Test E — Competing candidates
+
+1. Create two otherwise compatible restore candidates for one orphaned session.
+2. Confirm at most one can claim it; if Chrome evidence is ambiguous, both must remain original.
+
+The previous branded-Chrome restart/Ctrl+Shift+T result at `fa2135b` is **FAIL**. Do not mark branded-Chrome acceptance passed until the owner completes and reports Tests A-E on the corrected commit.
 
 Record any failure with the exact step, expected result, actual result, browser/channel, extension version, and the diagnostics file if safe to share. Do not attach page text, full URLs, cookies, form values, or secrets.

@@ -22,3 +22,5 @@ The saved `reducedMotion` setting now applies a runtime attribute to popup, Opti
 ## Test ownership
 
 Automated checks catch semantic and regression failures. Keyboard, zoom, contrast, screen reader, wording comprehension, and direction require manual evidence. Any exception needs a documented user impact, workaround, owner, and target milestone.
+
+Milestone 2 recovery status is a semantic `aria-live="polite"` region with plain-language headings and exact remaining counts. Existing session controls remain keyboard-operable and do not move focus when the popup refreshes. Managed Chromium covers the compact popup and existing 200% zoom/reduced-motion regressions; formal screen-reader, high-contrast, and branded-Chrome evidence remains manual.

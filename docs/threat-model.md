@@ -57,3 +57,16 @@
 - Any remote provider may see submitted text; provider terms and regional routing remain product decisions.
 - Web pages can replace DOM nodes after translation; restoration is best-effort and must avoid corrupting new content.
 - Cross-origin iframes and canvas/image text cannot be fully handled by a normal content script.
+
+## Milestone 2 lifecycle threats
+
+| Threat                                  | Mitigation                                                                                                                | Residual risk                                                                                               |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Cross-tab recovery leakage              | top frame; origin/navigation/translation/page identities; Chrome restore signal; unique-candidate check; serialized claim | identical same-URL closed entries can make recovery ambiguous, so the extension rejects rather than guesses |
+| Persisted page content exposure         | no raw source/original text, HTML, title, form data, or full URL; 30-minute/2 MiB bounds; privacy-mode deletion           | translated values can still be sensitive and exist during the active recovery window                        |
+| Stale response after SPA navigation     | navigation generations, URL/content identity checks, cancellation, obsolete mutation dropping                             | conservative invalidation can lose otherwise reusable mappings                                              |
+| Worker replay or duplicate popup action | validated storage reconstruction and in-process attempt-promise deduplication                                             | ambiguous in-flight backend work is paused instead of durably deduplicated across worker death              |
+| Mutation-storm denial of service        | 256-root queue, 48-root/8 ms slices, deduplication, yielding, generation cleanup                                          | global rescans still cost more on pathological pages up to the hard ceiling                                 |
+| Corrupt/oversized recovery storage      | runtime schema, version, byte, segment, record-count, expiry, and terminal checks                                         | storage implementation failure yields no recovery rather than unsafe partial trust                          |
+| Double restored-tab claim               | persisted claiming state, random claim ID, single-worker mutex, write/read verification, 15-second claim expiry           | Chrome storage lacks compare-and-swap; one MV3 worker per profile is the concurrency assumption             |
+| Stale page injection permission         | exact current-origin user gesture, pre-injection check, `permissions.onRemoved` cleanup                                   | denial disables automatic restart recovery for that session                                                 |
