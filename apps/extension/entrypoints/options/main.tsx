@@ -7,8 +7,11 @@ import type {
   GlossaryEntry,
   HealthResponse,
   ProviderDefinition,
+  TranslationPolicy,
 } from '@translation/shared-types';
+import { DEFAULT_TRANSLATION_POLICY } from '@translation/shared-types';
 import { extensionResponseSchema, type ExtensionResponse } from '@translation/shared-validation';
+import { createTranslationPolicyFingerprint } from '@translation/translation-core';
 import { Button, EmptyState, FormField } from '@translation/ui';
 import { ErrorBoundary } from '../../src/ui/ErrorBoundary';
 import '../../src/ui/global.css';
@@ -44,6 +47,8 @@ function OptionsApp() {
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [exclusions, setExclusions] = useState('');
   const [saved, setSaved] = useState(false);
+  const [savedPolicyChanged, setSavedPolicyChanged] = useState(false);
+  const [loadedPolicyFingerprint, setLoadedPolicyFingerprint] = useState<string>();
   const [message, setMessage] = useState<string>();
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [providers, setProviders] = useState<ProviderDefinition[]>([]);
@@ -74,6 +79,11 @@ function OptionsApp() {
         if (settingsResponse.type === 'SETTINGS') {
           setSettings(settingsResponse.payload.settings);
           setExclusions(settingsResponse.payload.settings.domainExclusions.join('\n'));
+          setLoadedPolicyFingerprint(
+            createTranslationPolicyFingerprint(
+              settingsResponse.payload.settings.translationPolicy ?? DEFAULT_TRANSLATION_POLICY,
+            ),
+          );
         }
         if (healthResponse.type === 'API_HEALTH') setHealth(healthResponse.payload.health);
         if (providersResponse.type === 'PROVIDERS')
@@ -98,7 +108,23 @@ function OptionsApp() {
     setSettings((current) => ({ ...current, [key]: value }));
   }
 
+  function updatePolicy(policy: TranslationPolicy): void {
+    update('translationPolicy', policy);
+  }
+
   async function save(): Promise<void> {
+    const invalidGlossary = settings.glossary.find(
+      (entry) =>
+        !entry.sourceTerm.trim() ||
+        (!entry.preserve && !entry.preferredTranslation.trim()) ||
+        (entry.scope === 'site' && !entry.siteOrigin),
+    );
+    if (invalidGlossary) {
+      setMessage(
+        'Complete each glossary term and add an HTTPS or HTTP site origin when site scope is selected.',
+      );
+      return;
+    }
     const next: AppSettings = {
       ...settings,
       domainExclusions: exclusions
@@ -115,8 +141,15 @@ function OptionsApp() {
       payload: { settings: next },
     });
     if (response.type === 'SETTINGS') {
+      const nextPolicyFingerprint = createTranslationPolicyFingerprint(
+        response.payload.settings.translationPolicy ?? DEFAULT_TRANSLATION_POLICY,
+      );
       setSettings(response.payload.settings);
       setSaved(true);
+      setSavedPolicyChanged(
+        loadedPolicyFingerprint !== undefined && loadedPolicyFingerprint !== nextPolicyFingerprint,
+      );
+      setLoadedPolicyFingerprint(nextPolicyFingerprint);
       setMessage(undefined);
     } else if (response.type === 'MESSAGE_ERROR') setMessage(response.payload.message);
   }
@@ -188,6 +221,7 @@ function OptionsApp() {
     (provider) => provider.enabled && provider.configured,
   );
   const activeProvider = providers.find((provider) => provider.id === settings.providerId);
+  const policy = settings.translationPolicy ?? DEFAULT_TRANSLATION_POLICY;
 
   return (
     <main className="settings-shell" dir="auto">
@@ -374,6 +408,181 @@ function OptionsApp() {
       <section className="settings-card">
         <div className="section-heading">
           <div>
+            <h2>Translation preferences</h2>
+            <p>Defaults are natural and meaning-preserving. Add a brief only when you need it.</p>
+          </div>
+          <span className="version-pill">Policy v{policy.schemaVersion}</span>
+        </div>
+        <FormField
+          label="Translation brief"
+          hint={`${policy.customInstructions.length}/2000 characters. Page text cannot override this brief or the output contract.`}
+        >
+          <textarea
+            dir="auto"
+            maxLength={2000}
+            value={policy.customInstructions}
+            placeholder="For example: Keep industrial safety terms concise and use formal Persian."
+            onChange={(event) =>
+              updatePolicy({ ...policy, customInstructions: event.target.value })
+            }
+          />
+        </FormField>
+        <div className="two-column-fields">
+          <label>
+            Translation style
+            <select
+              value={policy.behavior.naturalness}
+              onChange={(event) =>
+                updatePolicy({
+                  ...policy,
+                  behavior: {
+                    ...policy.behavior,
+                    naturalness: event.target.value as TranslationPolicy['behavior']['naturalness'],
+                  },
+                })
+              }
+            >
+              <option value="natural">Natural</option>
+              <option value="neutral">Balanced</option>
+              <option value="literal">Closer to source</option>
+            </select>
+          </label>
+          <label>
+            Quality mode
+            <select
+              value={policy.quality.mode}
+              onChange={(event) =>
+                updatePolicy({
+                  ...policy,
+                  quality: {
+                    ...policy.quality,
+                    mode: event.target.value as TranslationPolicy['quality']['mode'],
+                  },
+                })
+              }
+            >
+              <option value="fast">Fast</option>
+              <option value="standard">Standard</option>
+              <option value="enhanced">Enhanced</option>
+            </select>
+          </label>
+        </div>
+        <details className="preference-disclosure">
+          <summary>Advanced language and review preferences</summary>
+          <div className="two-column-fields preference-grid">
+            <label>
+              Tone
+              <select
+                value={policy.style.tone}
+                onChange={(event) =>
+                  updatePolicy({
+                    ...policy,
+                    style: {
+                      ...policy.style,
+                      tone: event.target.value as TranslationPolicy['style']['tone'],
+                    },
+                  })
+                }
+              >
+                <option value="auto">Automatic</option>
+                <option value="neutral">Neutral</option>
+                <option value="formal">Formal</option>
+                <option value="casual">Casual</option>
+              </select>
+            </label>
+            <label>
+              Formality
+              <select
+                value={policy.style.formality}
+                onChange={(event) =>
+                  updatePolicy({
+                    ...policy,
+                    style: {
+                      ...policy.style,
+                      formality: event.target.value as TranslationPolicy['style']['formality'],
+                    },
+                  })
+                }
+              >
+                <option value="auto">Automatic</option>
+                <option value="default">Default</option>
+                <option value="more">More formal</option>
+                <option value="less">Less formal</option>
+              </select>
+            </label>
+            <label>
+              Content type
+              <select
+                value={policy.style.contentType}
+                onChange={(event) =>
+                  updatePolicy({
+                    ...policy,
+                    style: {
+                      ...policy.style,
+                      contentType: event.target.value as TranslationPolicy['style']['contentType'],
+                    },
+                  })
+                }
+              >
+                <option value="auto">Automatic</option>
+                <option value="general">General</option>
+                <option value="technical-documentation">Technical documentation</option>
+                <option value="news">News</option>
+                <option value="marketing">Marketing</option>
+                <option value="academic">Academic</option>
+              </select>
+            </label>
+            <label>
+              Audience
+              <select
+                value={policy.style.audience}
+                onChange={(event) =>
+                  updatePolicy({
+                    ...policy,
+                    style: {
+                      ...policy.style,
+                      audience: event.target.value as TranslationPolicy['style']['audience'],
+                    },
+                  })
+                }
+              >
+                <option value="auto">Automatic</option>
+                <option value="general">General</option>
+                <option value="expert">Expert</option>
+                <option value="children">Children</option>
+              </select>
+            </label>
+            <label>
+              Selective review
+              <select
+                value={policy.quality.selectiveReview}
+                onChange={(event) =>
+                  updatePolicy({
+                    ...policy,
+                    quality: {
+                      ...policy.quality,
+                      selectiveReview: event.target
+                        .value as TranslationPolicy['quality']['selectiveReview'],
+                    },
+                  })
+                }
+              >
+                <option value="automatic">Automatic for suspicious segments</option>
+                <option value="off">Off</option>
+                <option value="on-demand">On demand</option>
+              </select>
+            </label>
+          </div>
+          <p className="privacy-copy">
+            Automatic review can make one additional provider request, only for suspicious segments.
+            Clean batches are never sent twice.
+          </p>
+        </details>
+      </section>
+
+      <section className="settings-card">
+        <div className="section-heading">
+          <div>
             <h2>Personal glossary</h2>
             <p>Apply preferred terms or preserve names in translation requests.</p>
           </div>
@@ -388,12 +597,14 @@ function OptionsApp() {
           <div className="glossary-row" key={entry.id}>
             <input
               aria-label="Source term"
+              dir="auto"
               placeholder="Source term"
               value={entry.sourceTerm}
               onChange={(event) => patchGlossary(entry.id, { sourceTerm: event.target.value })}
             />
             <input
               aria-label="Preferred translation"
+              dir="auto"
               placeholder="Preferred translation"
               value={entry.preferredTranslation}
               disabled={entry.preserve}
@@ -409,6 +620,28 @@ function OptionsApp() {
               />{' '}
               Preserve
             </label>
+            <select
+              aria-label="Glossary scope"
+              value={entry.scope ?? 'global'}
+              onChange={(event) =>
+                patchGlossary(entry.id, {
+                  scope: event.target.value as GlossaryEntry['scope'],
+                  ...(event.target.value === 'site' ? {} : { siteOrigin: undefined }),
+                })
+              }
+            >
+              <option value="global">All sites</option>
+              <option value="site">One site</option>
+              <option value="session">Current session</option>
+            </select>
+            {entry.scope === 'site' && (
+              <input
+                aria-label="Site origin"
+                placeholder="https://example.com"
+                value={entry.siteOrigin ?? ''}
+                onChange={(event) => patchGlossary(entry.id, { siteOrigin: event.target.value })}
+              />
+            )}
             <Button
               variant="link"
               className="danger-text"
@@ -449,6 +682,8 @@ function OptionsApp() {
       {saved && (
         <p className="success-copy" role="status">
           Settings saved.
+          {savedPolicyChanged &&
+            ' Existing page translations keep their original policy; translate again to apply these changes.'}
         </p>
       )}
       {message && (

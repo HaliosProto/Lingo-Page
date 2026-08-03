@@ -2,12 +2,15 @@ import { browser } from 'wxt/browser';
 import {
   createSegmentId,
   createTextFingerprint,
+  createTranslationPolicyFingerprint,
   isLikelyTranslatableText,
   normalizeText,
+  updateTerminologyMemory,
 } from '@translation/translation-core';
 import type {
   GlossaryEntry,
   ProviderId,
+  TerminologyMemoryEntry,
   TranslationChangeScanResult,
   TranslationFailure,
   TranslationChangeSummary,
@@ -16,6 +19,8 @@ import type {
   TranslationComparisonSnapshot,
   TranslationDisplayMode,
   TranslationProgress,
+  TranslationPolicy,
+  TranslationRequest,
   TranslationRecoveryRecord,
   TranslationSegment,
   TranslationSessionBundle,
@@ -26,7 +31,11 @@ import type {
 } from '@translation/shared-types';
 import {
   CONTRACT_VERSION,
+  DEFAULT_TRANSLATION_POLICY,
   TRANSLATION_RECOVERY_VERSION,
+  TRANSLATION_OUTPUT_CONTRACT_VERSION,
+  TRANSLATION_PROMPT_TEMPLATE_VERSION,
+  TRANSLATION_REQUEST_VERSION,
   TRANSLATION_SESSION_VERSION,
 } from '@translation/shared-types';
 import {
@@ -74,6 +83,10 @@ type Session = {
   targetLanguage: string;
   glossaryVersion: number;
   glossary: GlossaryEntry[];
+  policy: TranslationPolicy;
+  policyFingerprint: string;
+  terminologyMemory: TerminologyMemoryEntry[];
+  qualityCandidateIds: string[];
   autoTranslateDynamicContent: boolean;
   restartRecoveryEnabled: boolean;
   navigationId: string;
@@ -231,6 +244,30 @@ export default defineUnlistedScript(() => {
   let translatedCopyToken: string | undefined;
   const mutationQueue = new MutationBackpressureQueue<Node>(0, MAX_MUTATION_BACKLOG);
 
+  function fallbackPolicy(sourceLanguage: string, targetLanguage: string): TranslationPolicy {
+    return {
+      ...DEFAULT_TRANSLATION_POLICY,
+      sourceLanguage,
+      targetLanguage,
+    };
+  }
+
+  function summarizePolicy(policy: TranslationPolicy): string {
+    const values = [
+      policy.behavior.naturalness === 'natural'
+        ? 'Natural translation'
+        : policy.behavior.naturalness === 'literal'
+          ? 'Closer to source'
+          : 'Balanced translation',
+      policy.style.tone !== 'auto' ? `${policy.style.tone} tone` : undefined,
+      policy.style.contentType !== 'auto' ? policy.style.contentType : undefined,
+      policy.customInstructions ? 'custom brief' : undefined,
+      policy.terminology.entries.length > 0 ? 'glossary' : undefined,
+      policy.quality.selectiveReview === 'automatic' ? 'selective review' : undefined,
+    ].filter(Boolean);
+    return values.join(' · ').slice(0, 300);
+  }
+
   function idleProgress(): TranslationProgress {
     return {
       status: 'idle',
@@ -293,6 +330,7 @@ export default defineUnlistedScript(() => {
         targetLanguage: session.targetLanguage,
         providerId: session.providerId,
         modelId: session.modelId,
+        policyFingerprint: session.policyFingerprint,
       }),
       navigationGeneration: session.navigationGeneration,
       pageFingerprint: createPageFingerprint(records),
@@ -300,6 +338,8 @@ export default defineUnlistedScript(() => {
       targetLanguage: session.targetLanguage,
       providerId: session.providerId,
       modelId: session.modelId,
+      policy: session.policy,
+      policyFingerprint: session.policyFingerprint,
       createdAt: session.createdAt,
       updatedAt: now,
       expiresAt: now + RECOVERY_RECORD_TTL_MS,
@@ -431,6 +471,51 @@ export default defineUnlistedScript(() => {
     return record;
   }
 
+  function enrichSegmentContext(): void {
+    const policy = currentSession?.policy ?? DEFAULT_TRANSLATION_POLICY;
+    // Records are inserted by the document-order TreeWalker. Keeping that order avoids an
+    // O(n log n) DOM-position sort on large pages; dynamic records retain mutation order.
+    const records = [...recordsByNode.values()].filter(
+      (record) => record.status !== 'removed' && record.node.isConnected,
+    );
+    const headings = policy.context.useSectionHeading
+      ? [...document.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')].filter(isVisible)
+      : [];
+    const headingPath: Array<string | undefined> = [];
+    let headingIndex = 0;
+    records.forEach((record, index) => {
+      while (headingIndex < headings.length) {
+        const heading = headings[headingIndex]!;
+        const precedesRecord =
+          heading === record.element ||
+          Boolean(
+            heading.compareDocumentPosition(record.element) & Node.DOCUMENT_POSITION_FOLLOWING,
+          );
+        if (!precedesRecord) break;
+        const level = Number(heading.tagName.slice(1)) - 1;
+        const value = heading.textContent?.replace(/\s+/gu, ' ').trim().slice(0, 200);
+        headingPath.length = Math.min(headingPath.length, level + 1);
+        if (value) headingPath[level] = value;
+        headingIndex += 1;
+      }
+      const boundedPath = headingPath.filter(Boolean).slice(-8).join(' > ').slice(0, 500);
+      const preceding = policy.context.useNearbySegments
+        ? records[index - 1]?.segment.text.slice(0, 240)
+        : undefined;
+      const following = policy.context.useNearbySegments
+        ? records[index + 1]?.segment.text.slice(0, 240)
+        : undefined;
+      record.segment = {
+        ...record.segment,
+        ...(boundedPath ? { context: boundedPath } : {}),
+        ...(preceding || following
+          ? { surroundingText: [preceding, following].filter(Boolean).join('\n').slice(0, 500) }
+          : {}),
+      };
+      recordsById.set(record.segment.id, record);
+    });
+  }
+
   function discover(root: Node = document.body): NodeRecord[] {
     const discovered: NodeRecord[] = [];
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -440,6 +525,12 @@ export default defineUnlistedScript(() => {
       if (record) discovered.push(record);
       node = walker.nextNode();
     }
+    if (
+      discovered.length > 0 &&
+      ((currentSession?.policy.context.useSectionHeading ?? true) ||
+        (currentSession?.policy.context.useNearbySegments ?? true))
+    )
+      enrichSegmentContext();
     return discovered;
   }
 
@@ -566,6 +657,7 @@ export default defineUnlistedScript(() => {
   function makeTranslationRequest(
     session: Session,
     segments: TranslationSegment[],
+    review?: TranslationRequest['review'],
   ): ContentRequest extends never ? never : unknown {
     const batchId = `batch_${crypto.randomUUID().replaceAll('-', '')}`;
     const attemptId = `attempt_${crypto.randomUUID().replaceAll('-', '')}`;
@@ -575,6 +667,7 @@ export default defineUnlistedScript(() => {
       type: 'TRANSLATE_SEGMENTS',
       payload: {
         request: {
+          schemaVersion: TRANSLATION_REQUEST_VERSION,
           requestId: `req_batch_${crypto.randomUUID().replaceAll('-', '')}`,
           sessionId: session.id,
           operationId: session.operationId,
@@ -589,6 +682,37 @@ export default defineUnlistedScript(() => {
           segments,
           glossaryVersion: String(session.glossaryVersion),
           glossary: session.glossary,
+          policy: session.policy,
+          policyFingerprint: session.policyFingerprint,
+          outputContractVersion: TRANSLATION_OUTPUT_CONTRACT_VERSION,
+          promptTemplateVersion: TRANSLATION_PROMPT_TEMPLATE_VERSION,
+          pageContext: {
+            ...(session.policy.context.usePageTitle && document.title
+              ? { title: document.title.replace(/\s+/gu, ' ').trim().slice(0, 300) }
+              : {}),
+            siteName: location.hostname.slice(0, 120),
+            siteOrigin: location.origin,
+            contentType: session.policy.style.contentType,
+            audience: session.policy.style.audience,
+            documentDirection:
+              getComputedStyle(document.documentElement).direction === 'rtl' ? 'rtl' : 'ltr',
+          },
+          ...(session.policy.context.useSectionHeading
+            ? {
+                sectionContext: {
+                  headingPath: (segments[0]?.context ?? '')
+                    .split(' > ')
+                    .filter(Boolean)
+                    .slice(0, 8),
+                  precedingContext: [],
+                  followingContext: [],
+                },
+              }
+            : {}),
+          ...(session.policy.context.useDocumentTerminologyMemory
+            ? { terminologyMemory: session.terminologyMemory }
+            : {}),
+          ...(review ? { review } : {}),
         },
       },
     };
@@ -757,6 +881,33 @@ export default defineUnlistedScript(() => {
             progress = {
               ...progress,
               detectedSourceLanguage: response.payload.response.detectedSourceLanguage,
+            };
+          }
+          const quality = response.payload.response.quality;
+          if (quality) {
+            session.qualityCandidateIds = [
+              ...new Set([
+                ...session.qualityCandidateIds,
+                ...quality.findings.map((finding) => finding.segmentId),
+              ]),
+            ].slice(0, 50);
+            const reviewFailed = response.payload.response.review?.decisions.some(
+              (decision) => decision.decision === 'unresolved',
+            );
+            progress = {
+              ...progress,
+              qualityFindingCount: (progress.qualityFindingCount ?? 0) + quality.findings.length,
+              translationProviderCalls:
+                (progress.translationProviderCalls ?? 0) + quality.translationProviderCalls,
+              reviewProviderCalls:
+                (progress.reviewProviderCalls ?? 0) + quality.reviewProviderCalls,
+              qualityState: reviewFailed
+                ? 'review-failed'
+                : quality.reviewProviderCalls > 0
+                  ? 'reviewed'
+                  : quality.findings.length > 0
+                    ? 'warning'
+                    : (progress.qualityState ?? 'clean'),
             };
           }
           return { ok: true as const, response: response.payload.response };
@@ -1303,11 +1454,15 @@ export default defineUnlistedScript(() => {
     targetLanguage: string;
     glossaryVersion: number;
     glossary: GlossaryEntry[];
+    policy?: TranslationPolicy;
+    policyFingerprint?: string;
     autoTranslateDynamicContent: boolean;
     restartRecoveryEnabled: boolean;
   }): Promise<void> {
     endSession(true);
     const now = Date.now();
+    const effectivePolicy =
+      payload.policy ?? fallbackPolicy(payload.sourceLanguage, payload.targetLanguage);
     const session: Session = {
       id: payload.sessionId,
       operationId: `op_${crypto.randomUUID().replaceAll('-', '')}`,
@@ -1318,6 +1473,21 @@ export default defineUnlistedScript(() => {
       targetLanguage: payload.targetLanguage,
       glossaryVersion: payload.glossaryVersion,
       glossary: payload.glossary,
+      policy: effectivePolicy,
+      policyFingerprint:
+        payload.policyFingerprint ?? createTranslationPolicyFingerprint(effectivePolicy),
+      terminologyMemory: updateTerminologyMemory(
+        [],
+        payload.glossary
+          .filter((entry) => entry.enabled)
+          .map((entry) => ({
+            sourceTerm: entry.sourceTerm,
+            translatedTerm: entry.preserve ? entry.sourceTerm : entry.preferredTranslation,
+            source: 'glossary' as const,
+          }))
+          .filter((entry) => entry.sourceTerm && entry.translatedTerm),
+      ),
+      qualityCandidateIds: [],
       autoTranslateDynamicContent: payload.autoTranslateDynamicContent,
       restartRecoveryEnabled: payload.restartRecoveryEnabled,
       navigationId: location.href,
@@ -1342,6 +1512,12 @@ export default defineUnlistedScript(() => {
       retryingSegments: 0,
       targetLanguage: session.targetLanguage,
       notices: collectContentNotices(),
+      policyFingerprint: session.policyFingerprint,
+      policySummary: summarizePolicy(session.policy),
+      qualityState: 'clean',
+      qualityFindingCount: 0,
+      translationProviderCalls: 0,
+      reviewProviderCalls: 0,
     };
     const records = discover();
     progress = {
@@ -1576,6 +1752,8 @@ export default defineUnlistedScript(() => {
       targetLanguage: session.targetLanguage,
       providerId: session.providerId,
       modelId: session.modelId,
+      policy: session.policy,
+      policyFingerprint: session.policyFingerprint,
       createdAt: session.createdAt,
       lastActivityAt: Date.now(),
       displayMode: session.displayMode,
@@ -1676,6 +1854,14 @@ export default defineUnlistedScript(() => {
       targetLanguage: bundle.targetLanguage,
       glossaryVersion: 0,
       glossary: [],
+      policy: bundle.policy ?? fallbackPolicy(bundle.sourceLanguage, bundle.targetLanguage),
+      policyFingerprint:
+        bundle.policyFingerprint ??
+        createTranslationPolicyFingerprint(
+          bundle.policy ?? fallbackPolicy(bundle.sourceLanguage, bundle.targetLanguage),
+        ),
+      terminologyMemory: [],
+      qualityCandidateIds: [],
       autoTranslateDynamicContent: false,
       restartRecoveryEnabled: false,
       navigationId: location.href,
@@ -1796,6 +1982,14 @@ export default defineUnlistedScript(() => {
       targetLanguage: recovery.targetLanguage,
       glossaryVersion: 0,
       glossary: [],
+      policy: recovery.policy ?? fallbackPolicy(recovery.sourceLanguage, recovery.targetLanguage),
+      policyFingerprint:
+        recovery.policyFingerprint ??
+        createTranslationPolicyFingerprint(
+          recovery.policy ?? fallbackPolicy(recovery.sourceLanguage, recovery.targetLanguage),
+        ),
+      terminologyMemory: [],
+      qualityCandidateIds: [],
       autoTranslateDynamicContent: false,
       restartRecoveryEnabled: recovery.restartRecoveryEnabled,
       navigationId: location.href,
@@ -1894,6 +2088,62 @@ export default defineUnlistedScript(() => {
           ? cause.failure
           : { reason: 'UNKNOWN', metadata: { providerId: session.providerId } },
       );
+    }
+  }
+
+  async function reviewSuspiciousTranslations(session: Session): Promise<void> {
+    const records = session.qualityCandidateIds
+      .map((id) => recordsById.get(id))
+      .filter((record): record is NodeRecord => Boolean(record?.translatedText))
+      .slice(0, 50);
+    if (records.length === 0) return;
+    const previousStatus = progress.status;
+    progress = { ...progress, status: 'translating' };
+    try {
+      const rawResponse = await browser.runtime.sendMessage(
+        makeTranslationRequest(
+          session,
+          records.map((record) => record.segment),
+          {
+            mode: 'on-demand',
+            segmentIds: records.map((record) => record.segment.id),
+            pass: 1,
+            candidates: records.map((record) => ({
+              id: record.segment.id,
+              translatedText: normalizeText(record.translatedText!).normalized,
+            })),
+          },
+        ),
+      );
+      const response = extensionResponseSchema.parse(rawResponse);
+      if (response.type !== 'TRANSLATION_RESULT') {
+        progress = { ...progress, status: previousStatus, qualityState: 'review-failed' };
+        return;
+      }
+      for (const translation of response.payload.response.translations) {
+        const record = recordsById.get(translation.id);
+        if (!record) continue;
+        record.translatedText = `${record.leadingWhitespace}${translation.translatedText}${record.trailingWhitespace}`;
+        record.status = 'translated';
+        if (session.displayMode !== 'original') writeRecord(record, record.translatedText);
+      }
+      const quality = response.payload.response.quality;
+      session.qualityCandidateIds = [
+        ...new Set((quality?.findings ?? []).map((finding) => finding.segmentId)),
+      ].slice(0, 50);
+      progress = {
+        ...progress,
+        status: previousStatus,
+        qualityState: session.qualityCandidateIds.length > 0 ? 'warning' : 'reviewed',
+        qualityFindingCount: session.qualityCandidateIds.length,
+        translationProviderCalls:
+          (progress.translationProviderCalls ?? 0) + (quality?.translationProviderCalls ?? 0),
+        reviewProviderCalls:
+          (progress.reviewProviderCalls ?? 0) + (quality?.reviewProviderCalls ?? 1),
+      };
+      reportRecoverySoon();
+    } catch {
+      progress = { ...progress, status: previousStatus, qualityState: 'review-failed' };
     }
   }
 
@@ -2412,6 +2662,13 @@ export default defineUnlistedScript(() => {
         return refreshTranslation(currentSession, parsed.data.payload.scope).then(() =>
           progressResponse(requestId),
         );
+      case 'REVIEW_SUSPICIOUS_TRANSLATIONS':
+        if (currentSession?.id !== parsed.data.payload.sessionId) {
+          return Promise.resolve(
+            errorResponse(requestId, 'The translation session is unavailable.'),
+          );
+        }
+        return reviewSuspiciousTranslations(currentSession).then(() => progressResponse(requestId));
       case 'EXPORT_SESSION_BUNDLE': {
         const bundle = exportSessionBundle(parsed.data.payload.sessionId);
         if (!bundle) {

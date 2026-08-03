@@ -70,6 +70,7 @@ export async function recoveryTranslationIdentity(input: {
   targetLanguage: string;
   providerId: string;
   modelId: string;
+  policyFingerprint?: string;
 }): Promise<string> {
   return await sha256Identity(
     [
@@ -79,6 +80,7 @@ export async function recoveryTranslationIdentity(input: {
       input.targetLanguage,
       input.providerId,
       input.modelId,
+      input.policyFingerprint ?? '',
     ].join('\u001f'),
   );
 }
@@ -230,6 +232,7 @@ export class RecoveryClaimCoordinator {
           targetLanguage: current.targetLanguage,
           providerId: current.providerId,
           modelId: current.modelId,
+          policyFingerprint: current.policyFingerprint,
         }))
       ) {
         return { state: 'ineligible' };

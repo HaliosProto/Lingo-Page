@@ -28,6 +28,11 @@ body {
   background: var(--translation-background);
 }
 
+body:has(.settings-shell) {
+  min-width: 0;
+  max-height: none;
+}
+
 button,
 input,
 select,
@@ -274,7 +279,8 @@ h2 {
 .settings-shell {
   display: grid;
   gap: 18px;
-  width: min(680px, 100%);
+  width: auto;
+  max-width: 680px;
   margin: 0 auto;
   padding: 40px 24px;
 }
@@ -295,6 +301,8 @@ h2 {
 }
 
 select {
+  width: 100%;
+  min-width: 0;
   min-height: 42px;
   padding: 0 12px;
   border: 1px solid var(--translation-border);
@@ -448,6 +456,28 @@ textarea {
   border-radius: var(--translation-radius-small);
   background: color-mix(in srgb, var(--translation-accent) 9%, var(--translation-surface));
   font-size: 11px;
+}
+
+.policy-summary,
+.quality-summary {
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+  border-radius: var(--translation-radius-small);
+  background: var(--translation-surface-subtle);
+  font-size: 11px;
+}
+
+.policy-summary span,
+.quality-summary span {
+  color: var(--translation-muted);
+  line-height: 1.4;
+}
+
+.quality-summary[data-quality-state='warning'],
+.quality-summary[data-quality-state='review-failed'] {
+  border: 1px solid color-mix(in srgb, var(--translation-warning) 40%, transparent);
+  background: var(--translation-warning-surface);
 }
 
 .change-summary span {
@@ -634,10 +664,28 @@ progress {
 
 .glossary-row {
   display: grid;
-  grid-template-columns: 1fr 1fr auto auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto auto;
   padding: 10px;
   border: 1px solid var(--translation-border);
   border-radius: var(--translation-radius-small);
+}
+
+.preference-disclosure {
+  padding: 12px;
+  border: 1px solid var(--translation-border);
+  border-radius: var(--translation-radius-small);
+  background: var(--translation-surface-subtle);
+}
+
+.preference-disclosure summary {
+  cursor: pointer;
+  color: var(--translation-ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.preference-grid {
+  margin-top: 12px;
 }
 
 .inline-check {
@@ -671,6 +719,15 @@ progress {
   .settings-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .section-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .section-heading .compact-button {
+    width: 100%;
   }
 
   .settings-actions .ui-button {

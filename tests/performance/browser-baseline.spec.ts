@@ -15,6 +15,8 @@ type Progress = {
   discoveredSegments: number;
   translatedSegments: number;
   failedSegments: number;
+  translationProviderCalls?: number;
+  reviewProviderCalls?: number;
 };
 
 type Metric = {
@@ -30,6 +32,8 @@ type Metric = {
   translatedSwitchMs: number;
   repeatedSwitchMs: number;
   switchProviderCalls: number;
+  translationProviderCalls: number;
+  reviewProviderCalls: number;
   longTaskCount: number;
   longestTaskMs: number;
   heapBeforeBytes?: number;
@@ -91,6 +95,7 @@ test('records deterministic browser translation baselines', async () => {
       { name: 'medium', nodes: 400, targetLanguage: 'de' },
       { name: 'large', nodes: 1_000, targetLanguage: 'es' },
       { name: 'very-large', nodes: 2_200, targetLanguage: 'fr' },
+      { name: 'ceiling', nodes: 2_500, targetLanguage: 'fa' },
     ]) {
       const page = await context.newPage();
       await page.goto('http://127.0.0.1:4173/fixture.html');
@@ -178,7 +183,15 @@ test('records deterministic browser translation baselines', async () => {
       })) as { payload: { progress: Progress } };
       expect(progressResult.payload.progress.status).toBe('completed');
       expect(progressResult.payload.progress.failedSegments).toBe(0);
-      await expect(page.locator('#rtl-baseline')).toContainText(`[${fixture.targetLanguage}]`);
+      if (fixture.nodes < 2_500) {
+        await expect(page.locator('#rtl-baseline')).toContainText(`[${fixture.targetLanguage}]`);
+      } else {
+        expect(progressResult.payload.progress.discoveredSegments).toBe(2_500);
+        await expect(page.locator('#rtl-baseline')).not.toContainText(
+          `[${fixture.targetLanguage}]`,
+        );
+        await expect(page.locator('#bulk-2499')).toHaveText('Bulk section 2499 remains stable.');
+      }
       expect(await page.locator('#account').inputValue()).toBe('1234 5678 9012');
       const heapAfter = await heapBytes(page);
 
@@ -253,6 +266,9 @@ test('records deterministic browser translation baselines', async () => {
         translatedSwitchMs: Math.round(translatedSwitchMs),
         repeatedSwitchMs: Math.round(repeatedSwitchMs),
         switchProviderCalls: requests.length - requestsBeforeSwitching,
+        translationProviderCalls:
+          progressResult.payload.progress.translationProviderCalls ?? requests.length,
+        reviewProviderCalls: progressResult.payload.progress.reviewProviderCalls ?? 0,
         longTaskCount: longTasks.length,
         longestTaskMs: Math.round(Math.max(0, ...longTasks)),
         heapBeforeBytes: heapBefore,

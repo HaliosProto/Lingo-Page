@@ -21,8 +21,21 @@ import type {
   TranslationSessionBundle,
   TranslatedCopyIntentRecord,
 } from '@translation/shared-types';
-import { CONTRACT_VERSION } from '@translation/shared-types';
-import { createCacheKey } from '@translation/translation-core';
+import {
+  CONTRACT_VERSION,
+  DEFAULT_TRANSLATION_POLICY,
+  TRANSLATION_OUTPUT_CONTRACT_VERSION,
+  TRANSLATION_PROMPT_TEMPLATE_VERSION,
+  TRANSLATION_REQUEST_VERSION,
+  TRANSLATION_RESPONSE_VERSION,
+} from '@translation/shared-types';
+import {
+  createCacheKey,
+  createTextFingerprint,
+  createTranslationPolicyFingerprint,
+  resolveTranslationPolicy,
+  stableSerialize,
+} from '@translation/translation-core';
 import {
   appSettingsSchema,
   errorResponseSchema,
@@ -353,6 +366,7 @@ async function attemptRestoredRecovery(
           targetLanguage: record.targetLanguage,
           providerId: record.providerId,
           modelId: record.modelId,
+          policyFingerprint: record.policyFingerprint,
         })),
       decision: evaluateRestoredRecoveryRecord(record, {
         navigationIdentity,
@@ -1338,9 +1352,19 @@ function mapApiError(
 
 async function translateRequest(request: TranslationRequest): Promise<ExtensionResponse> {
   const settings = await getSettings();
+  const policy = request.policy ?? {
+    ...(settings.translationPolicy ?? DEFAULT_TRANSLATION_POLICY),
+    sourceLanguage: request.sourceLanguage ?? 'auto',
+    targetLanguage: request.targetLanguage,
+  };
+  const policyFingerprint = request.policyFingerprint ?? createTranslationPolicyFingerprint(policy);
+  const contextFingerprint = createTextFingerprint(
+    stableSerialize({ pageContext: request.pageContext, sectionContext: request.sectionContext }),
+  );
   const persistentCache = await loadPersistentCache(settings);
   const translations = new Map<string, string>();
   const uncached = request.segments.filter((segment) => {
+    if (request.review) return true;
     const key = createCacheKey({
       sourceLanguage: request.sourceLanguage,
       targetLanguage: request.targetLanguage,
@@ -1350,6 +1374,10 @@ async function translateRequest(request: TranslationRequest): Promise<ExtensionR
       glossaryVersion: request.glossaryVersion,
       tone: request.tone,
       formality: request.formality,
+      policyFingerprint,
+      contextFingerprint,
+      promptTemplateVersion: request.promptTemplateVersion ?? TRANSLATION_PROMPT_TEMPLATE_VERSION,
+      outputContractVersion: request.outputContractVersion ?? TRANSLATION_OUTPUT_CONTRACT_VERSION,
     });
     const cached = memoryCache.get(key) ?? persistentCache[key];
     if (!cached) return true;
@@ -1360,6 +1388,8 @@ async function translateRequest(request: TranslationRequest): Promise<ExtensionR
 
   let detectedSourceLanguage: string | undefined;
   let providerRecovery: TranslationResponse['recovery'];
+  let providerQuality: TranslationResponse['quality'];
+  let providerReview: TranslationResponse['review'];
   if (uncached.length > 0) {
     const controller = new AbortController();
     const unregister = registerController(request.sessionId, controller);
@@ -1413,6 +1443,8 @@ async function translateRequest(request: TranslationRequest): Promise<ExtensionR
       }
       detectedSourceLanguage = parsed.data.detectedSourceLanguage;
       providerRecovery = parsed.data.recovery;
+      providerQuality = parsed.data.quality;
+      providerReview = parsed.data.review;
       for (const translated of parsed.data.translations) {
         translations.set(translated.id, translated.translatedText);
         const original = request.segments.find((segment) => segment.id === translated.id);
@@ -1426,6 +1458,12 @@ async function translateRequest(request: TranslationRequest): Promise<ExtensionR
           glossaryVersion: request.glossaryVersion,
           tone: request.tone,
           formality: request.formality,
+          policyFingerprint,
+          contextFingerprint,
+          promptTemplateVersion:
+            request.promptTemplateVersion ?? TRANSLATION_PROMPT_TEMPLATE_VERSION,
+          outputContractVersion:
+            request.outputContractVersion ?? TRANSLATION_OUTPUT_CONTRACT_VERSION,
         });
         const entry = { translatedText: translated.translatedText, createdAt: Date.now() };
         memoryCache.set(key, entry);
@@ -1476,6 +1514,7 @@ async function translateRequest(request: TranslationRequest): Promise<ExtensionR
     .map((segment) => segment.id)
     .filter((id) => !returnedIds.has(id));
   const response: TranslationResponse = translationResponseSchema.parse({
+    schemaVersion: TRANSLATION_RESPONSE_VERSION,
     requestId: request.requestId,
     sessionId: request.sessionId,
     providerId: request.providerId ?? settings.providerId,
@@ -1483,6 +1522,8 @@ async function translateRequest(request: TranslationRequest): Promise<ExtensionR
     detectedSourceLanguage,
     translations: returnedSegments,
     partial: missingSegmentIds.length > 0,
+    ...(providerQuality ? { quality: providerQuality } : {}),
+    ...(providerReview ? { review: providerReview } : {}),
     ...(providerRecovery
       ? {
           recovery: {
@@ -1526,6 +1567,7 @@ async function translateSelection(tabId: number, text: string): Promise<Selectio
   const sessionId = createSessionId();
   const requestId = createRequestId();
   const response = await translateRequest({
+    schemaVersion: TRANSLATION_REQUEST_VERSION,
     requestId,
     sessionId,
     providerId: settings.providerId,
@@ -1536,6 +1578,26 @@ async function translateSelection(tabId: number, text: string): Promise<Selectio
     segments: [{ id: 'selection_1', text }],
     glossaryVersion: String(settings.glossaryVersion),
     glossary: settings.glossary,
+    policy: resolveTranslationPolicy({
+      defaults: settings.translationPolicy ?? DEFAULT_TRANSLATION_POLICY,
+      glossary: { terminology: { entries: settings.glossary } },
+      session: {
+        sourceLanguage: settings.sourceLanguage,
+        targetLanguage: settings.defaultTargetLanguage,
+      },
+    }),
+    policyFingerprint: createTranslationPolicyFingerprint(
+      resolveTranslationPolicy({
+        defaults: settings.translationPolicy ?? DEFAULT_TRANSLATION_POLICY,
+        glossary: { terminology: { entries: settings.glossary } },
+        session: {
+          sourceLanguage: settings.sourceLanguage,
+          targetLanguage: settings.defaultTargetLanguage,
+        },
+      }),
+    ),
+    outputContractVersion: TRANSLATION_OUTPUT_CONTRACT_VERSION,
+    promptTemplateVersion: TRANSLATION_PROMPT_TEMPLATE_VERSION,
   });
   if (response.type !== 'TRANSLATION_RESULT') {
     throw new Error(
@@ -1837,7 +1899,8 @@ export default defineBackground(() => {
         }
         case 'SCAN_PAGE_CHANGES':
         case 'UPDATE_CHANGED_SECTIONS':
-        case 'REFRESH_TRANSLATION': {
+        case 'REFRESH_TRANSLATION':
+        case 'REVIEW_SUSPICIOUS_TRANSLATIONS': {
           const { tabId, ...payload } = parsed.data.payload;
           const response = await sendContentMessage(tabId, {
             version: CONTRACT_VERSION,

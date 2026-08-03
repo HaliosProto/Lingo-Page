@@ -15,6 +15,11 @@ import type {
   TranslationFailure,
   TranslationProgress,
 } from '@translation/shared-types';
+import { DEFAULT_TRANSLATION_POLICY } from '@translation/shared-types';
+import {
+  createTranslationPolicyFingerprint,
+  resolveTranslationPolicy,
+} from '@translation/translation-core';
 import { extensionResponseSchema, type ExtensionResponse } from '@translation/shared-validation';
 import {
   Button,
@@ -107,6 +112,7 @@ type SessionCommandType =
   | 'SCAN_PAGE_CHANGES'
   | 'UPDATE_CHANGED_SECTIONS'
   | 'REFRESH_TRANSLATION'
+  | 'REVIEW_SUSPICIOUS_TRANSLATIONS'
   | 'END_TRANSLATION_SESSION';
 
 function PopupApp() {
@@ -252,6 +258,14 @@ function PopupApp() {
           'Translation will work now, but this session cannot restore automatically after Chrome restarts.',
         );
       }
+      const policy = resolveTranslationPolicy({
+        defaults: settings.translationPolicy ?? DEFAULT_TRANSLATION_POLICY,
+        glossary: { terminology: { entries: settings.glossary } },
+        session: {
+          sourceLanguage: settings.sourceLanguage,
+          targetLanguage: settings.defaultTargetLanguage,
+        },
+      });
       const response = await sendMessage({
         version: 1,
         requestId: createRequestId(),
@@ -265,6 +279,8 @@ function PopupApp() {
           targetLanguage: settings.defaultTargetLanguage,
           glossaryVersion: settings.glossaryVersion,
           glossary: settings.glossary,
+          policy,
+          policyFingerprint: createTranslationPolicyFingerprint(policy),
           autoTranslateDynamicContent: settings.autoTranslateDynamicContent,
           restartRecoveryEnabled,
         },
@@ -702,6 +718,12 @@ function PopupApp() {
             <span>{progress.waitingSegments ?? 0} waiting</span>
             <span>{progress.retryingSegments ?? 0} retrying</span>
             <span>{progress.failedSegments} failed</span>
+            {progress.translationProviderCalls !== undefined && (
+              <span>{progress.translationProviderCalls} translation calls</span>
+            )}
+            {progress.reviewProviderCalls !== undefined && (
+              <span>{progress.reviewProviderCalls} review calls</span>
+            )}
             {progress.deferredSegments !== undefined && progress.deferredSegments > 0 && (
               <span>
                 {progress.deferredSegments} deferred by the {progress.safetyLimit ?? 2_500}-section
@@ -776,6 +798,46 @@ function PopupApp() {
             </div>
             <span className="session-state">{sessionStateLabel(progress)}</span>
           </div>
+          {progress.policySummary && (
+            <div className="policy-summary" dir="auto">
+              <strong>Active policy</strong>
+              <span>{progress.policySummary}</span>
+            </div>
+          )}
+          {progress.qualityState && progress.qualityState !== 'clean' && (
+            <div
+              className="quality-summary"
+              role="status"
+              aria-live="polite"
+              data-quality-state={progress.qualityState}
+            >
+              <strong>
+                {progress.qualityState === 'reviewed'
+                  ? 'Selective review completed'
+                  : progress.qualityState === 'review-failed'
+                    ? 'Review could not complete'
+                    : 'Quality check found a concern'}
+              </strong>
+              <span>
+                {progress.qualityState === 'review-failed'
+                  ? 'The original safe translation was preserved.'
+                  : `${progress.qualityFindingCount ?? 0} deterministic finding(s).`}
+              </span>
+              {(progress.qualityState === 'warning' ||
+                progress.qualityState === 'review-failed') && (
+                <Button
+                  variant="secondary"
+                  className="compact-button"
+                  disabled={working}
+                  onClick={() => void runSessionCommand('REVIEW_SUSPICIOUS_TRANSLATIONS')}
+                >
+                  {activeSessionCommand === 'REVIEW_SUSPICIOUS_TRANSLATIONS'
+                    ? 'Reviewing…'
+                    : 'Review flagged sections'}
+                </Button>
+              )}
+            </div>
+          )}
           <SegmentedControl className="segmented-control" label="Page view">
             <button
               type="button"
