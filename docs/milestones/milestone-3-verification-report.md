@@ -3,9 +3,9 @@
 - Date: 2026-08-03
 - Branch: `003-milestone-3`
 - Starting commit: `235b86c306255aba33ff1cc5f3988c8e7d7cc748`
-- Ending commit: recorded in the final Git/PR handoff after focused closure commits
+- Ending verified implementation/documentation commit: `f074264689e8a4345a54a8192b8b5ee9e9a49029`
 - Beads epic: `Lingo-Page-68x`
-- Status: implementation and managed-browser evidence complete; final repository rerun, release packaging, commits, push, and PR creation are recorded below when finished
+- Status: implementation, automated verification, release packaging, focused commits, and branch push complete; PR body and compare link prepared, but no PR was opened because GitHub CLI/integration was unavailable
 
 ## Executive result
 
@@ -169,21 +169,21 @@ Notable retries/failures retained as evidence:
 
 ## Final gate table
 
-| Gate                                                   | Result               | Evidence                                                            |
-| ------------------------------------------------------ | -------------------- | ------------------------------------------------------------------- |
-| Formatting, ESLint, strict TypeScript                  | PASS                 | `pnpm verify`                                                       |
-| Markdown links / dependency cycles                     | PASS                 | 92 Markdown files; no cycles across 9 workspaces                    |
-| Unit / API integration                                 | PASS                 | 16 files / 271 unit tests; 21 API tests                             |
-| Production extension / Worker dry run                  | PASS                 | 706.76 kB extension; 772.04 KiB upload / 126.36 KiB gzip            |
-| Managed Chromium E2E                                   | PASS                 | 8 serialized scenarios including M3 UI/review                       |
-| Performance E2E                                        | PASS with regression | 25/400/1,000/2,200/2,500 added-node fixtures; exact results above   |
-| Security/secret scan                                   | PASS                 | Two extension roots; one configured value checked without display   |
-| Release candidate                                      | PASS                 | Extension/backend metadata and SHA-256 checksum artifact created    |
-| Dependency audit                                       | FAIL (pre-existing)  | Both scopes report six high WXT/web-ext/ESLint toolchain advisories |
+| Gate                                                   | Result               | Evidence                                                                 |
+| ------------------------------------------------------ | -------------------- | ------------------------------------------------------------------------ |
+| Formatting, ESLint, strict TypeScript                  | PASS                 | `pnpm verify`                                                            |
+| Markdown links / dependency cycles                     | PASS                 | 92 Markdown files; no cycles across 9 workspaces                         |
+| Unit / API integration                                 | PASS                 | 16 files / 271 unit tests; 21 API tests                                  |
+| Production extension / Worker dry run                  | PASS                 | 706.76 kB extension; 772.04 KiB upload / 126.36 KiB gzip                 |
+| Managed Chromium E2E                                   | PASS                 | 8 serialized scenarios including M3 UI/review                            |
+| Performance E2E                                        | PASS with regression | 25/400/1,000/2,200/2,500 added-node fixtures; exact results above        |
+| Security/secret scan                                   | PASS                 | Two extension roots; one configured value checked without display        |
+| Release candidate                                      | PASS                 | Extension/backend metadata and SHA-256 checksum artifact created         |
+| Dependency audit                                       | FAIL (pre-existing)  | Both scopes report six high WXT/web-ext/ESLint toolchain advisories      |
 | Manifest/bundle/source maps                            | PASS                 | MV3; 15 files / 706,756 bytes; no extension maps; one scanned Worker map |
-| Beads lint                                             | PASS                 | No template warnings; optional local role remains unset             |
-| In-app browser                                         | BLOCKED              | Windows profile-path `EPERM`; managed Playwright used               |
-| Branded Chrome / formal accessibility / live providers | NOT RUN              | Owner/manual evidence; no claim made                                |
+| Beads lint                                             | PASS                 | No template warnings; optional local role remains unset                  |
+| In-app browser                                         | BLOCKED              | Windows profile-path `EPERM`; managed Playwright used                    |
+| Branded Chrome / formal accessibility / live providers | NOT RUN              | Owner/manual evidence; no claim made                                     |
 
 ## ADRs
 
@@ -209,4 +209,4 @@ Revert the focused M3 commits together to return to the M2 request/settings/cach
 
 ## Closure state
 
-The Beads epic stays open until the final repository/packaging rerun, focused commits, branch push, and PR creation succeed. M4 remains blocked on owner review and acceptance of this report and the M3 PR. The branch must not be merged or deleted automatically.
+The focused implementation/documentation commits end at `f074264689e8a4345a54a8192b8b5ee9e9a49029` and are pushed on `003-milestone-3`. The Beads epic and tasks are closed with evidence. A complete PR body is stored at `tmp/milestone-3-pr-description.md`, and the compare page is `https://github.com/HaliosProto/Lingo-Page/compare/main...003-milestone-3?expand=1`; no PR number exists because GitHub CLI/integration was unavailable. M4 remains blocked on owner review, acceptance, merge, and the explicit M3 dependency gate. The branch remains unmerged and must not be deleted automatically.
