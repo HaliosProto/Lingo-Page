@@ -68,6 +68,16 @@
 
 For each response: request ID must match; translation IDs must be unique, expected, and complete or explicitly partial; output must be a string within configured bounds; markup/script-like output is rejected or treated as literal text; excessive expansion, empty output, malformed JSON, provider refusals, and unexpected fields are handled as typed failures.
 
+## Milestone 3 policy and prompt-injection controls
+
+- `TranslationPolicy`, page/section context, terminology memory, review metadata, and structured responses are runtime validated and bounded at every extension/API/provider boundary.
+- Privileged compiler instructions never interpolate page text, context, glossary values, terminology values, dialect, or the user brief. Those values remain stable-serialized untrusted data and cannot change recipient, model, language, IDs, schema, limits, or security rules.
+- Protected placeholders require exact one-to-one restoration; missing, duplicated, foreign, markup-producing, oversized, unknown-ID, wrong-version, or identity-mismatched records do not reach DOM application.
+- Deterministic findings and review state contain reason codes, IDs, counts, and bounded decisions only. Raw provider/reviewer bodies and page/context/glossary/brief text are not logged or exported.
+- Review is limited to one automatic pass or one explicit selected-ID action. It cannot recurse, resend unrelated IDs, bypass cancellation, or silently choose another provider.
+- Cache and recovery identity include the semantic policy fingerprint and context/template versions. Corrupt or incompatible policy state fails closed without automatic provider work.
+- Required permissions and host declarations are unchanged; no `<all_urls>` or provider credential/client endpoint was added.
+
 ## Release gates
 
 Permission audit, dependency audit, secret scan, bundle scan, schema-fuzz tests, error-path tests, manual CSP review, browser console review, and privacy-document review are mandatory before store-readiness milestone completion.

@@ -65,6 +65,16 @@ type TranslationResponse = {
 };
 ```
 
+## Milestone 3 translation-intelligence extension
+
+Current translation requests parse to request schema version 1 and may carry operation, batch, attempt, navigation-generation, policy, policy fingerprint, prompt-template version, output-contract version, bounded page/section context, bounded terminology memory, and one-pass review metadata. Context-only records are structurally separate from translatable segment IDs.
+
+`TranslationPolicy` version 1 contains provider-neutral behavior, style, preservation, terminology, context, quality, and a custom brief of at most 2,000 characters. Glossary entries are bounded, language-aware, and optionally global/site/session scoped. Site scope accepts only a normalized HTTP(S) origin. Unknown versions, extra policy properties, invalid scopes, conflicting policy glossary entries, and corrupt review candidates fail runtime validation.
+
+Translation responses parse to response schema version 1 and may include typed deterministic findings, IDs nominated for review, separate translation/review call counts, and one-pass review decisions. Missing, duplicate, unknown, empty, invalid-version, oversized, markup, or protected-token-invalid records cannot become DOM application records. A current versioned request treats a missing or wrong response version as invalid structured output.
+
+`REVIEW_SUSPICIOUS_TRANSLATIONS` is an explicit page-session command. The page shell supplies at most 50 currently flagged IDs and their safe candidate text. Review requests bypass translation cache, cannot recurse, and return through the same structured response validation.
+
 ## Routes
 
 ### `POST /v1/translate`
@@ -101,7 +111,7 @@ Unauthenticated liveness/readiness response with version and provider availabili
 
 ## Extension message contracts
 
-Implemented message types include settings/health/provider/status operations plus `GET_PROVIDERS`, `TEST_PROVIDER`, `START_PAGE_TRANSLATION`, `CONTINUE_PAGE_TRANSLATION`, `TRANSLATE_SEGMENTS`, `GET_TRANSLATION_PROGRESS`, `REPORT_TRANSLATION_PROGRESS`, `CANCEL_PAGE_TRANSLATION`, `RESTORE_PAGE`, `TRANSLATE_SELECTION`, and `SHOW_SELECTION_RESULT`. Every message carries contract version and request ID; translation work is bound to a session ID and tab. Continuation keeps the session and can request smaller batches, but it selects only untranslated connected records.
+Implemented message types include settings/health/provider/status operations plus `GET_PROVIDERS`, `TEST_PROVIDER`, `START_PAGE_TRANSLATION`, `CONTINUE_PAGE_TRANSLATION`, `TRANSLATE_SEGMENTS`, `REVIEW_SUSPICIOUS_TRANSLATIONS`, `GET_TRANSLATION_PROGRESS`, `REPORT_TRANSLATION_PROGRESS`, `CANCEL_PAGE_TRANSLATION`, `RESTORE_PAGE`, `TRANSLATE_SELECTION`, and `SHOW_SELECTION_RESULT`. Every message carries contract version and request ID; translation work is bound to a session ID and tab. Start messages carry the validated effective policy and fingerprint. Continuation keeps the session and can request smaller batches, but it selects only untranslated connected records. Review selects only currently flagged records.
 
 ## Error categories
 

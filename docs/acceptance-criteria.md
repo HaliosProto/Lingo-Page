@@ -62,6 +62,19 @@ Status: CURRENT
 - Work remains only on `chore/repository-cleanup-roadmap-and-extension-ux`; focused commits are pushed and a draft pull request is opened but not merged.
 - M2, desktop, mobile, Vision, meetings, and Studio implementation have not begun.
 
+## M3 — structured translation intelligence gate
+
+- One versioned runtime-validated provider-neutral policy defines natural defaults, precedence, preservation, context, terminology, quality, migration, and semantic fingerprinting without provider-specific models/secrets.
+- One deterministic canonical compiler separates privileged instructions from untrusted page/context/glossary/brief data and selects provider output mechanisms without semantic drift.
+- Requests/responses, page/section context, terminology memory, glossary scopes, review metadata, and protected values are bounded, versioned, serializable, and runtime validated.
+- Valid partial records survive; unresolved-only adaptive recovery, lifecycle reconstruction, SPA rejection, cancellation, and zero-call switching/copy/comparison remain correct.
+- Deterministic checks cover protected tokens, numbers, URLs/emails, identifiers/codes/formulas, glossary compliance, identical output, truncation/expansion, markup/control, and language carryover.
+- Clean batches make one translation call and no review call. Suspicious or explicitly selected IDs may receive at most one review call; corrections are revalidated/rechecked and reviewer failure preserves safe work.
+- Cache/recovery identity changes with relevant policy, context, glossary, prompt, and output contracts but not UI-only theme/motion settings.
+- Default use needs no setup; the brief and high-value settings use accessible progressive disclosure; internal JSON/prompts remain hidden; policy/review/retranslation effects are explained.
+- Static, unit/integration, managed Chromium, performance, production build, release-candidate, security, docs, dependency, bundle/manifest/source-map, secret, Git, and Beads gates pass or are explicitly unavailable. Mock/synthetic providers are sufficient; live-provider quality is optional and never inferred.
+- Canonical documents, ADRs, verification report, Beads evidence, and concise project memory match implementation. Push only `003-milestone-3`, prepare a PR, do not merge, and do not begin M4.
+
 ## M2-M7 planning gates
 
 - M2: lifecycle/restart/reload/SPA/sleep-wake resilience, large-page/mutation/memory performance, adaptive batching, provider backoff, and degraded/offline recovery have accepted specifications and evidence.

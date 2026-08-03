@@ -20,6 +20,14 @@ Use local deterministic fixtures, not third-party sites, for static articles, do
 
 Load the unpacked production build into the installed Chrome executable. Inspect page console, popup console, service-worker console, API logs, and network requests. Confirm only the application backend is contacted by the extension and no provider credential is visible.
 
+### Milestone 3 deterministic coverage
+
+Policy tests cover defaults, language normalization, unknown versions, strict fields, bounds, site scope, conflicts, stable fingerprints, and precedence. Compiler/provider tests cover stable section ordering, hostile brief separation, capability output mechanisms, current response versions, partial record preservation, clean one-call behavior, automatic selected-ID review, explicit on-demand review, recheck, and non-destructive reviewer failure.
+
+Core tests cover glossary relevance/isolation, terminology bounds, URLs/emails/placeholders/numbers/identifiers/product codes/formulas, strict restoration, deterministic number/glossary/identity/truncation signals, and policy/context/template cache identity. Extension/API regression suites continue to cover adaptive unresolved-only retry, lifecycle recovery, stale navigation, zero-call reuse, storage validation, permissions, and privacy-safe errors. Routine fixtures use mock/synthetic transports and exact call counters; live providers remain optional owner smoke tests.
+
+Managed Chromium adds default/non-default policy, brief/glossary editing, prompt-injection fixture, structured partial recovery, quality warning/review, policy retranslation, cache reuse/invalidation, RTL/mixed direction, theme, compact/zoom, keyboard, reduced motion, console/network, storage, and call-count inspection. Missing browser/manual evidence is reported rather than inferred.
+
 ## Test data rules
 
 Fixtures use synthetic text. Sensitive-looking fixture labels are synthetic and never contain real credentials or personal data. Provider integration tests use a mock server or recorded schema-safe responses; real provider tests are opt-in and scrubbed.

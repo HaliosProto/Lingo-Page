@@ -50,6 +50,18 @@
 | Overbroad or stale copy permission   | Extension can inject outside the site the user selected        | Optional HTTP(S) declaration only; direct-gesture exact-origin request; exact-origin event matching; checks before tab creation and after final navigation  | Granted, denied, already-granted, HTTP/HTTPS, wrong-origin, redirect, and revocation tests. |
 | Permission callback/event race       | Duplicate destination tabs or stale action replay              | Metadata-only expiring intent, navigation hash, persisted lifecycle, in-memory execution lock, terminal-state idempotence                                   | Popup-closure, callback-plus-event, expiry, and exact-one-tab tests.                        |
 
+## Milestone 3 translation-intelligence threats
+
+| Threat                                             | Mitigation                                                                                                | Residual risk                                                                                                 |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Page, heading, glossary, or brief prompt injection | privileged/untrusted separation, stable serialization, fixed precedence, schema/ID invariants             | a model may still translate adversarial prose poorly; deterministic and optional review signals are heuristic |
+| Malformed structured output or schema claim        | local version/schema/identity/ID/plain-text/size validation on every output mechanism                     | provider protocol changes can reduce availability but do not weaken validation                                |
+| Placeholder loss, duplication, or substitution     | per-segment opaque tokens, exact-once restoration, unresolved record on failure                           | token pattern coverage is bounded and may need future language/domain fixtures                                |
+| Unconditional or recursive review cost             | clean one-call rule, suspicious/selected IDs only, pass literal `1`, separate call counters, cancellation | suspicious pages may legitimately incur one extra call                                                        |
+| Cross-site glossary or terminology leakage         | explicit origin scope, relevant-entry filtering, page-session memory, no cloud sync                       | user-authored global entries intentionally apply across sites                                                 |
+| Stale policy/cache reuse                           | semantic policy/context/glossary/template/output fingerprints and review cache bypass                     | hash collision risk is low but the current non-cryptographic cache key remains local and bounded              |
+| Corrupt persisted policy                           | strict versioned schema and safe default migration/fail-closed parsing                                    | invalid whole settings may reset to defaults rather than partially recover user choices                       |
+
 ## Residual risks
 
 - Sensitive-page heuristics cannot guarantee detection.

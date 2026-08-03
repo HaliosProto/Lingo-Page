@@ -97,6 +97,16 @@ sequenceDiagram
 
 The extension bundle may contain only `WXT_API_BASE_URL`. Provider keys and server administrator keys are backend secrets. The API accepts stable provider/model IDs only after registry and allowlist validation; it never accepts an upstream endpoint. Secret scanning covers source, history where practical, bundles, source maps, logs, and configuration.
 
+## Milestone 3 translation-intelligence authority
+
+The extension derives one validated effective `TranslationPolicy` from safe defaults, stored preferences, explicit glossary rules, and current-session language choices. The page shell owns bounded visible page/heading/nearby context, active-page terminology memory, flagged quality IDs, and policy identity. Context and terminology are data-only records and never DOM application records.
+
+Every request carries contract, policy, prompt-template, and output-contract versions plus the semantic policy fingerprint. The worker includes policy/context/template identity in cache keys and bypasses translation cache for explicit review. Active recovery and transfer bundles carry only validated policy plus its fingerprint; incompatible policy identity cannot silently reuse provider work.
+
+The backend registry remains authoritative for provider/model selection, capabilities, credentials, output limits, and recipient. One canonical compiler turns provider-neutral policy into privileged instructions and a separate stable-serialized untrusted payload. Adapters select schema, JSON, or prompt-only output mechanics without changing semantics.
+
+Structured provider output is locally reconciled before it leaves the backend. Deterministic checks emit bounded reason codes. Clean batches return after one provider call. Suspicious IDs may receive one automatic review; an explicit page-session action may review only currently flagged IDs. Reviewed text is restored, validated, and rechecked. Reviewer failure preserves the original safe plain-text value. ADRs 0017–0022 define these boundaries.
+
 ## Milestone 2 lifecycle authority
 
 The page shell still owns exact originals and live DOM references. A separate version-2 recovery record is keyed by translation session and stores only tab/session/operation/origin/navigation/translation identities, claim state, source/structure fingerprints, status, and completed translated values for at most 30 minutes in `chrome.storage.local`; it never stores source text, page HTML, page titles, form values, full URLs, or comparison structure.

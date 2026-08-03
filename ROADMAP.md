@@ -12,8 +12,8 @@ This is the sole authority for milestone order. The browser extension must be co
 | --------- | ---------------------------------------------------------------- | --------- | ----------------------------------------------------------- |
 | M1        | Durable translation sessions and comparison                      | COMPLETED | Accepted Milestone 1 specification and evidence             |
 | M1.5      | Repository cleanup, roadmap realignment, and frontend foundation | COMPLETED | M1 acceptance fixes merged to `main`                        |
-| M2        | Reliability, lifecycle resilience, and performance               | ACTIVE    | M1.5 accepted                                               |
-| M3        | Translation quality, context, and terminology                    | PLANNED   | M2 reliability baseline                                     |
+| M2        | Reliability, lifecycle resilience, and performance               | COMPLETED | M1.5 accepted                                               |
+| M3        | Translation quality, context, and terminology                    | ACTIVE    | M2 merged into `origin/main` at `235b86c`                   |
 | M4        | Finished extension frontend and user experience                  | PLANNED   | M2 and M3 contracts                                         |
 | M5        | Advanced browser-extension capabilities                          | PLANNED   | M4 extension UX                                             |
 | M6        | Accounts, cloud services, and usage platform                     | PLANNED   | M2 privacy/reliability acceptance                           |
@@ -47,7 +47,7 @@ M1.5 must not begin M2 features, accounts, payments, deployment, publication, de
 
 ## M2 — Reliability, lifecycle resilience, and performance
 
-Status: ACTIVE on `milestone/02-reliability-lifecycle-performance`.
+Status: COMPLETED and merged into `origin/main` at `235b86c`.
 
 - Implemented a versioned, 30-minute, session-keyed recovery record containing origin/navigation/translation identities, claim state, fingerprints, and translated reuse values but no raw source text, full URL, or page HTML.
 - Added zero-provider-call reload reconstruction and safe restored-tab reattachment across changed numeric tab IDs using current-origin permission, Chrome restoration evidence, unique-candidate checks, and atomic claims; the old branded-Chrome build failed and the corrected build awaits owner Tests A-E.
@@ -60,10 +60,13 @@ Acceptance requires bounded performance evidence, stale-session rejection, exact
 
 ## M3 — Translation quality, context, and terminology
 
-- Translation briefs covering tone, dialect, formality, audience, slang, and terminology.
-- Page and section context with explicit disclosure and bounded collection.
-- Glossary, correction feedback, context-aware routing, and quality evaluation.
-- Focused quality work for Persian, Arabic, mixed-direction, and low-resource languages.
+Status: ACTIVE on `003-milestone-3`.
+
+- One versioned provider-neutral translation policy with natural defaults, deterministic precedence, bounded custom brief, safe migration, and stable semantic fingerprinting.
+- One canonical prompt compiler with privileged instructions separated from untrusted page/context/glossary/brief data and provider capability mapping for schema, JSON, or prompt-only output.
+- Bounded visible page/heading/nearby context, scoped glossaries, protected tokens, and page-session terminology memory without cloud sync or cross-site learning.
+- Versioned structured requests/responses, partial-record preservation, deterministic integrity/quality checks, and at most one selective review pass for suspicious or explicitly selected IDs.
+- Policy-aware cache/recovery identity and progressive-disclosure preferences using the M1.5 design system, with focused Persian, Arabic, RTL/LTR, and mixed-direction verification.
 
 No hidden provider routing, autonomous learning, or remote memory is authorized by this milestone description.
 

@@ -8,6 +8,12 @@ React surfaces use semantic controls and accessible labels; status content exist
 
 The saved `reducedMotion` setting now applies a runtime attribute to popup, Options, and comparison surfaces while the operating-system media query remains active. Managed Chromium verifies persistence and runtime application. Session controls use buttons, pressed-state segmented controls, status regions, retry actions, confirmation, visible focus, and progressive disclosure. The full-page comparison has skip links to both labeled panes, a pressed-state synchronized-scroll control with live status, logical toolbar order, keyboard and pointer divider control, reset/swap actions, and a stacked narrow fallback. Managed Chromium verifies 200% comparison zoom without horizontal document overflow. Formal screen-reader, 400% zoom, contrast/high-contrast, OS-level visual motion, and branded-Chrome evidence remain open.
 
+## Milestone 3 preference and quality controls
+
+Translation brief, style, content, audience, quality, review, and glossary-scope controls use semantic labels, native selects/textarea/details, visible focus, logical DOM order, bounded live status, and plain-language provider-usage disclosure. The brief and glossary inputs use `dir="auto"`; policy and quality summaries do not expose internal JSON or prompts. The Options grid collapses at 600 pixels, the popup remains 360 pixels, and existing OS/saved reduced-motion handling covers the new controls.
+
+Managed Chromium must cover keyboard-only disclosure/edit/save/review, 200% zoom, 390-pixel popup, light/dark, long strings, RTL/mixed-direction values, validation feedback, and predictable focus after save. Formal screen-reader, contrast, high-contrast, and branded-browser claims remain manual until exact evidence exists.
+
 ## Release-blocking criteria
 
 - Complete keyboard operation and logical focus order on every surface/state.

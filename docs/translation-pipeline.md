@@ -42,6 +42,16 @@ Use a debounced `MutationObserver` plus route-change signals where available. Th
 
 Canvas-rendered text, image-only text, inaccessible cross-origin frames, browser UI pages, DRM-protected content, and unsupported extension/PDF viewers are reported as unsupported or partially supported. The product must not present an empty or partial result as complete.
 
+## Structured translation intelligence
+
+Before batching, the page shell resolves a versioned provider-neutral policy with natural defaults and the documented precedence. It derives only bounded visible page title, hostname/origin, heading path, adjacent eligible text, element role, and page-session terminology. Hidden, editable, password/payment/security, code/pre, excluded, extension-owned, and `translate=no` content is not context.
+
+The provider package compiles stable privileged sections and a separate untrusted JSON payload. Page text, context, glossary values, terminology memory, dialect, and custom brief cannot alter IDs, target language, recipient, schema, limits, or security rules. Protected values are replaced before transfer and must return exactly once.
+
+Response schema version 1 preserves independently valid records and leaves invalid/missing IDs unresolved for adaptive recovery. After structural validation, deterministic number, URL, email, code/product/formula/identifier, glossary, identical-output, truncation/expansion, markup/control, and language-carryover checks run. Clean batches stop after one call. Automatic review receives suspicious IDs once; on-demand review receives only currently flagged IDs. Corrections are revalidated/rechecked, while review failure preserves the original safe value.
+
+Cache identity includes policy, context, glossary, provider/model, prompt-template, and output-contract identity. UI-only theme/motion changes do not invalidate translations. Review calls bypass translation cache. Policy/context incompatibility requires explicit retranslation and never creates an automatic lifecycle provider call.
+
 ## Lifecycle and mutation pipeline
 
 Reload recovery hashes the current fragment-free navigation, rediscovers eligible text, and matches the bounded recovery record by source fingerprint, structural fingerprint, and element role. Exact originals always come from the current DOM. A browser-restored replacement first proves current-origin access, Chrome restoration evidence, record/tab uniqueness, and an atomic claim; it increments the navigation generation before the same DOM reconciliation. Unmatched, changed, or ambiguous content remains original and is reported; reconstruction never creates a provider attempt.

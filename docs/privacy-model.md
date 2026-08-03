@@ -40,6 +40,14 @@ Provider recipients supported by this candidate are Google Gemini, OpenAI, Anthr
 
 Gemini Interactions and OpenAI Responses requests explicitly disable provider-side response storage with `store=false`. Other adapters use independent single requests and the application does not create provider conversation state. These implementation choices are not claims about provider retention, abuse monitoring, legal obligations, training, or subprocessors. Qwen's configured official regional endpoint is disclosed by provider category without exposing the private backend configuration.
 
+## Milestone 3 context, terminology, and review
+
+Page title, hostname/origin, heading text, adjacent eligible text, glossary matches, and page-session terminology may accompany a translation batch only when the effective policy enables them. They are bounded, visible/eligible-content derived, and sent to the same explicitly selected provider recipient as the requested segments. Context-only values are structurally distinct and cannot be returned or applied as translated segments.
+
+The custom translation brief and glossary entries remain local settings until a relevant explicit translation/review action. Site scope is origin-bound; session scope remains in the active page session. Document terminology memory is capped at 200 entries, never crosses sites/sessions, and is not cloud-synchronized or used for autonomous learning. No correction/training analytics were added.
+
+Automatic review sends only suspicious IDs and minimum relevant source/candidate/context to the same provider, at most once. On-demand review sends only explicitly flagged IDs. Review calls are disclosed in settings and counted separately. Translation cache remains off by default; policy/context/template incompatibility prevents reuse, and privacy mode continues removing/disabling persistent translated-text cache and recovery.
+
 ## Privacy review questions before public release
 
 - What exact data does each provider retain and for how long?

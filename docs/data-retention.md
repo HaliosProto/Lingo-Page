@@ -13,6 +13,18 @@
 | API rate/quota counters          | Worker process memory                              | Development only | Reset on restart                                                 | None                                      |
 | Diagnostics                      | User-generated local export                        | Off              | User controls the file                                           | Only if user explicitly shares it         |
 
+## Milestone 3 local intelligence state
+
+| Data                                | Location                                 | Default                     | Bound / deletion                                                   | External recipient                                      |
+| ----------------------------------- | ---------------------------------------- | --------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------- |
+| Translation policy and custom brief | `appSettings` in local extension storage | safe policy v1; empty brief | brief 2,000 characters; cleared with local data/uninstall          | selected provider only during explicit relevant request |
+| Global/site glossary                | `appSettings` in local extension storage | empty                       | 500 entries; site values exact-origin scoped; clear/uninstall      | selected provider only when relevant                    |
+| Session glossary/terminology        | owning page-shell memory                 | empty                       | 200 sent terminology entries; end/incompatible navigation/tab loss | selected provider only during active request            |
+| Page/section context                | owning page-shell/request memory         | enabled, bounded            | request lifetime; title 300, heading path 8, nearby 3+3 records    | same selected provider as translation/review            |
+| Quality findings/review state       | page-shell progress/recovery metadata    | deterministic checks on     | reason/ID/count metadata; active-session lifetime                  | no additional recipient; review uses selected provider  |
+
+No raw provider/reviewer response, page history, correction analytics, remote translation memory, synchronized glossary, or training corpus is persisted. Review requests bypass translation cache; validated corrected translations follow the same opt-in cache cap and privacy-mode deletion rules.
+
 ## Future translation memory, glossary, feedback, and analytics
 
 - Translation memory must store source/target pairs only after an explicit local or account-level choice, with scope, language, ownership, provenance, version, quality state, retention, export, and deletion.

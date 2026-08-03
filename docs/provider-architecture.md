@@ -47,6 +47,14 @@ Controls are provider-independent: request bytes, segments, input/output charact
 
 Every registry entry identifies the data recipient and whether page text leaves the local backend. Gemini and OpenAI requests explicitly set `store=false`. Other implementations use single stateless requests without application conversation state; this is not a claim about provider retention. Qwen region is selected through one of the three allowlisted official DashScope regional base URLs. Provider terms, retention, training, and geographic processing must be reviewed by the owner before public use.
 
+## Milestone 3 policy, compiler, and review
+
+Provider definitions expose optional system-message, JSON-mode, tool/schema, context/output, and stop-reliability capability metadata in addition to existing structured-output flags. The canonical compiler selects native schema, JSON object, or prompt-only mechanics in that order. Adapters may transform roles/configuration but cannot invent translation behavior.
+
+Translation semantics come from `TranslationPolicy` version 1. The compiler template and output contract are independently versioned. Privileged instructions contain no page, context, glossary, terminology, or user-brief values; those stay in a bounded stable-serialized untrusted payload. Response schema version 1 is locally validated even when a provider claims native schema enforcement.
+
+LLM adapters run deterministic checks after safe restoration. A clean batch records one translation call and zero review calls. Under automatic mode only suspicious IDs receive one additional call; explicit on-demand requests carry selected flagged IDs and candidates. A review request cannot recurse. Corrected text is revalidated and rechecked. Timeout, rate limit, malformed review, cancellation, or unresolved review never destroys an already safe translation. DeepL and mock retain their native deterministic/provider-specific transport boundaries; no selected provider silently changes.
+
 ## Lifecycle retry and idempotency
 
 The page shell coordinates bounded adaptive recovery and sends only unresolved IDs after a valid partial response. Each attempt includes stable session/operation/navigation identity plus a batch and attempt ID. The worker reuses a duplicate living attempt promise and never auto-resends provider work during reload or worker reconstruction. Rate-limit, timeout, unavailable, authentication, quota, invalid output, offline/backend, cancellation, and exhaustion remain distinct. Automated M2 checks use deterministic providers only; no live provider result is M2 evidence.

@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — Milestone 3
+
+- Added a versioned provider-neutral translation policy with natural defaults, deterministic precedence, safe stored-settings migration, bounded custom briefs/glossaries, and stable semantic fingerprints.
+- Added a canonical versioned prompt compiler that separates privileged instructions from untrusted page, context, terminology, glossary, and user-brief data while selecting the strongest backend-declared structured-output mechanism.
+- Added structured request/response versions, bounded visible page/section/nearby context, page-session terminology memory, site/session glossary scopes, and strict protected-token restoration for URLs, emails, placeholders, numbers, identifiers, product/model codes, and formulas.
+- Added deterministic quality findings, clean one-call behavior, one-pass selective automatic review, explicit on-demand review of flagged IDs, non-destructive reviewer failure, and separate translation/review call metrics.
+- Added policy/context/prompt/output-aware cache and recovery identity plus progressive-disclosure translation preferences, active-policy summaries, quality warnings, and review actions in existing extension UI.
+- Added Milestone 3 specifications, six ADRs, and deterministic policy/compiler/protection/glossary/quality/review/cache/injection coverage.
+
 ## Unreleased — Milestone 2
 
 - Added privacy-minimized, versioned, bounded active-session recovery and zero-call reload reconstruction.

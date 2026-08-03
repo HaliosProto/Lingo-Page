@@ -12,6 +12,12 @@ Mixed Persian/Arabic/Hebrew and Latin text can reorder URLs, numbers, punctuatio
 - Exact text restoration is implemented; direction-related DOM attributes are not currently added, so restore does not need to unwind them.
 - Comparison rendering preserves the exact logical string and independently covers LTR source/RTL translation and RTL source/LTR translation. Automated clipboard equality, selection-card direction, screen-reader order, and branded-browser differences remain unverified.
 
+## Milestone 3 mixed-direction policy data
+
+Translation briefs, glossary source/target values, active-policy summaries, and quality text use `dir="auto"` or content-bound direction. Logical CSS remains mandatory. URLs, emails, product/model codes, formulas, numbers, placeholders, and identifiers are protected and restored as exact plain text rather than reversed or normalized for display.
+
+The compiler never changes string direction or places protected Latin tokens into privileged instructions. Persian/Arabic translation with Latin identifiers must preserve copied code points, while visual isolation remains a UI/host-text boundary responsibility. Managed fixtures cover RTL preferences, mixed glossary rows, protected technical identifiers, narrow layout, dark/light, and 200% zoom; clipboard equality and formal screen-reader order remain manual gates.
+
 ## BiDi Safety Engine contract
 
 1. Determine direction per independent content unit from language metadata plus first-strong fallback; never infer security-sensitive semantics from appearance alone.

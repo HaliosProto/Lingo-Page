@@ -70,3 +70,17 @@ Load the unpacked production extension from `D:\Chat GPT Projects\Translation Ex
 The previous branded-Chrome restart/Ctrl+Shift+T result at `fa2135b` is **FAIL**. Do not mark branded-Chrome acceptance passed until the owner completes and reports Tests A-E on the corrected commit.
 
 Record any failure with the exact step, expected result, actual result, browser/channel, extension version, and the diagnostics file if safe to share. Do not attach page text, full URLs, cookies, form values, or secrets.
+
+## Milestone 3 translation-intelligence checks
+
+- [ ] Default policy translates naturally without configuration and reports one translation call per clean batch and zero review calls.
+- [ ] Options saves a bounded translation brief and formal/casual/technical preferences; the popup summarizes a non-default active policy.
+- [ ] Global and exact-site glossary entries apply only where relevant; preserve-exact values, URLs, emails, numbers, product/model codes, formulas, and identifiers remain byte-correct.
+- [ ] A prompt-injection fixture is translated as content and cannot change target language, IDs, schema, recipient, or output behavior.
+- [ ] Malformed/partial structured output preserves valid siblings and retries unresolved IDs only.
+- [ ] A deterministic warning identifies the flagged section; automatic review makes at most one selected-ID call; on-demand review reviews flagged IDs only; reviewer failure preserves the original safe result.
+- [ ] Same-policy cache reuse works; changing target, formality, brief, relevant glossary, or context requires retranslation; theme/reduced-motion changes do not.
+- [ ] Translation brief, glossary, disclosure, quality warning, and review controls work by keyboard at 200% zoom in light/dark, RTL/LTR, mixed-direction, reduced-motion, and 390-pixel popup/600-pixel Options layouts.
+- [ ] Popup, Options, source page, service worker, API output, network, and storage contain no raw provider body, secret, form value, full URL, or unexpected page-text log.
+
+Live-provider smoke checks are optional and require explicit authorization, backend-only credentials, synthetic text, and a report that records provider/model/date/mode/call counts/schema/recovery/human observations without raw private page content.
