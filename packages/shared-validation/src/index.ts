@@ -1,13 +1,26 @@
 import { z } from 'zod';
 import {
   CONTRACT_VERSION,
+  DEFAULT_TRANSLATION_POLICY,
   TRANSLATION_RECOVERY_VERSION,
+  TRANSLATION_OUTPUT_CONTRACT_VERSION,
+  TRANSLATION_POLICY_VERSION,
+  TRANSLATION_PROMPT_TEMPLATE_VERSION,
+  TRANSLATION_REQUEST_VERSION,
+  TRANSLATION_RESPONSE_VERSION,
   TRANSLATION_SESSION_VERSION,
 } from '@translation/shared-types';
 
 export const requestIdSchema = z.string().regex(/^req_[a-zA-Z0-9_-]{8,96}$/);
 export const sessionIdSchema = z.string().regex(/^session_[a-zA-Z0-9_-]{8,96}$/);
-export const languageCodeSchema = z.string().regex(/^[a-z]{2,3}(?:-[A-Z]{2})?$/);
+export const languageCodeSchema = z
+  .string()
+  .trim()
+  .regex(/^[a-zA-Z]{2,3}(?:-[a-zA-Z]{2})?$/)
+  .transform((value) => {
+    const [language, region] = value.split('-');
+    return region ? `${language!.toLowerCase()}-${region.toUpperCase()}` : language!.toLowerCase();
+  });
 export const providerIdSchema = z.enum([
   'mock',
   'gemini',
@@ -36,6 +49,12 @@ export const providerCapabilitiesSchema = z.object({
   usageReporting: z.boolean(),
   modelDiscovery: z.boolean(),
   reasoningControls: z.boolean(),
+  systemMessages: z.boolean().optional(),
+  jsonMode: z.boolean().optional(),
+  toolStructuredOutput: z.boolean().optional(),
+  maxContextCharacters: z.number().int().positive().max(10_000_000).optional(),
+  recommendedOutputTokens: z.number().int().positive().max(1_000_000).optional(),
+  reliableStops: z.boolean().optional(),
 });
 
 export const modelDefinitionSchema = z.object({
@@ -109,18 +128,139 @@ export const supportedLanguageSchema = z.object({
   detectable: z.boolean(),
 });
 
-export const glossaryEntrySchema = z.object({
-  id: z.string().regex(/^[a-zA-Z0-9_-]{1,96}$/),
-  sourceLanguage: languageCodeSchema.optional(),
-  targetLanguage: languageCodeSchema.optional(),
-  sourceTerm: z.string().min(1).max(200),
-  preferredTranslation: z.string().max(400),
-  preserve: z.boolean(),
-  caseSensitive: z.boolean(),
-  wholeWord: z.boolean(),
-  enabled: z.boolean(),
-  notes: z.string().max(500).optional(),
-});
+export const glossaryEntrySchema = z
+  .object({
+    id: z.string().regex(/^[a-zA-Z0-9_-]{1,96}$/),
+    sourceLanguage: languageCodeSchema.optional(),
+    targetLanguage: languageCodeSchema.optional(),
+    sourceTerm: z.string().min(1).max(200),
+    preferredTranslation: z.string().max(400),
+    preserve: z.boolean(),
+    caseSensitive: z.boolean(),
+    wholeWord: z.boolean(),
+    enabled: z.boolean(),
+    notes: z.string().max(500).optional(),
+    scope: z.enum(['global', 'site', 'session']).default('global').optional(),
+    siteOrigin: z
+      .string()
+      .url()
+      .max(300)
+      .refine((value) => /^https?:\/\/[^/?#]+$/u.test(value), 'Site scope requires an origin.')
+      .optional(),
+  })
+  .superRefine((entry, context) => {
+    if (entry.scope === 'site' && !entry.siteOrigin)
+      context.addIssue({
+        code: 'custom',
+        path: ['siteOrigin'],
+        message: 'Site origin is required.',
+      });
+    if (entry.scope !== 'site' && entry.siteOrigin)
+      context.addIssue({
+        code: 'custom',
+        path: ['siteOrigin'],
+        message: 'Site origin requires site scope.',
+      });
+    if (!entry.preserve && !entry.preferredTranslation.trim())
+      context.addIssue({
+        code: 'custom',
+        path: ['preferredTranslation'],
+        message: 'A preferred translation is required unless the term is preserved.',
+      });
+  });
+
+export const translationPolicySchema = z
+  .object({
+    schemaVersion: z.literal(TRANSLATION_POLICY_VERSION),
+    sourceLanguage: z.union([z.literal('auto'), languageCodeSchema]),
+    targetLanguage: languageCodeSchema,
+    behavior: z
+      .object({
+        naturalness: z.enum(['natural', 'neutral', 'literal']),
+        literalness: z.enum(['adaptive', 'balanced', 'strict']),
+        preserveMeaning: z.boolean(),
+        avoidAddedExplanation: z.boolean(),
+        avoidOmissions: z.boolean(),
+      })
+      .strict(),
+    style: z
+      .object({
+        tone: z.enum(['auto', 'neutral', 'formal', 'casual']),
+        formality: z.enum(['auto', 'default', 'more', 'less']),
+        contentType: z.enum([
+          'auto',
+          'general',
+          'technical-documentation',
+          'news',
+          'marketing',
+          'academic',
+        ]),
+        audience: z.enum(['auto', 'general', 'expert', 'children']),
+        dialect: z.string().trim().min(1).max(35).nullable(),
+      })
+      .strict(),
+    preserve: z
+      .object({
+        properNames: z.boolean(),
+        numbers: z.boolean(),
+        dates: z.boolean(),
+        urls: z.boolean(),
+        emails: z.boolean(),
+        code: z.boolean(),
+        identifiers: z.boolean(),
+        productCodes: z.boolean(),
+        modelNumbers: z.boolean(),
+        formulas: z.boolean(),
+        units: z.boolean(),
+      })
+      .strict(),
+    terminology: z
+      .object({
+        technicalTerms: z.enum(['auto', 'translate', 'preserve']),
+        caseSensitivity: z.enum(['smart', 'exact', 'insensitive']),
+        entries: z.array(glossaryEntrySchema).max(500),
+      })
+      .strict(),
+    context: z
+      .object({
+        usePageTitle: z.boolean(),
+        useSectionHeading: z.boolean(),
+        useNearbySegments: z.boolean(),
+        useDocumentTerminologyMemory: z.boolean(),
+      })
+      .strict(),
+    quality: z
+      .object({
+        mode: z.enum(['fast', 'standard', 'enhanced']),
+        deterministicChecks: z.boolean(),
+        selectiveReview: z.enum(['off', 'automatic', 'on-demand']),
+        reviewAllSegments: z.boolean(),
+      })
+      .strict(),
+    customInstructions: z.string().trim().max(2_000),
+  })
+  .strict()
+  .superRefine((policy, context) => {
+    const seen = new Map<string, number>();
+    policy.terminology.entries.forEach((entry, index) => {
+      if (!entry.enabled) return;
+      const key = [
+        entry.sourceLanguage ?? '*',
+        entry.targetLanguage ?? '*',
+        entry.scope ?? 'global',
+        entry.siteOrigin ?? '*',
+        entry.caseSensitive ? entry.sourceTerm : entry.sourceTerm.toLocaleLowerCase(),
+      ].join('\u0000');
+      const previous = seen.get(key);
+      if (previous !== undefined) {
+        context.addIssue({
+          code: 'custom',
+          path: ['terminology', 'entries', index],
+          message: `Glossary entry conflicts with entry ${previous + 1}.`,
+        });
+      } else seen.set(key, index);
+    });
+  });
 
 export const appSettingsSchema = z.object({
   providerId: providerIdSchema.default('mock'),
@@ -137,6 +277,7 @@ export const appSettingsSchema = z.object({
   domainExclusions: z.array(z.string().min(1).max(253)).max(200).default([]),
   glossaryVersion: z.number().int().nonnegative().default(0),
   glossary: z.array(glossaryEntrySchema).max(500).default([]),
+  translationPolicy: translationPolicySchema.default(DEFAULT_TRANSLATION_POLICY),
 });
 
 export const healthResponseSchema = z.object({
@@ -195,6 +336,7 @@ export const translationSegmentSchema = z.object({
 });
 
 export const translationRequestSchema = z.object({
+  schemaVersion: z.literal(TRANSLATION_REQUEST_VERSION).default(TRANSLATION_REQUEST_VERSION),
   requestId: requestIdSchema,
   sessionId: sessionIdSchema,
   operationId: z
@@ -220,9 +362,80 @@ export const translationRequestSchema = z.object({
   glossary: z.array(glossaryEntrySchema).max(500).optional(),
   tone: z.enum(['neutral', 'formal', 'informal']).optional(),
   formality: z.enum(['default', 'more', 'less']).optional(),
+  policy: translationPolicySchema.optional(),
+  policyFingerprint: z
+    .string()
+    .regex(/^policy_[a-z0-9]{6,32}$/u)
+    .optional(),
+  outputContractVersion: z
+    .literal(TRANSLATION_OUTPUT_CONTRACT_VERSION)
+    .default(TRANSLATION_OUTPUT_CONTRACT_VERSION),
+  promptTemplateVersion: z
+    .literal(TRANSLATION_PROMPT_TEMPLATE_VERSION)
+    .default(TRANSLATION_PROMPT_TEMPLATE_VERSION),
+  pageContext: z
+    .object({
+      title: z.string().max(300).optional(),
+      siteName: z.string().max(120).optional(),
+      siteOrigin: z
+        .string()
+        .url()
+        .max(300)
+        .refine((value) => /^https?:\/\/[^/?#]+$/u.test(value))
+        .optional(),
+      contentType: translationPolicySchema.shape.style.shape.contentType.optional(),
+      audience: translationPolicySchema.shape.style.shape.audience.optional(),
+      documentDirection: z.enum(['ltr', 'rtl', 'auto']).optional(),
+    })
+    .strict()
+    .optional(),
+  sectionContext: z
+    .object({
+      headingPath: z.array(z.string().min(1).max(200)).max(8),
+      precedingContext: z
+        .array(z.object({ text: z.string().min(1).max(500), role: z.string().max(80).optional() }))
+        .max(3),
+      followingContext: z
+        .array(z.object({ text: z.string().min(1).max(500), role: z.string().max(80).optional() }))
+        .max(3),
+    })
+    .strict()
+    .optional(),
+  terminologyMemory: z
+    .array(
+      z
+        .object({
+          sourceTerm: z.string().min(1).max(64),
+          translatedTerm: z.string().min(1).max(128),
+          source: z.enum(['glossary', 'validated-translation']),
+        })
+        .strict(),
+    )
+    .max(200)
+    .optional(),
+  review: z
+    .object({
+      mode: z.enum(['automatic', 'on-demand']),
+      segmentIds: z.array(translationSegmentSchema.shape.id).min(1).max(50),
+      pass: z.literal(1),
+      candidates: z
+        .array(
+          z
+            .object({
+              id: translationSegmentSchema.shape.id,
+              translatedText: z.string().min(1).max(16_000),
+            })
+            .strict(),
+        )
+        .min(1)
+        .max(50),
+    })
+    .strict()
+    .optional(),
 });
 
 export const translationResponseSchema = z.object({
+  schemaVersion: z.literal(TRANSLATION_RESPONSE_VERSION).default(TRANSLATION_RESPONSE_VERSION),
   requestId: requestIdSchema,
   sessionId: sessionIdSchema,
   providerId: providerIdSchema,
@@ -271,6 +484,57 @@ export const translationResponseSchema = z.object({
       responseBytes: z.number().int().nonnegative(),
       batchSize: z.number().int().positive().max(500),
     })
+    .optional(),
+  quality: z
+    .object({
+      findings: z
+        .array(
+          z.object({
+            segmentId: translationSegmentSchema.shape.id,
+            severity: z.enum(['warning', 'error']),
+            reason: z.enum([
+              'protected-token-missing',
+              'protected-token-duplicated',
+              'protected-token-foreign',
+              'number-mismatch',
+              'url-mismatch',
+              'email-mismatch',
+              'product-code-mismatch',
+              'formula-mismatch',
+              'identifier-mismatch',
+              'glossary-mismatch',
+              'suspicious-identical-output',
+              'possible-truncation',
+              'extreme-expansion',
+              'unexpected-markup',
+              'unexpected-control-character',
+              'source-language-carryover',
+            ]),
+          }),
+        )
+        .max(500),
+      reviewRequestedSegmentIds: z.array(translationSegmentSchema.shape.id).max(50),
+      translationProviderCalls: z.number().int().nonnegative().max(1_000),
+      reviewProviderCalls: z.number().int().nonnegative().max(1_000),
+    })
+    .strict()
+    .optional(),
+  review: z
+    .object({
+      pass: z.literal(1),
+      decisions: z
+        .array(
+          z
+            .object({
+              segmentId: translationSegmentSchema.shape.id,
+              decision: z.enum(['accept', 'correct', 'unresolved']),
+              correctedText: z.string().min(1).max(16_000).optional(),
+            })
+            .strict(),
+        )
+        .max(50),
+    })
+    .strict()
     .optional(),
 });
 
@@ -501,6 +765,15 @@ export const translationProgressSchema = z.object({
   processedSegments: z.number().int().nonnegative().max(5_000).optional(),
   deferredSegments: z.number().int().nonnegative().max(5_000).optional(),
   safetyLimit: z.number().int().positive().max(5_000).optional(),
+  policyFingerprint: z
+    .string()
+    .regex(/^policy_[a-z0-9]{6,32}$/u)
+    .optional(),
+  policySummary: z.string().max(300).optional(),
+  qualityState: z.enum(['clean', 'warning', 'reviewed', 'review-failed']).optional(),
+  qualityFindingCount: z.number().int().nonnegative().max(5_000).optional(),
+  translationProviderCalls: z.number().int().nonnegative().max(10_000).optional(),
+  reviewProviderCalls: z.number().int().nonnegative().max(10_000).optional(),
 });
 
 const translationDisplayModeSchema = z.enum(['original', 'translated']);
@@ -655,6 +928,11 @@ export const translationSessionBundleSchema = z.object({
   targetLanguage: languageCodeSchema,
   providerId: providerIdSchema,
   modelId: modelIdSchema,
+  policy: translationPolicySchema.optional(),
+  policyFingerprint: z
+    .string()
+    .regex(/^policy_[a-z0-9]{6,32}$/u)
+    .optional(),
   createdAt: z.number().int().nonnegative(),
   lastActivityAt: z.number().int().nonnegative(),
   displayMode: z.enum(['original', 'translated', 'mixed-partial']),
@@ -712,6 +990,11 @@ export const translationRecoveryRecordSchema = z.object({
   targetLanguage: languageCodeSchema,
   providerId: providerIdSchema,
   modelId: modelIdSchema,
+  policy: translationPolicySchema.optional(),
+  policyFingerprint: z
+    .string()
+    .regex(/^policy_[a-z0-9]{6,32}$/u)
+    .optional(),
   createdAt: z.number().int().nonnegative(),
   updatedAt: z.number().int().nonnegative(),
   expiresAt: z.number().int().nonnegative(),
@@ -873,6 +1156,11 @@ const translateCommandPayloadSchema = z.object({
   targetLanguage: languageCodeSchema,
   glossaryVersion: z.number().int().nonnegative(),
   glossary: z.array(glossaryEntrySchema).max(500),
+  policy: translationPolicySchema.optional(),
+  policyFingerprint: z
+    .string()
+    .regex(/^policy_[a-z0-9]{6,32}$/u)
+    .optional(),
   autoTranslateDynamicContent: z.boolean(),
   restartRecoveryEnabled: z.boolean().default(false),
 });
@@ -946,6 +1234,10 @@ export const extensionRequestSchema = z.discriminatedUnion('type', [
       sessionId: sessionIdSchema,
       scope: z.enum(['changed', 'entire-page']),
     }),
+  }),
+  messageBaseSchema.extend({
+    type: z.literal('REVIEW_SUSPICIOUS_TRANSLATIONS'),
+    payload: z.object({ tabId: z.number().int().nonnegative(), sessionId: sessionIdSchema }),
   }),
   messageBaseSchema.extend({
     type: z.literal('OPEN_TRANSLATED_COPY'),
@@ -1085,6 +1377,10 @@ export const contentRequestSchema = z.discriminatedUnion('type', [
   messageBaseSchema.extend({
     type: z.literal('REFRESH_TRANSLATION'),
     payload: z.object({ sessionId: sessionIdSchema, scope: z.enum(['changed', 'entire-page']) }),
+  }),
+  messageBaseSchema.extend({
+    type: z.literal('REVIEW_SUSPICIOUS_TRANSLATIONS'),
+    payload: z.object({ sessionId: sessionIdSchema }),
   }),
   messageBaseSchema.extend({
     type: z.literal('EXPORT_SESSION_BUNDLE'),

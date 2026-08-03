@@ -1,8 +1,16 @@
-import type { ModelDefinition, TranslationResponse } from '@translation/shared-types';
+import {
+  DEFAULT_TRANSLATION_POLICY,
+  TRANSLATION_RESPONSE_VERSION,
+  type ModelDefinition,
+  type TranslationRequest,
+  type TranslationResponse,
+} from '@translation/shared-types';
 import {
   applyGlossary,
   protectTokens,
   restoreTokens,
+  runDeterministicQualityChecks,
+  segmentsRequiringReview,
   validateTranslationResponse,
 } from '@translation/translation-core';
 import {
@@ -349,15 +357,125 @@ function createLlmProvider(config: ProviderRuntimeConfig): TranslationProvider {
     id: config.id,
     modelId: config.defaultModel,
     async translate(request, context) {
-      const prepared = prepareTranslationPrompt(request);
+      const prepared = prepareTranslationPrompt(request, config.capabilities);
       let lastError: unknown;
+      let translationProviderCalls = 0;
       for (let attempt = 0; attempt <= config.maxRetries; attempt += 1) {
         try {
+          translationProviderCalls += 1;
           const result = await transport(config, prepared, context);
-          return parseTranslationJson(result.text, request, config, prepared, result.usage, {
-            ...(result.finishReason ? { finishReason: result.finishReason } : {}),
-            responseTruncated: result.responseTruncated,
-          });
+          const translated = parseTranslationJson(
+            result.text,
+            request,
+            config,
+            prepared,
+            result.usage,
+            {
+              ...(result.finishReason ? { finishReason: result.finishReason } : {}),
+              responseTruncated: result.responseTruncated,
+            },
+          );
+          if (translated.quality)
+            translated.quality.translationProviderCalls = request.review
+              ? 0
+              : translationProviderCalls;
+          const reviewIds = request.review
+            ? []
+            : (translated.quality?.reviewRequestedSegmentIds ?? []).slice(0, 50);
+          if (reviewIds.length === 0) return translated;
+          const reviewSegments = request.segments.filter((segment) =>
+            reviewIds.includes(segment.id),
+          );
+          const reviewCandidates = translated.translations
+            .filter((translation) => reviewIds.includes(translation.id))
+            .map((translation) => ({
+              id: translation.id,
+              translatedText: translation.translatedText,
+            }));
+          if (reviewSegments.length === 0 || reviewCandidates.length === 0) return translated;
+          const reviewRequest: TranslationRequest = {
+            ...request,
+            segments: reviewSegments,
+            review: {
+              mode: 'automatic',
+              segmentIds: reviewCandidates.map((candidate) => candidate.id),
+              candidates: reviewCandidates,
+              pass: 1,
+            },
+          };
+          try {
+            const reviewPrepared = prepareTranslationPrompt(reviewRequest, config.capabilities);
+            const reviewResult = await transport(config, reviewPrepared, context);
+            const reviewed = parseTranslationJson(
+              reviewResult.text,
+              reviewRequest,
+              config,
+              reviewPrepared,
+              reviewResult.usage,
+              {
+                ...(reviewResult.finishReason ? { finishReason: reviewResult.finishReason } : {}),
+                responseTruncated: reviewResult.responseTruncated,
+              },
+            );
+            const corrections = new Map(
+              reviewed.translations.map((translation) => [
+                translation.id,
+                translation.translatedText,
+              ]),
+            );
+            const merged = translated.translations.map((translation) => ({
+              ...translation,
+              translatedText: corrections.get(translation.id) ?? translation.translatedText,
+            }));
+            const reviewedIds = new Set(reviewIds);
+            return {
+              ...translated,
+              translations: merged,
+              quality: {
+                findings: [
+                  ...(translated.quality?.findings ?? []).filter(
+                    (finding) => !reviewedIds.has(finding.segmentId),
+                  ),
+                  ...(reviewed.quality?.findings ?? []),
+                ],
+                reviewRequestedSegmentIds: [],
+                translationProviderCalls,
+                reviewProviderCalls: 1,
+              },
+              review: {
+                pass: 1,
+                decisions: reviewIds.map((segmentId) => {
+                  const original = reviewCandidates.find((candidate) => candidate.id === segmentId);
+                  const corrected = corrections.get(segmentId);
+                  return corrected === undefined
+                    ? { segmentId, decision: 'unresolved' as const }
+                    : corrected === original?.translatedText
+                      ? { segmentId, decision: 'accept' as const }
+                      : { segmentId, decision: 'correct' as const, correctedText: corrected };
+                }),
+              },
+            };
+          } catch (error) {
+            if (error instanceof ProviderError && error.code === 'cancelled') throw error;
+            return {
+              ...translated,
+              quality: translated.quality
+                ? {
+                    ...translated.quality,
+                    translationProviderCalls,
+                    reviewRequestedSegmentIds: [],
+                    reviewProviderCalls: 1,
+                  }
+                : undefined,
+              review: {
+                pass: 1,
+                decisions: reviewIds.map((segmentId) => ({
+                  segmentId,
+                  decision: 'unresolved' as const,
+                })),
+              },
+            };
+          }
         } catch (error) {
           lastError = error;
           if (
@@ -439,7 +557,7 @@ export function createMockProvider(options: { delayMs?: number } = {}): Translat
         });
       }
       const translations = request.segments.map((segment) => {
-        const protectedValue = protectTokens(segment.text);
+        const protectedValue = protectTokens(segment.text, segment.preserveTokens);
         return {
           id: segment.id,
           translatedText: restoreTokens(
@@ -453,7 +571,22 @@ export function createMockProvider(options: { delayMs?: number } = {}): Translat
           ),
         };
       });
+      const policy = request.policy ?? {
+        ...DEFAULT_TRANSLATION_POLICY,
+        targetLanguage: request.targetLanguage,
+      };
+      const findings = policy.quality.deterministicChecks
+        ? translations.flatMap((translation) =>
+            runDeterministicQualityChecks({
+              segment: request.segments.find((segment) => segment.id === translation.id)!,
+              translatedText: translation.translatedText,
+              targetLanguage: request.targetLanguage,
+              glossary: request.glossary ?? policy.terminology.entries,
+            }),
+          )
+        : [];
       return validateTranslationResponse(request, {
+        schemaVersion: TRANSLATION_RESPONSE_VERSION,
         requestId: request.requestId,
         sessionId: request.sessionId,
         providerId: 'mock',
@@ -469,6 +602,12 @@ export function createMockProvider(options: { delayMs?: number } = {}): Translat
             (total, item) => total + item.translatedText.length,
             0,
           ),
+        },
+        quality: {
+          findings,
+          reviewRequestedSegmentIds: segmentsRequiringReview(findings, policy),
+          translationProviderCalls: 1,
+          reviewProviderCalls: 0,
         },
       });
     },
@@ -578,6 +717,7 @@ export function createDeepLProvider(options: DeepLProviderOptions): TranslationP
       });
       try {
         return validateTranslationResponse(request, {
+          schemaVersion: TRANSLATION_RESPONSE_VERSION,
           requestId: request.requestId,
           sessionId: request.sessionId,
           providerId: 'deepl',

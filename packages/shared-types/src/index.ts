@@ -1,4 +1,9 @@
 export const CONTRACT_VERSION = 1 as const;
+export const TRANSLATION_POLICY_VERSION = 1 as const;
+export const TRANSLATION_REQUEST_VERSION = 1 as const;
+export const TRANSLATION_RESPONSE_VERSION = 1 as const;
+export const TRANSLATION_OUTPUT_CONTRACT_VERSION = 1 as const;
+export const TRANSLATION_PROMPT_TEMPLATE_VERSION = 1 as const;
 
 export type TranslationMode = 'page' | 'selection';
 export type ProviderId =
@@ -36,6 +41,12 @@ export type ProviderCapabilities = {
   usageReporting: boolean;
   modelDiscovery: boolean;
   reasoningControls: boolean;
+  systemMessages?: boolean;
+  jsonMode?: boolean;
+  toolStructuredOutput?: boolean;
+  maxContextCharacters?: number;
+  recommendedOutputTokens?: number;
+  reliableStops?: boolean;
 };
 
 export type ModelDefinition = {
@@ -245,6 +256,8 @@ export type TranslationSessionBundle = {
   targetLanguage: string;
   providerId: ProviderId;
   modelId: string;
+  policy?: TranslationPolicy;
+  policyFingerprint?: string;
   createdAt: number;
   lastActivityAt: number;
   displayMode: TranslationDisplayMode;
@@ -299,6 +312,8 @@ export type TranslationRecoveryRecord = {
   targetLanguage: string;
   providerId: ProviderId;
   modelId: string;
+  policy?: TranslationPolicy;
+  policyFingerprint?: string;
   createdAt: number;
   updatedAt: number;
   expiresAt: number;
@@ -399,6 +414,166 @@ export type GlossaryEntry = {
   wholeWord: boolean;
   enabled: boolean;
   notes?: string;
+  scope?: 'global' | 'site' | 'session';
+  siteOrigin?: string;
+};
+
+export type TranslationPolicy = {
+  schemaVersion: typeof TRANSLATION_POLICY_VERSION;
+  sourceLanguage: 'auto' | string;
+  targetLanguage: string;
+  behavior: {
+    naturalness: 'natural' | 'neutral' | 'literal';
+    literalness: 'adaptive' | 'balanced' | 'strict';
+    preserveMeaning: boolean;
+    avoidAddedExplanation: boolean;
+    avoidOmissions: boolean;
+  };
+  style: {
+    tone: 'auto' | 'neutral' | 'formal' | 'casual';
+    formality: 'auto' | 'default' | 'more' | 'less';
+    contentType: 'auto' | 'general' | 'technical-documentation' | 'news' | 'marketing' | 'academic';
+    audience: 'auto' | 'general' | 'expert' | 'children';
+    dialect: string | null;
+  };
+  preserve: {
+    properNames: boolean;
+    numbers: boolean;
+    dates: boolean;
+    urls: boolean;
+    emails: boolean;
+    code: boolean;
+    identifiers: boolean;
+    productCodes: boolean;
+    modelNumbers: boolean;
+    formulas: boolean;
+    units: boolean;
+  };
+  terminology: {
+    technicalTerms: 'auto' | 'translate' | 'preserve';
+    caseSensitivity: 'smart' | 'exact' | 'insensitive';
+    entries: GlossaryEntry[];
+  };
+  context: {
+    usePageTitle: boolean;
+    useSectionHeading: boolean;
+    useNearbySegments: boolean;
+    useDocumentTerminologyMemory: boolean;
+  };
+  quality: {
+    mode: 'fast' | 'standard' | 'enhanced';
+    deterministicChecks: boolean;
+    selectiveReview: 'off' | 'automatic' | 'on-demand';
+    reviewAllSegments: boolean;
+  };
+  customInstructions: string;
+};
+
+export const DEFAULT_TRANSLATION_POLICY: TranslationPolicy = {
+  schemaVersion: TRANSLATION_POLICY_VERSION,
+  sourceLanguage: 'auto',
+  targetLanguage: 'en',
+  behavior: {
+    naturalness: 'natural',
+    literalness: 'balanced',
+    preserveMeaning: true,
+    avoidAddedExplanation: true,
+    avoidOmissions: true,
+  },
+  style: {
+    tone: 'auto',
+    formality: 'auto',
+    contentType: 'auto',
+    audience: 'auto',
+    dialect: null,
+  },
+  preserve: {
+    properNames: true,
+    numbers: true,
+    dates: true,
+    urls: true,
+    emails: true,
+    code: true,
+    identifiers: true,
+    productCodes: true,
+    modelNumbers: true,
+    formulas: true,
+    units: true,
+  },
+  terminology: {
+    technicalTerms: 'auto',
+    caseSensitivity: 'smart',
+    entries: [],
+  },
+  context: {
+    usePageTitle: true,
+    useSectionHeading: true,
+    useNearbySegments: true,
+    useDocumentTerminologyMemory: true,
+  },
+  quality: {
+    mode: 'standard',
+    deterministicChecks: true,
+    selectiveReview: 'automatic',
+    reviewAllSegments: false,
+  },
+  customInstructions: '',
+};
+
+export type TranslationPageContext = {
+  title?: string;
+  siteName?: string;
+  siteOrigin?: string;
+  contentType?: TranslationPolicy['style']['contentType'];
+  audience?: TranslationPolicy['style']['audience'];
+  documentDirection?: 'ltr' | 'rtl' | 'auto';
+};
+
+export type TranslationContextRecord = {
+  text: string;
+  role?: string;
+};
+
+export type TranslationSectionContext = {
+  headingPath: string[];
+  precedingContext: TranslationContextRecord[];
+  followingContext: TranslationContextRecord[];
+};
+
+export type TerminologyMemoryEntry = {
+  sourceTerm: string;
+  translatedTerm: string;
+  source: 'glossary' | 'validated-translation';
+};
+
+export type TranslationQualityReason =
+  | 'protected-token-missing'
+  | 'protected-token-duplicated'
+  | 'protected-token-foreign'
+  | 'number-mismatch'
+  | 'url-mismatch'
+  | 'email-mismatch'
+  | 'product-code-mismatch'
+  | 'formula-mismatch'
+  | 'identifier-mismatch'
+  | 'glossary-mismatch'
+  | 'suspicious-identical-output'
+  | 'possible-truncation'
+  | 'extreme-expansion'
+  | 'unexpected-markup'
+  | 'unexpected-control-character'
+  | 'source-language-carryover';
+
+export type TranslationQualityFinding = {
+  segmentId: string;
+  severity: 'warning' | 'error';
+  reason: TranslationQualityReason;
+};
+
+export type TranslationReviewDecision = {
+  segmentId: string;
+  decision: 'accept' | 'correct' | 'unresolved';
+  correctedText?: string;
 };
 
 export type AppSettings = {
@@ -416,6 +591,7 @@ export type AppSettings = {
   domainExclusions: string[];
   glossaryVersion: number;
   glossary: GlossaryEntry[];
+  translationPolicy?: TranslationPolicy;
 };
 
 export type TranslationSegment = {
@@ -428,6 +604,7 @@ export type TranslationSegment = {
 };
 
 export type TranslationRequest = {
+  schemaVersion?: typeof TRANSLATION_REQUEST_VERSION;
   requestId: string;
   sessionId: string;
   operationId?: string;
@@ -444,9 +621,23 @@ export type TranslationRequest = {
   glossary?: GlossaryEntry[];
   tone?: 'neutral' | 'formal' | 'informal';
   formality?: 'default' | 'more' | 'less';
+  policy?: TranslationPolicy;
+  policyFingerprint?: string;
+  outputContractVersion?: typeof TRANSLATION_OUTPUT_CONTRACT_VERSION;
+  promptTemplateVersion?: typeof TRANSLATION_PROMPT_TEMPLATE_VERSION;
+  pageContext?: TranslationPageContext;
+  sectionContext?: TranslationSectionContext;
+  terminologyMemory?: TerminologyMemoryEntry[];
+  review?: {
+    mode: 'automatic' | 'on-demand';
+    segmentIds: string[];
+    pass: 1;
+    candidates: Array<{ id: string; translatedText: string }>;
+  };
 };
 
 export type TranslationResponse = {
+  schemaVersion?: typeof TRANSLATION_RESPONSE_VERSION;
   requestId: string;
   sessionId: string;
   providerId: ProviderId;
@@ -464,6 +655,16 @@ export type TranslationResponse = {
   };
   partial?: boolean;
   recovery?: TranslationResponseRecoveryMetadata;
+  quality?: {
+    findings: TranslationQualityFinding[];
+    reviewRequestedSegmentIds: string[];
+    translationProviderCalls: number;
+    reviewProviderCalls: number;
+  };
+  review?: {
+    pass: 1;
+    decisions: TranslationReviewDecision[];
+  };
 };
 
 export type TranslationResponseRecoveryClassification =
@@ -520,6 +721,12 @@ export type TranslationProgress = {
   processedSegments?: number;
   deferredSegments?: number;
   safetyLimit?: number;
+  policyFingerprint?: string;
+  policySummary?: string;
+  qualityState?: 'clean' | 'warning' | 'reviewed' | 'review-failed';
+  qualityFindingCount?: number;
+  translationProviderCalls?: number;
+  reviewProviderCalls?: number;
 };
 
 export type LanguageDetectionResult = {

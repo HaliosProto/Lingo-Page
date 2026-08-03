@@ -1,4 +1,9 @@
-import type { AppSettings, PageSupport, SupportedLanguage } from '@translation/shared-types';
+import {
+  DEFAULT_TRANSLATION_POLICY,
+  type AppSettings,
+  type PageSupport,
+  type SupportedLanguage,
+} from '@translation/shared-types';
 
 export const CONTRACT_VERSION = 1 as const;
 export const DEFAULT_APP_VERSION = '0.1.0';
@@ -37,6 +42,7 @@ export const defaultSettings: AppSettings = {
   domainExclusions: [],
   glossaryVersion: 0,
   glossary: [],
+  translationPolicy: DEFAULT_TRANSLATION_POLICY,
 };
 
 function isExcludedHostname(hostname: string, exclusions: string[]): boolean {
